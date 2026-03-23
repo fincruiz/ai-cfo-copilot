@@ -25,6 +25,8 @@ def standardize_key_columns(gl: pd.DataFrame, coa: pd.DataFrame, kpi: pd.DataFra
             "Account code ": "Account code",
             "branch": "Branch",
             "net": "Net",
+            "Debit ": "Debit",
+            "Credit ": "Credit",
         },
         inplace=True,
     )
@@ -182,10 +184,14 @@ def prepare_data(gl_file, mapping_file, kpi_file=None):
     coa["Account code"] = coa["Account code"].astype(str).str.strip()
     gl["Branch"] = gl["Branch"].astype(str).str.strip()
 
+    gl["Debit"] = pd.to_numeric(gl["Debit"], errors="coerce").fillna(0)
+    gl["Credit"] = pd.to_numeric(gl["Credit"], errors="coerce").fillna(0)
+
     if "Net" not in gl.columns:
-        gl["Net"] = gl["Debit"].fillna(0) - gl["Credit"].fillna(0)
+        gl["Net"] = gl["Debit"] - gl["Credit"]
     else:
-        gl["Net"] = gl["Net"].fillna(gl["Debit"].fillna(0) - gl["Credit"].fillna(0))
+        gl["Net"] = pd.to_numeric(gl["Net"], errors="coerce")
+        gl["Net"] = gl["Net"].fillna(gl["Debit"] - gl["Credit"])
 
     coa = coa[coa["Statement"].astype(str).str.strip().str.lower() == "income statement"].copy()
 
@@ -207,10 +213,14 @@ def prepare_data(gl_file, mapping_file, kpi_file=None):
 for key in [
     "gl", "coa", "kpi_master", "mapped", "unmapped",
     "consolidated_pnl", "consolidated_kpis", "branch_outputs",
-    "branch_summary", "detected_branches", "validation_passed"
+    "branch_summary", "detected_branches", "validation_passed",
+    "company_profile"
 ]:
     if key not in st.session_state:
         st.session_state[key] = None
+
+if st.session_state["company_profile"] is None:
+    st.session_state["company_profile"] = {}
 
 
 # ----------------------------
@@ -219,9 +229,95 @@ for key in [
 st.title("AI CFO Copilot")
 st.caption("Automated branch-wise P&L, KPI packs, and management reporting from GL data")
 
-tab_upload, tab_validation, tab_reports, tab_kpis, tab_issues, tab_download = st.tabs(
-    ["Upload", "Validation", "Reports", "KPIs", "Issues", "Download"]
+tab_profile, tab_upload, tab_validation, tab_reports, tab_kpis, tab_issues, tab_download = st.tabs(
+    ["Profile", "Upload", "Validation", "Reports", "KPIs", "Issues", "Download"]
 )
+
+
+# ----------------------------
+# Profile Tab
+# ----------------------------
+with tab_profile:
+    st.subheader("Company Profile")
+    st.caption("Optional business context to support better insights, benchmarking, and commentary.")
+
+    c1, c2 = st.columns(2)
+
+    with c1:
+        company_name = st.text_input("Company Name")
+        industry = st.selectbox(
+            "Industry",
+            [
+                "Select Industry",
+                "Manufacturing",
+                "Wholesale / Distribution",
+                "Retail",
+                "Professional Services",
+                "Construction",
+                "Logistics",
+                "Hospitality",
+                "Healthcare",
+                "Technology",
+                "Other",
+            ],
+        )
+        country = st.selectbox(
+            "Country",
+            [
+                "Select Country",
+                "Australia",
+                "India",
+                "United States",
+                "United Kingdom",
+                "Canada",
+                "New Zealand",
+                "Other",
+            ],
+        )
+        state_region = st.text_input("State / Region")
+
+    with c2:
+        currency = st.selectbox(
+            "Currency",
+            ["Select Currency", "AUD", "INR", "USD", "GBP", "CAD", "NZD", "Other"],
+        )
+        tax_identifier = st.text_input("Tax Identifier / ABN / GSTIN (Optional)")
+        reporting_period = st.selectbox(
+            "Reporting Period",
+            ["Monthly", "Quarterly", "Annual"],
+        )
+        benchmark_group = st.text_input("Benchmark Group (Optional)")
+
+    business_notes = st.text_area(
+        "Business Notes (Optional)",
+        placeholder="Example: Multi-branch wholesale distributor with central procurement and branch-level sales reporting."
+    )
+
+    if st.button("Save Company Profile", use_container_width=True):
+        if industry == "Select Industry" or country == "Select Country":
+            st.error("Please select at least Industry and Country.")
+        else:
+            st.session_state["company_profile"] = {
+                "Company Name": company_name,
+                "Industry": industry,
+                "Country": country,
+                "State / Region": state_region,
+                "Currency": currency if currency != "Select Currency" else "",
+                "Tax Identifier": tax_identifier,
+                "Reporting Period": reporting_period,
+                "Benchmark Group": benchmark_group,
+                "Business Notes": business_notes,
+            }
+            st.success("Company profile saved successfully.")
+
+    if st.session_state["company_profile"]:
+        st.markdown("### Saved Profile")
+        profile_df = pd.DataFrame(
+            st.session_state["company_profile"].items(),
+            columns=["Field", "Value"]
+        )
+        st.dataframe(profile_df, use_container_width=True)
+
 
 # ----------------------------
 # Upload Tab
@@ -308,6 +404,14 @@ with tab_validation:
         mapped = st.session_state["mapped"]
         unmapped = st.session_state["unmapped"]
         detected_branches = st.session_state["detected_branches"]
+
+        if st.session_state["company_profile"]:
+            st.markdown("### Company Context")
+            profile_df = pd.DataFrame(
+                st.session_state["company_profile"].items(),
+                columns=["Field", "Value"]
+            )
+            st.dataframe(profile_df, use_container_width=True)
 
         m1, m2, m3, m4 = st.columns(4)
         m1.metric("GL Rows", len(gl))
