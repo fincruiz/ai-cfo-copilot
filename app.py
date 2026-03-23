@@ -14,10 +14,9 @@ def clean_columns(df: pd.DataFrame) -> pd.DataFrame:
     return df
 
 
-def standardize_key_columns(gl: pd.DataFrame, coa: pd.DataFrame, kpi: pd.DataFrame):
+def standardize_key_columns(gl: pd.DataFrame, coa: pd.DataFrame, kpi: pd.DataFrame | None = None):
     gl = clean_columns(gl)
     coa = clean_columns(coa)
-    kpi = clean_columns(kpi)
 
     gl.rename(
         columns={
@@ -42,17 +41,19 @@ def standardize_key_columns(gl: pd.DataFrame, coa: pd.DataFrame, kpi: pd.DataFra
         inplace=True,
     )
 
-    kpi.rename(
-        columns={
-            "Formula type": "Formula Type",
-            "Numerator group": "Numerator Group",
-            "Denominator group": "Denominator Group",
-            "Output type": "Output Type",
-            "Display order": "Display Order",
-            "Kpi name": "KPI Name",
-        },
-        inplace=True,
-    )
+    if kpi is not None:
+        kpi = clean_columns(kpi)
+        kpi.rename(
+            columns={
+                "Formula type": "Formula Type",
+                "Numerator group": "Numerator Group",
+                "Denominator group": "Denominator Group",
+                "Output type": "Output Type",
+                "Display order": "Display Order",
+                "Kpi name": "KPI Name",
+            },
+            inplace=True,
+        )
 
     return gl, coa, kpi
 
@@ -141,13 +142,18 @@ def create_excel_pack(consolidated_pnl, consolidated_kpis, branch_summary, branc
 
     with pd.ExcelWriter(output, engine="openpyxl") as writer:
         consolidated_pnl.to_excel(writer, sheet_name="Consolidated P&L", index=False)
-        consolidated_kpis.to_excel(writer, sheet_name="Consolidated KPIs", index=False)
-        branch_summary.to_excel(writer, sheet_name="Branch Summary KPIs", index=False)
+
+        if consolidated_kpis is not None:
+            consolidated_kpis.to_excel(writer, sheet_name="Consolidated KPIs", index=False)
+
+        if branch_summary is not None and not branch_summary.empty:
+            branch_summary.to_excel(writer, sheet_name="Branch Summary KPIs", index=False)
 
         for branch, reports in branch_outputs.items():
             safe_branch = str(branch)[:20]
             reports["pnl"].to_excel(writer, sheet_name=f"{safe_branch} P&L", index=False)
-            reports["kpis"].to_excel(writer, sheet_name=f"{safe_branch} KPIs", index=False)
+            if reports["kpis"] is not None:
+                reports["kpis"].to_excel(writer, sheet_name=f"{safe_branch} KPIs", index=False)
 
         if not unmapped.empty:
             unmapped.to_excel(writer, sheet_name="Unmapped Accounts", index=False)
@@ -155,20 +161,22 @@ def create_excel_pack(consolidated_pnl, consolidated_kpis, branch_summary, branc
     return output.getvalue()
 
 
-def prepare_data(gl_file, mapping_file, kpi_file):
+def prepare_data(gl_file, mapping_file, kpi_file=None):
     gl = pd.read_excel(gl_file)
     coa = pd.read_excel(mapping_file)
-    kpi_master = pd.read_excel(kpi_file)
+    kpi_master = pd.read_excel(kpi_file) if kpi_file is not None else None
 
     gl, coa, kpi_master = standardize_key_columns(gl, coa, kpi_master)
 
     validate_required_columns(gl, ["Account code", "Debit", "Credit", "Branch"], "GL report")
     validate_required_columns(coa, ["Account code", "Reporting Group", "Reporting Subgroup", "Statement"], "COA mapping")
-    validate_required_columns(
-        kpi_master,
-        ["KPI Name", "Formula Type", "Numerator Group", "Denominator Group", "Output Type", "Display Order"],
-        "KPI master",
-    )
+
+    if kpi_master is not None:
+        validate_required_columns(
+            kpi_master,
+            ["KPI Name", "Formula Type", "Numerator Group", "Denominator Group", "Output Type", "Display Order"],
+            "KPI master",
+        )
 
     gl["Account code"] = gl["Account code"].astype(str).str.strip()
     coa["Account code"] = coa["Account code"].astype(str).str.strip()
@@ -199,7 +207,7 @@ def prepare_data(gl_file, mapping_file, kpi_file):
 for key in [
     "gl", "coa", "kpi_master", "mapped", "unmapped",
     "consolidated_pnl", "consolidated_kpis", "branch_outputs",
-    "branch_summary", "detected_branches"
+    "branch_summary", "detected_branches", "validation_passed"
 ]:
     if key not in st.session_state:
         st.session_state[key] = None
@@ -227,24 +235,24 @@ with tab_upload:
     with c2:
         mapping_file = st.file_uploader("COA Mapping", type=["xlsx"])
     with c3:
-        kpi_file = st.file_uploader("KPI Master", type=["xlsx"])
+        kpi_file = st.file_uploader("KPI Master (Optional)", type=["xlsx"])
 
     st.info(
         "GL required columns: Account code, Debit, Credit, Branch. Optional: Net, Date, Description.\n\n"
         "COA mapping required columns: Account code, Reporting Group, Reporting Subgroup, Statement. "
         "Recommended: Sign Convention.\n\n"
-        "KPI master required columns: KPI Name, Formula Type, Numerator Group, Denominator Group, Output Type, Display Order."
+        "KPI master is optional. If uploaded, KPI outputs will be generated."
     )
 
     if st.button("Validate & Load Files", use_container_width=True):
         try:
-            if not (gl_file and mapping_file and kpi_file):
-                st.error("Please upload GL Report, COA Mapping, and KPI Master.")
+            if not (gl_file and mapping_file):
+                st.error("Please upload GL Report and COA Mapping.")
             else:
                 gl, coa, kpi_master, mapped, unmapped = prepare_data(gl_file, mapping_file, kpi_file)
 
                 consolidated_pnl = build_pnl(mapped)
-                consolidated_kpis = build_kpis(mapped, kpi_master)
+                consolidated_kpis = build_kpis(mapped, kpi_master) if kpi_master is not None else None
 
                 detected_branches = sorted(mapped["Branch"].dropna().unique().tolist())
 
@@ -254,16 +262,17 @@ with tab_upload:
                 for branch in detected_branches:
                     branch_df = mapped[mapped["Branch"] == branch].copy()
                     branch_pnl = build_pnl(branch_df)
-                    branch_kpis = build_kpis(branch_df, kpi_master)
+                    branch_kpis = build_kpis(branch_df, kpi_master) if kpi_master is not None else None
 
                     branch_outputs[branch] = {"pnl": branch_pnl, "kpis": branch_kpis}
 
-                    summary_row = {"Branch": branch}
-                    for _, r in branch_kpis.iterrows():
-                        summary_row[r["KPI"]] = r["Display Value"]
-                    branch_summary_rows.append(summary_row)
+                    if branch_kpis is not None:
+                        summary_row = {"Branch": branch}
+                        for _, r in branch_kpis.iterrows():
+                            summary_row[r["KPI"]] = r["Display Value"]
+                        branch_summary_rows.append(summary_row)
 
-                branch_summary = pd.DataFrame(branch_summary_rows)
+                branch_summary = pd.DataFrame(branch_summary_rows) if branch_summary_rows else pd.DataFrame()
 
                 st.session_state["gl"] = gl
                 st.session_state["coa"] = coa
@@ -275,8 +284,12 @@ with tab_upload:
                 st.session_state["branch_outputs"] = branch_outputs
                 st.session_state["branch_summary"] = branch_summary
                 st.session_state["detected_branches"] = detected_branches
+                st.session_state["validation_passed"] = unmapped.empty
 
-                st.success("Files validated and loaded successfully. Move to the other tabs to generate outputs.")
+                if unmapped.empty:
+                    st.success("Files validated and loaded successfully. No unmapped accounts found.")
+                else:
+                    st.warning("Files loaded, but unmapped GL rows were found. Fix them before generating reports.")
 
         except Exception as e:
             st.error(f"Error: {e}")
@@ -311,6 +324,23 @@ with tab_validation:
         with st.expander("Preview Mapped Data"):
             st.dataframe(mapped.head(20), use_container_width=True)
 
+        st.subheader("Unmapped GL Preview")
+        if unmapped.empty:
+            st.success("All GL rows mapped correctly.")
+        else:
+            st.error(f"{len(unmapped)} unmapped rows found. Resolve these before generating reports.")
+            cols_to_show = [c for c in ["Account code", "Description", "Branch", "Debit", "Credit", "Net"] if c in unmapped.columns]
+            st.dataframe(unmapped[cols_to_show], use_container_width=True)
+
+            csv_data = unmapped.to_csv(index=False).encode("utf-8")
+            st.download_button(
+                "Download Unmapped GL",
+                data=csv_data,
+                file_name="unmapped_gl.csv",
+                mime="text/csv",
+                use_container_width=True,
+            )
+
 
 # ----------------------------
 # Reports Tab
@@ -320,6 +350,8 @@ with tab_reports:
 
     if st.session_state["mapped"] is None:
         st.warning("Please validate and load files first.")
+    elif not st.session_state["validation_passed"]:
+        st.error("Unmapped GL rows exist. Resolve them before generating reports.")
     else:
         b1, b2, b3 = st.columns(3)
 
@@ -351,6 +383,10 @@ with tab_kpis:
 
     if st.session_state["mapped"] is None:
         st.warning("Please validate and load files first.")
+    elif not st.session_state["validation_passed"]:
+        st.error("Unmapped GL rows exist. Resolve them before generating KPI outputs.")
+    elif st.session_state["kpi_master"] is None:
+        st.info("No KPI master uploaded. KPI generation is skipped.")
     else:
         b1, b2 = st.columns(2)
 
@@ -400,6 +436,8 @@ with tab_download:
 
     if st.session_state["mapped"] is None:
         st.warning("Please validate and load files first.")
+    elif not st.session_state["validation_passed"]:
+        st.error("Unmapped GL rows exist. Resolve them before downloading reports.")
     else:
         excel_bytes = create_excel_pack(
             consolidated_pnl=st.session_state["consolidated_pnl"],
@@ -417,4 +455,4 @@ with tab_download:
             use_container_width=True,
         )
 
-        st.info("This download includes consolidated P&L, consolidated KPIs, branch-wise P&L, branch-wise KPIs, summary KPIs, and unmapped accounts.")
+        st.info("Download includes consolidated P&L, optional KPI sheets, branch-wise outputs, and unmapped sheet if present.")
