@@ -1,6 +1,8 @@
 import streamlit as st
 import pandas as pd
 from io import BytesIO
+from openai import OpenAI
+import os
 
 st.set_page_config(page_title="AI CFO Copilot", layout="wide")
 
@@ -282,6 +284,78 @@ def prepare_data(gl_file, mapping_file, kpi_file=None, latest_bs_file=None):
     return gl, coa, kpi_master, latest_bs, mapped, pnl_mapped, bs_mapped, unmapped
 
 
+def generate_ai_commentary(pnl_df, kpi_df, bs_df, profile):
+    try:
+        client = OpenAI()
+        model_name = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
+
+        pnl_summary = pnl_df.to_string(index=False)[:3000] if pnl_df is not None and not pnl_df.empty else "No P&L data available."
+        kpi_summary = (
+            kpi_df[["KPI", "Display Value"]].to_string(index=False)[:2000]
+            if kpi_df is not None and not kpi_df.empty else "No KPI data available."
+        )
+        bs_summary = (
+            bs_df.to_string(index=False)[:2500]
+            if bs_df is not None and not bs_df.empty else "No Balance Sheet data available."
+        )
+
+        company_name = profile.get("Company Name", "Unknown Company")
+        industry = profile.get("Industry", "Unknown Industry")
+        country = profile.get("Country", "Unknown Country")
+        currency = profile.get("Currency", "")
+        reporting_period = profile.get("Reporting Period", "")
+        financial_year = profile.get("Financial Year", "")
+        notes = profile.get("Business Notes", "")
+
+        prompt = f"""
+You are an experienced CFO advisor preparing concise management commentary.
+
+Company: {company_name}
+Industry: {industry}
+Country: {country}
+Currency: {currency}
+Reporting Period: {reporting_period}
+Financial Year: {financial_year}
+Business Notes: {notes}
+
+Use only the data below. Do not invent numbers.
+If balance sheet context is limited, say so briefly.
+
+Consolidated P&L:
+{pnl_summary}
+
+KPIs:
+{kpi_summary}
+
+Consolidated Balance Sheet:
+{bs_summary}
+
+Write in this format:
+
+1. Executive Summary
+2. Key Insights (5 bullets)
+3. Risks / Watchouts (3 bullets)
+4. Opportunities (3 bullets)
+5. Recommended Actions (3 bullets)
+
+Keep it practical, management-ready, and concise.
+"""
+
+        response = client.chat.completions.create(
+            model=model_name,
+            messages=[
+                {"role": "developer", "content": "You are a sharp CFO advisor. Be concise, practical, and numerically grounded."},
+                {"role": "user", "content": prompt},
+            ],
+            temperature=0.3,
+        )
+
+        return response.choices[0].message.content
+
+    except Exception as e:
+        return f"AI Commentary failed: {str(e)}"
+
+
 # ----------------------------
 # Session defaults
 # ----------------------------
@@ -289,7 +363,7 @@ for key in [
     "gl", "coa", "kpi_master", "latest_bs", "mapped", "pnl_mapped", "bs_mapped", "unmapped",
     "consolidated_pnl", "consolidated_bs", "consolidated_kpis", "branch_outputs",
     "branch_summary", "detected_branches", "validation_passed", "company_profile",
-    "bs_disclaimer"
+    "bs_disclaimer", "ai_commentary"
 ]:
     if key not in st.session_state:
         st.session_state[key] = None
@@ -304,8 +378,8 @@ if st.session_state["company_profile"] is None:
 st.title("AI CFO Copilot")
 st.caption("Automated branch-wise P&L, consolidated balance sheet, KPI packs, and management reporting from GL data")
 
-tab_profile, tab_upload, tab_validation, tab_reports, tab_kpis, tab_issues, tab_download = st.tabs(
-    ["Profile", "Upload", "Validation", "Reports", "KPIs", "Issues", "Download"]
+tab_profile, tab_upload, tab_validation, tab_reports, tab_kpis, tab_ai, tab_issues, tab_download = st.tabs(
+    ["Profile", "Upload", "Validation", "Reports", "KPIs", "AI Insights", "Issues", "Download"]
 )
 
 
@@ -479,6 +553,7 @@ with tab_upload:
                 st.session_state["detected_branches"] = detected_branches
                 st.session_state["validation_passed"] = unmapped.empty
                 st.session_state["bs_disclaimer"] = bs_disclaimer
+                st.session_state["ai_commentary"] = None
 
                 if unmapped.empty:
                     st.success("Files validated and loaded successfully. No unmapped accounts found.")
@@ -614,6 +689,34 @@ with tab_kpis:
                         st.session_state["branch_outputs"][branch]["kpis"][["KPI", "Display Value"]],
                         use_container_width=True,
                     )
+
+
+# ----------------------------
+# AI Insights Tab
+# ----------------------------
+with tab_ai:
+    st.subheader("AI Financial Insights")
+
+    if st.session_state["mapped"] is None:
+        st.warning("Please upload and validate data first.")
+    elif not st.session_state["validation_passed"]:
+        st.error("Resolve unmapped accounts before generating AI insights.")
+    else:
+        st.info("Generate CFO-style commentary based on the current outputs and company profile.")
+
+        if st.button("Generate AI Insights", use_container_width=True):
+            with st.spinner("Analyzing financials..."):
+                commentary = generate_ai_commentary(
+                    st.session_state["consolidated_pnl"],
+                    st.session_state["consolidated_kpis"],
+                    st.session_state["consolidated_bs"],
+                    st.session_state["company_profile"],
+                )
+                st.session_state["ai_commentary"] = commentary
+
+        if st.session_state["ai_commentary"]:
+            st.markdown("### AI Commentary")
+            st.write(st.session_state["ai_commentary"])
 
 
 # ----------------------------
