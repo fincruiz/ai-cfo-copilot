@@ -3,8 +3,17 @@ import pandas as pd
 from io import BytesIO
 from openai import OpenAI
 import os
+import re
+from pathlib import Path
 
 st.set_page_config(page_title="AI CFO Copilot", layout="wide")
+
+
+# ----------------------------
+# Config / Paths
+# ----------------------------
+HISTORY_ROOT = Path("history")
+HISTORY_ROOT.mkdir(exist_ok=True)
 
 
 # ----------------------------
@@ -16,11 +25,21 @@ def clean_columns(df: pd.DataFrame) -> pd.DataFrame:
     return df
 
 
+def slugify_company_name(name: str) -> str:
+    name = str(name).strip().lower()
+    name = re.sub(r"[^a-z0-9]+", "_", name)
+    name = re.sub(r"_+", "_", name).strip("_")
+    return name or "unknown_company"
+
+
 def standardize_key_columns(
     gl: pd.DataFrame,
     coa: pd.DataFrame,
     kpi: pd.DataFrame | None = None,
     latest_bs: pd.DataFrame | None = None,
+    prior_pnl: pd.DataFrame | None = None,
+    prior_bs: pd.DataFrame | None = None,
+    prior_kpi: pd.DataFrame | None = None,
 ):
     gl = clean_columns(gl)
     coa = clean_columns(coa)
@@ -35,6 +54,7 @@ def standardize_key_columns(
             "Debit ": "Debit",
             "Credit ": "Credit",
             "Description ": "Description",
+            "Date ": "Date",
         },
         inplace=True,
     )
@@ -76,7 +96,31 @@ def standardize_key_columns(
             inplace=True,
         )
 
-    return gl, coa, kpi, latest_bs
+    if prior_pnl is not None:
+        prior_pnl = clean_columns(prior_pnl)
+
+    if prior_bs is not None:
+        prior_bs = clean_columns(prior_bs)
+        prior_bs.rename(
+            columns={
+                "Reporting group": "Reporting Group",
+                "Reporting subgroup": "Reporting Subgroup",
+                "Balance ": "Balance",
+            },
+            inplace=True,
+        )
+
+    if prior_kpi is not None:
+        prior_kpi = clean_columns(prior_kpi)
+        prior_kpi.rename(
+            columns={
+                "Kpi": "KPI",
+                "Display value": "Display Value",
+            },
+            inplace=True,
+        )
+
+    return gl, coa, kpi, latest_bs, prior_pnl, prior_bs, prior_kpi
 
 
 def validate_required_columns(df: pd.DataFrame, required_cols: list[str], file_label: str):
@@ -228,6 +272,211 @@ def create_excel_pack(consolidated_pnl, consolidated_bs, consolidated_kpis, bran
     return dataframe_to_excel_bytes(df_dict)
 
 
+def save_run_to_history(company_profile, consolidated_pnl, consolidated_bs, consolidated_kpis, branch_summary):
+    company_name = company_profile.get("Company Name", "").strip()
+    if not company_name:
+        return
+
+    company_slug = slugify_company_name(company_name)
+    financial_year = company_profile.get("Financial Year", "unknown_year").strip().replace(" ", "_")
+    reporting_period = company_profile.get("Reporting Period", "unknown_period").strip().replace(" ", "_")
+
+    company_folder = HISTORY_ROOT / company_slug
+    run_folder = company_folder / f"{financial_year}_{reporting_period}"
+    run_folder.mkdir(parents=True, exist_ok=True)
+
+    consolidated_pnl.to_excel(run_folder / "consolidated_pnl.xlsx", index=False)
+
+    if consolidated_bs is not None and not consolidated_bs.empty:
+        consolidated_bs.to_excel(run_folder / "consolidated_bs.xlsx", index=False)
+
+    if consolidated_kpis is not None:
+        consolidated_kpis.to_excel(run_folder / "consolidated_kpis.xlsx", index=False)
+
+    if branch_summary is not None and not branch_summary.empty:
+        branch_summary.to_excel(run_folder / "branch_summary.xlsx", index=False)
+
+
+def list_saved_company_runs(company_name: str):
+    company_slug = slugify_company_name(company_name)
+    company_folder = HISTORY_ROOT / company_slug
+
+    if not company_folder.exists():
+        return []
+
+    runs = []
+    for item in company_folder.iterdir():
+        if item.is_dir():
+            runs.append(item.name)
+
+    return sorted(runs, reverse=True)
+
+
+def restore_run_from_history(company_name: str, run_name: str):
+    company_slug = slugify_company_name(company_name)
+    run_folder = HISTORY_ROOT / company_slug / run_name
+
+    restored = {}
+
+    if (run_folder / "consolidated_pnl.xlsx").exists():
+        restored["prior_pnl"] = pd.read_excel(run_folder / "consolidated_pnl.xlsx")
+    if (run_folder / "consolidated_bs.xlsx").exists():
+        restored["prior_bs"] = pd.read_excel(run_folder / "consolidated_bs.xlsx")
+    if (run_folder / "consolidated_kpis.xlsx").exists():
+        restored["prior_kpis"] = pd.read_excel(run_folder / "consolidated_kpis.xlsx")
+    if (run_folder / "branch_summary.xlsx").exists():
+        restored["prior_branch_summary"] = pd.read_excel(run_folder / "branch_summary.xlsx")
+
+    return restored
+
+
+def detect_anomalies(consolidated_kpis, branch_outputs, prior_kpis=None):
+    flags = []
+
+    current_kpi_map = {}
+    if consolidated_kpis is not None and not consolidated_kpis.empty:
+        for _, row in consolidated_kpis.iterrows():
+            current_kpi_map[row["KPI"]] = row["Value"]
+
+    revenue = current_kpi_map.get("Revenue", 0)
+    gross_margin = current_kpi_map.get("Gross Margin %", 0)
+    operating_margin = current_kpi_map.get("Operating Margin %", 0)
+    opex_ratio = current_kpi_map.get("Opex as % of Revenue", 0)
+
+    if revenue <= 0:
+        flags.append("Revenue is zero or negative.")
+    if gross_margin < 20:
+        flags.append(f"Gross margin is low at {gross_margin:.2f}%.")
+    if operating_margin < 5:
+        flags.append(f"Operating margin is weak at {operating_margin:.2f}%.")
+    if opex_ratio > 40:
+        flags.append(f"Operating expenses are high at {opex_ratio:.2f}% of revenue.")
+
+    branch_margins = []
+    for branch, reports in branch_outputs.items():
+        if reports["kpis"] is not None and not reports["kpis"].empty:
+            branch_kpi_map = {}
+            for _, row in reports["kpis"].iterrows():
+                branch_kpi_map[row["KPI"]] = row["Value"]
+
+            gm = branch_kpi_map.get("Gross Margin %", None)
+            opm = branch_kpi_map.get("Operating Margin %", None)
+
+            if gm is not None:
+                branch_margins.append((branch, gm))
+
+            if opm is not None and opm < 0:
+                flags.append(f"{branch} has negative operating margin ({opm:.2f}%).")
+
+    if len(branch_margins) >= 2:
+        avg_margin = sum(x[1] for x in branch_margins) / len(branch_margins)
+        for branch, gm in branch_margins:
+            if gm < avg_margin - 10:
+                flags.append(f"{branch} gross margin ({gm:.2f}%) is materially below branch average ({avg_margin:.2f}%).")
+
+    if prior_kpis is not None and not prior_kpis.empty and "KPI" in prior_kpis.columns and "Value" in prior_kpis.columns:
+        prior_kpi_map = {}
+        for _, row in prior_kpis.iterrows():
+            prior_kpi_map[row["KPI"]] = row["Value"]
+
+        prior_revenue = prior_kpi_map.get("Revenue", None)
+        prior_gm = prior_kpi_map.get("Gross Margin %", None)
+        prior_opm = prior_kpi_map.get("Operating Margin %", None)
+
+        if prior_revenue not in (None, 0):
+            revenue_change_pct = ((revenue - prior_revenue) / prior_revenue) * 100
+            if revenue_change_pct < -10:
+                flags.append(f"Revenue declined {revenue_change_pct:.2f}% versus prior period.")
+
+        if prior_gm is not None:
+            gm_change = gross_margin - prior_gm
+            if gm_change < -3:
+                flags.append(f"Gross margin dropped by {gm_change:.2f} percentage points versus prior period.")
+
+        if prior_opm is not None:
+            opm_change = operating_margin - prior_opm
+            if opm_change < -3:
+                flags.append(f"Operating margin dropped by {opm_change:.2f} percentage points versus prior period.")
+
+    return flags
+
+
+def generate_ai_commentary(pnl_df, kpi_df, bs_df, profile, anomaly_flags=None):
+    try:
+        client = OpenAI()
+        model_name = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
+
+        pnl_summary = pnl_df.to_string(index=False)[:3000] if pnl_df is not None and not pnl_df.empty else "No P&L data available."
+        kpi_summary = (
+            kpi_df[["KPI", "Display Value"]].to_string(index=False)[:2000]
+            if kpi_df is not None and not kpi_df.empty else "No KPI data available."
+        )
+        bs_summary = (
+            bs_df.to_string(index=False)[:2500]
+            if bs_df is not None and not bs_df.empty else "No Balance Sheet data available."
+        )
+
+        anomaly_text = "\n".join(anomaly_flags) if anomaly_flags else "No anomaly flags detected."
+
+        company_name = profile.get("Company Name", "Unknown Company")
+        industry = profile.get("Industry", "Unknown Industry")
+        country = profile.get("Country", "Unknown Country")
+        currency = profile.get("Currency", "")
+        reporting_period = profile.get("Reporting Period", "")
+        financial_year = profile.get("Financial Year", "")
+        notes = profile.get("Business Notes", "")
+
+        prompt = f"""
+You are an experienced CFO advisor preparing concise management commentary.
+
+Company: {company_name}
+Industry: {industry}
+Country: {country}
+Currency: {currency}
+Reporting Period: {reporting_period}
+Financial Year: {financial_year}
+Business Notes: {notes}
+
+Use only the data below. Do not invent numbers.
+
+Detected anomaly flags:
+{anomaly_text}
+
+Consolidated P&L:
+{pnl_summary}
+
+KPIs:
+{kpi_summary}
+
+Consolidated Balance Sheet:
+{bs_summary}
+
+Write in this format:
+
+1. Executive Summary
+2. Key Insights (5 bullets)
+3. Risks / Watchouts (3 bullets)
+4. Opportunities (3 bullets)
+5. Recommended Actions (3 bullets)
+
+Keep it practical, management-ready, and concise.
+"""
+
+        response = client.chat.completions.create(
+            model=model_name,
+            messages=[
+                {"role": "developer", "content": "You are a sharp CFO advisor. Be concise, practical, and numerically grounded."},
+                {"role": "user", "content": prompt},
+            ],
+            temperature=0.3,
+        )
+
+        return response.choices[0].message.content
+
+    except Exception as e:
+        return f"AI Commentary failed: {str(e)}"
+
+
 def prepare_data(gl_file, mapping_file, kpi_file=None, latest_bs_file=None):
     gl = pd.read_excel(gl_file)
     coa = pd.read_excel(mapping_file)
@@ -284,76 +533,47 @@ def prepare_data(gl_file, mapping_file, kpi_file=None, latest_bs_file=None):
     return gl, coa, kpi_master, latest_bs, mapped, pnl_mapped, bs_mapped, unmapped
 
 
-def generate_ai_commentary(pnl_df, kpi_df, bs_df, profile):
-    try:
-        client = OpenAI()
-        model_name = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
+def build_prior_period_from_gl(prior_gl_file, coa, kpi_master):
+    prior_gl = pd.read_excel(prior_gl_file)
+    prior_gl = clean_columns(prior_gl)
+    prior_gl.rename(
+        columns={
+            "Account Code": "Account code",
+            "account code": "Account code",
+            "branch": "Branch",
+            "net": "Net",
+        },
+        inplace=True,
+    )
 
-        pnl_summary = pnl_df.to_string(index=False)[:3000] if pnl_df is not None and not pnl_df.empty else "No P&L data available."
-        kpi_summary = (
-            kpi_df[["KPI", "Display Value"]].to_string(index=False)[:2000]
-            if kpi_df is not None and not kpi_df.empty else "No KPI data available."
-        )
-        bs_summary = (
-            bs_df.to_string(index=False)[:2500]
-            if bs_df is not None and not bs_df.empty else "No Balance Sheet data available."
-        )
+    validate_required_columns(prior_gl, ["Account code", "Debit", "Credit", "Branch"], "Prior Period GL")
 
-        company_name = profile.get("Company Name", "Unknown Company")
-        industry = profile.get("Industry", "Unknown Industry")
-        country = profile.get("Country", "Unknown Country")
-        currency = profile.get("Currency", "")
-        reporting_period = profile.get("Reporting Period", "")
-        financial_year = profile.get("Financial Year", "")
-        notes = profile.get("Business Notes", "")
+    prior_gl["Account code"] = prior_gl["Account code"].astype(str).str.strip()
+    prior_gl["Debit"] = pd.to_numeric(prior_gl["Debit"], errors="coerce").fillna(0)
+    prior_gl["Credit"] = pd.to_numeric(prior_gl["Credit"], errors="coerce").fillna(0)
 
-        prompt = f"""
-You are an experienced CFO advisor preparing concise management commentary.
+    if "Net" not in prior_gl.columns:
+        prior_gl["Net"] = prior_gl["Debit"] - prior_gl["Credit"]
+    else:
+        prior_gl["Net"] = pd.to_numeric(prior_gl["Net"], errors="coerce")
+        prior_gl["Net"] = prior_gl["Net"].fillna(prior_gl["Debit"] - prior_gl["Credit"])
 
-Company: {company_name}
-Industry: {industry}
-Country: {country}
-Currency: {currency}
-Reporting Period: {reporting_period}
-Financial Year: {financial_year}
-Business Notes: {notes}
+    merged = prior_gl.merge(coa, on="Account code", how="left")
+    merged = merged[merged["Reporting Group"].notna()].copy()
 
-Use only the data below. Do not invent numbers.
-If balance sheet context is limited, say so briefly.
+    if "Sign Convention" not in merged.columns:
+        merged["Sign Convention"] = "positive"
 
-Consolidated P&L:
-{pnl_summary}
+    merged["Report Value"] = merged.apply(apply_sign_convention_to_gl, axis=1)
 
-KPIs:
-{kpi_summary}
+    prior_pnl = build_pnl(merged[merged["Statement"].astype(str).str.strip().str.lower() == "income statement"].copy())
+    prior_bs = build_balance_sheet_from_gl(merged[merged["Statement"].astype(str).str.strip().str.lower() == "balance sheet"].copy())
+    prior_kpis = build_kpis(
+        merged[merged["Statement"].astype(str).str.strip().str.lower() == "income statement"].copy(),
+        kpi_master
+    ) if kpi_master is not None else None
 
-Consolidated Balance Sheet:
-{bs_summary}
-
-Write in this format:
-
-1. Executive Summary
-2. Key Insights (5 bullets)
-3. Risks / Watchouts (3 bullets)
-4. Opportunities (3 bullets)
-5. Recommended Actions (3 bullets)
-
-Keep it practical, management-ready, and concise.
-"""
-
-        response = client.chat.completions.create(
-            model=model_name,
-            messages=[
-                {"role": "developer", "content": "You are a sharp CFO advisor. Be concise, practical, and numerically grounded."},
-                {"role": "user", "content": prompt},
-            ],
-            temperature=0.3,
-        )
-
-        return response.choices[0].message.content
-
-    except Exception as e:
-        return f"AI Commentary failed: {str(e)}"
+    return prior_pnl, prior_bs, prior_kpis
 
 
 # ----------------------------
@@ -363,7 +583,8 @@ for key in [
     "gl", "coa", "kpi_master", "latest_bs", "mapped", "pnl_mapped", "bs_mapped", "unmapped",
     "consolidated_pnl", "consolidated_bs", "consolidated_kpis", "branch_outputs",
     "branch_summary", "detected_branches", "validation_passed", "company_profile",
-    "bs_disclaimer", "ai_commentary"
+    "bs_disclaimer", "ai_commentary", "prior_pnl", "prior_bs", "prior_kpis",
+    "save_run_preference", "anomaly_flags"
 ]:
     if key not in st.session_state:
         st.session_state[key] = None
@@ -371,15 +592,18 @@ for key in [
 if st.session_state["company_profile"] is None:
     st.session_state["company_profile"] = {}
 
+if st.session_state["save_run_preference"] is None:
+    st.session_state["save_run_preference"] = False
+
 
 # ----------------------------
 # Header
 # ----------------------------
 st.title("AI CFO Copilot")
-st.caption("Automated branch-wise P&L, consolidated balance sheet, KPI packs, and management reporting from GL data")
+st.caption("Automated branch-wise P&L, consolidated balance sheet, KPI packs, management reporting, memory, and AI commentary")
 
-tab_profile, tab_upload, tab_validation, tab_reports, tab_kpis, tab_ai, tab_issues, tab_download = st.tabs(
-    ["Profile", "Upload", "Validation", "Reports", "KPIs", "AI Insights", "Issues", "Download"]
+tab_profile, tab_upload, tab_history, tab_validation, tab_reports, tab_kpis, tab_ai, tab_anomalies, tab_issues, tab_download = st.tabs(
+    ["Profile", "Upload", "History & Prior Period", "Validation", "Reports", "KPIs", "AI Insights", "Anomalies", "Issues", "Download"]
 )
 
 
@@ -388,12 +612,12 @@ tab_profile, tab_upload, tab_validation, tab_reports, tab_kpis, tab_ai, tab_issu
 # ----------------------------
 with tab_profile:
     st.subheader("Company Profile")
-    st.caption("Optional business context to support better insights, benchmarking, and commentary.")
+    st.caption("Company Name is mandatory and used for memory / restore.")
 
     c1, c2 = st.columns(2)
 
     with c1:
-        company_name = st.text_input("Company Name")
+        company_name = st.text_input("Company Name *")
         industry = st.selectbox(
             "Industry",
             [
@@ -443,12 +667,16 @@ with tab_profile:
         placeholder="Example: Multi-branch wholesale distributor with central procurement and branch-level sales reporting."
     )
 
+    save_run_preference = st.checkbox("Save this run for future comparison", value=st.session_state["save_run_preference"])
+
     if st.button("Save Company Profile", use_container_width=True):
-        if industry == "Select Industry" or country == "Select Country":
+        if not company_name.strip():
+            st.error("Company Name is mandatory.")
+        elif industry == "Select Industry" or country == "Select Country":
             st.error("Please select at least Industry and Country.")
         else:
             st.session_state["company_profile"] = {
-                "Company Name": company_name,
+                "Company Name": company_name.strip(),
                 "Industry": industry,
                 "Country": country,
                 "State / Region": state_region,
@@ -459,6 +687,7 @@ with tab_profile:
                 "Benchmark Group": benchmark_group,
                 "Business Notes": business_notes,
             }
+            st.session_state["save_run_preference"] = save_run_preference
             st.success("Company profile saved successfully.")
 
     if st.session_state["company_profile"]:
@@ -468,17 +697,18 @@ with tab_profile:
             columns=["Field", "Value"]
         )
         st.dataframe(profile_df, use_container_width=True)
+        st.write(f"**Save future runs:** {'Yes' if st.session_state['save_run_preference'] else 'No'}")
 
 
 # ----------------------------
 # Upload Tab
 # ----------------------------
 with tab_upload:
-    st.subheader("Upload Source Files")
+    st.subheader("Upload Current Period Source Files")
 
     c1, c2 = st.columns(2)
     with c1:
-        gl_file = st.file_uploader("GL Report", type=["xlsx"])
+        gl_file = st.file_uploader("Current GL Report", type=["xlsx"])
         mapping_file = st.file_uploader("COA Mapping", type=["xlsx"])
     with c2:
         kpi_file = st.file_uploader("KPI Master (Optional)", type=["xlsx"])
@@ -491,10 +721,13 @@ with tab_upload:
         "Latest Previous Balance Sheet is optional. Required columns if uploaded: Reporting Group, Reporting Subgroup, Balance."
     )
 
-    if st.button("Validate & Load Files", use_container_width=True):
+    if st.button("Validate & Load Current Files", use_container_width=True):
         try:
-            if not (gl_file and mapping_file):
-                st.error("Please upload GL Report and COA Mapping.")
+            profile = st.session_state["company_profile"]
+            if not profile or not profile.get("Company Name", "").strip():
+                st.error("Please save Company Profile first. Company Name is mandatory.")
+            elif not (gl_file and mapping_file):
+                st.error("Please upload Current GL Report and COA Mapping.")
             else:
                 gl, coa, kpi_master, latest_bs, mapped, pnl_mapped, bs_mapped, unmapped = prepare_data(
                     gl_file, mapping_file, kpi_file, latest_bs_file
@@ -555,6 +788,23 @@ with tab_upload:
                 st.session_state["bs_disclaimer"] = bs_disclaimer
                 st.session_state["ai_commentary"] = None
 
+                if st.session_state["save_run_preference"]:
+                    save_run_to_history(
+                        st.session_state["company_profile"],
+                        consolidated_pnl,
+                        consolidated_bs,
+                        consolidated_kpis,
+                        branch_summary,
+                    )
+
+                prior_kpis = st.session_state.get("prior_kpis", None)
+                anomaly_flags = detect_anomalies(
+                    consolidated_kpis,
+                    branch_outputs,
+                    prior_kpis=prior_kpis
+                ) if consolidated_kpis is not None else []
+                st.session_state["anomaly_flags"] = anomaly_flags
+
                 if unmapped.empty:
                     st.success("Files validated and loaded successfully. No unmapped accounts found.")
                 else:
@@ -562,6 +812,97 @@ with tab_upload:
 
         except Exception as e:
             st.error(f"Error: {e}")
+
+
+# ----------------------------
+# History & Prior Period Tab
+# ----------------------------
+with tab_history:
+    st.subheader("History / Prior Period Inputs")
+
+    company_name_for_history = st.session_state["company_profile"].get("Company Name", "").strip()
+
+    if not company_name_for_history:
+        st.warning("Please save Company Profile first. Company Name is mandatory for history and restore.")
+    else:
+        st.markdown("### Restore Saved Run")
+        saved_runs = list_saved_company_runs(company_name_for_history)
+
+        if saved_runs:
+            selected_run = st.selectbox("Select Saved Run", saved_runs)
+            if st.button("Restore Selected Run", use_container_width=True):
+                restored = restore_run_from_history(company_name_for_history, selected_run)
+
+                st.session_state["prior_pnl"] = restored.get("prior_pnl", None)
+                st.session_state["prior_bs"] = restored.get("prior_bs", None)
+                st.session_state["prior_kpis"] = restored.get("prior_kpis", None)
+
+                st.success(f"Restored saved run: {selected_run}")
+        else:
+            st.info("No saved history found for this company yet.")
+
+        st.markdown("### Upload Prior Period Data (Optional)")
+        c1, c2 = st.columns(2)
+
+        with c1:
+            prior_gl_file = st.file_uploader("Prior Period GL Report (Optional)", type=["xlsx"])
+            prior_pnl_file = st.file_uploader("Prior Period P&L (Optional)", type=["xlsx"])
+
+        with c2:
+            prior_bs_file = st.file_uploader("Prior Period Balance Sheet (Optional)", type=["xlsx"])
+            prior_kpi_file = st.file_uploader("Prior Period KPI Pack (Optional)", type=["xlsx"])
+
+        if st.button("Load Prior Period Inputs", use_container_width=True):
+            try:
+                coa = st.session_state.get("coa", None)
+                kpi_master = st.session_state.get("kpi_master", None)
+
+                loaded_any = False
+
+                if prior_gl_file is not None:
+                    if coa is None:
+                        st.error("Load current files first so COA mapping is available before using Prior GL.")
+                    else:
+                        prior_pnl, prior_bs, prior_kpis = build_prior_period_from_gl(prior_gl_file, coa, kpi_master)
+                        st.session_state["prior_pnl"] = prior_pnl
+                        st.session_state["prior_bs"] = prior_bs
+                        st.session_state["prior_kpis"] = prior_kpis
+                        loaded_any = True
+
+                else:
+                    if prior_pnl_file is not None:
+                        st.session_state["prior_pnl"] = clean_columns(pd.read_excel(prior_pnl_file))
+                        loaded_any = True
+
+                    if prior_bs_file is not None:
+                        st.session_state["prior_bs"] = clean_columns(pd.read_excel(prior_bs_file))
+                        loaded_any = True
+
+                    if prior_kpi_file is not None:
+                        pk = clean_columns(pd.read_excel(prior_kpi_file))
+                        pk.rename(columns={"Kpi": "KPI", "Display value": "Display Value"}, inplace=True)
+                        st.session_state["prior_kpis"] = pk
+                        loaded_any = True
+
+                if loaded_any:
+                    st.success("Prior period data loaded successfully.")
+                else:
+                    st.info("No prior period file uploaded.")
+
+            except Exception as e:
+                st.error(f"Error loading prior period data: {e}")
+
+        if st.session_state.get("prior_pnl") is not None:
+            with st.expander("Preview Prior P&L"):
+                st.dataframe(st.session_state["prior_pnl"], use_container_width=True)
+
+        if st.session_state.get("prior_bs") is not None:
+            with st.expander("Preview Prior Balance Sheet"):
+                st.dataframe(st.session_state["prior_bs"], use_container_width=True)
+
+        if st.session_state.get("prior_kpis") is not None:
+            with st.expander("Preview Prior KPIs"):
+                st.dataframe(st.session_state["prior_kpis"], use_container_width=True)
 
 
 # ----------------------------
@@ -702,7 +1043,7 @@ with tab_ai:
     elif not st.session_state["validation_passed"]:
         st.error("Resolve unmapped accounts before generating AI insights.")
     else:
-        st.info("Generate CFO-style commentary based on the current outputs and company profile.")
+        st.info("Generate CFO-style commentary based on the current outputs, company profile, and anomaly flags.")
 
         if st.button("Generate AI Insights", use_container_width=True):
             with st.spinner("Analyzing financials..."):
@@ -711,12 +1052,32 @@ with tab_ai:
                     st.session_state["consolidated_kpis"],
                     st.session_state["consolidated_bs"],
                     st.session_state["company_profile"],
+                    anomaly_flags=st.session_state.get("anomaly_flags", []),
                 )
                 st.session_state["ai_commentary"] = commentary
 
         if st.session_state["ai_commentary"]:
             st.markdown("### AI Commentary")
             st.write(st.session_state["ai_commentary"])
+
+
+# ----------------------------
+# Anomalies Tab
+# ----------------------------
+with tab_anomalies:
+    st.subheader("Anomaly Detection")
+
+    if st.session_state["mapped"] is None:
+        st.warning("Please validate and load files first.")
+    elif not st.session_state["validation_passed"]:
+        st.error("Resolve unmapped GL rows before anomaly detection.")
+    else:
+        flags = st.session_state.get("anomaly_flags", [])
+        if flags:
+            for flag in flags:
+                st.warning(flag)
+        else:
+            st.success("No major anomalies detected based on current rules.")
 
 
 # ----------------------------
