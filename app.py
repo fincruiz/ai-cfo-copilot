@@ -14,7 +14,12 @@ def clean_columns(df: pd.DataFrame) -> pd.DataFrame:
     return df
 
 
-def standardize_key_columns(gl: pd.DataFrame, coa: pd.DataFrame, kpi: pd.DataFrame | None = None, latest_bs: pd.DataFrame | None = None):
+def standardize_key_columns(
+    gl: pd.DataFrame,
+    coa: pd.DataFrame,
+    kpi: pd.DataFrame | None = None,
+    latest_bs: pd.DataFrame | None = None,
+):
     gl = clean_columns(gl)
     coa = clean_columns(coa)
 
@@ -27,6 +32,7 @@ def standardize_key_columns(gl: pd.DataFrame, coa: pd.DataFrame, kpi: pd.DataFra
             "net": "Net",
             "Debit ": "Debit",
             "Credit ": "Credit",
+            "Description ": "Description",
         },
         inplace=True,
     )
@@ -77,7 +83,7 @@ def validate_required_columns(df: pd.DataFrame, required_cols: list[str], file_l
         raise ValueError(f"{file_label} is missing required columns: {', '.join(missing)}")
 
 
-def apply_sign_convention(row) -> float:
+def apply_sign_convention_to_gl(row) -> float:
     net = row["Net"]
     sign = str(row.get("Sign Convention", "")).strip().lower()
 
@@ -101,18 +107,9 @@ def build_pnl(report_df: pd.DataFrame) -> pd.DataFrame:
     return pnl
 
 
-def build_balance_sheet(bs_df: pd.DataFrame) -> pd.DataFrame:
-    if bs_df is None or bs_df.empty:
+def build_balance_sheet_from_gl(bs_df: pd.DataFrame) -> pd.DataFrame:
+    if bs_df.empty:
         return pd.DataFrame(columns=["Reporting Group", "Reporting Subgroup", "Balance"])
-
-    if "Balance" in bs_df.columns and "Reporting Group" in bs_df.columns and "Reporting Subgroup" in bs_df.columns:
-        out = (
-            bs_df.groupby(["Reporting Group", "Reporting Subgroup"], dropna=False)["Balance"]
-            .sum()
-            .reset_index()
-            .sort_values(["Reporting Group", "Reporting Subgroup"])
-        )
-        return out
 
     out = (
         bs_df.groupby(["Reporting Group", "Reporting Subgroup"], dropna=False)["Report Value"]
@@ -121,6 +118,35 @@ def build_balance_sheet(bs_df: pd.DataFrame) -> pd.DataFrame:
         .rename(columns={"Report Value": "Balance"})
         .sort_values(["Reporting Group", "Reporting Subgroup"])
     )
+    return out
+
+
+def combine_opening_and_current_bs(opening_bs: pd.DataFrame, current_bs: pd.DataFrame) -> pd.DataFrame:
+    """
+    Combines prior/latest BS balances with current GL-derived BS movement.
+    Assumes both dataframes contain:
+    Reporting Group, Reporting Subgroup, Balance
+    """
+    if opening_bs is None or opening_bs.empty:
+        return current_bs.copy()
+
+    opening = opening_bs.copy()
+    current = current_bs.copy()
+
+    opening["Balance"] = pd.to_numeric(opening["Balance"], errors="coerce").fillna(0)
+    current["Balance"] = pd.to_numeric(current["Balance"], errors="coerce").fillna(0)
+
+    merged = opening.merge(
+        current,
+        on=["Reporting Group", "Reporting Subgroup"],
+        how="outer",
+        suffixes=("_opening", "_current"),
+    ).fillna(0)
+
+    merged["Balance"] = merged["Balance_opening"] + merged["Balance_current"]
+
+    out = merged[["Reporting Group", "Reporting Subgroup", "Balance"]].copy()
+    out = out.sort_values(["Reporting Group", "Reporting Subgroup"]).reset_index(drop=True)
     return out
 
 
@@ -243,6 +269,7 @@ def prepare_data(gl_file, mapping_file, kpi_file=None, latest_bs_file=None):
         gl["Net"] = pd.to_numeric(gl["Net"], errors="coerce")
         gl["Net"] = gl["Net"].fillna(gl["Debit"] - gl["Credit"])
 
+    # Merge once and let statement mapping split to P&L vs BS
     data = gl.merge(coa, on="Account code", how="left")
     unmapped = data[data["Reporting Group"].isna()].copy()
     mapped = data[data["Reporting Group"].notna()].copy()
@@ -250,7 +277,7 @@ def prepare_data(gl_file, mapping_file, kpi_file=None, latest_bs_file=None):
     if "Sign Convention" not in mapped.columns:
         mapped["Sign Convention"] = "positive"
 
-    mapped["Report Value"] = mapped.apply(apply_sign_convention, axis=1)
+    mapped["Report Value"] = mapped.apply(apply_sign_convention_to_gl, axis=1)
 
     pnl_mapped = mapped[mapped["Statement"].astype(str).str.strip().str.lower() == "income statement"].copy()
     bs_mapped = mapped[mapped["Statement"].astype(str).str.strip().str.lower() == "balance sheet"].copy()
@@ -267,7 +294,8 @@ def prepare_data(gl_file, mapping_file, kpi_file=None, latest_bs_file=None):
 for key in [
     "gl", "coa", "kpi_master", "latest_bs", "mapped", "pnl_mapped", "bs_mapped", "unmapped",
     "consolidated_pnl", "consolidated_bs", "consolidated_kpis", "branch_outputs",
-    "branch_summary", "detected_branches", "validation_passed", "company_profile"
+    "branch_summary", "detected_branches", "validation_passed", "company_profile",
+    "bs_disclaimer"
 ]:
     if key not in st.session_state:
         st.session_state[key] = None
@@ -386,13 +414,13 @@ with tab_upload:
         mapping_file = st.file_uploader("COA Mapping", type=["xlsx"])
     with c2:
         kpi_file = st.file_uploader("KPI Master (Optional)", type=["xlsx"])
-        latest_bs_file = st.file_uploader("Latest Balance Sheet (Optional)", type=["xlsx"])
+        latest_bs_file = st.file_uploader("Latest Previous Balance Sheet (Optional)", type=["xlsx"])
 
     st.info(
         "GL required columns: Account code, Debit, Credit, Branch. Optional: Net, Date, Description.\n\n"
         "COA mapping required columns: Account code, Reporting Group, Reporting Subgroup, Statement. Recommended: Sign Convention.\n\n"
         "KPI master is optional.\n\n"
-        "Latest Balance Sheet is optional. If uploaded, required columns are: Reporting Group, Reporting Subgroup, Balance."
+        "Latest Previous Balance Sheet is optional. Required columns if uploaded: Reporting Group, Reporting Subgroup, Balance."
     )
 
     if st.button("Validate & Load Files", use_container_width=True):
@@ -406,12 +434,18 @@ with tab_upload:
 
                 consolidated_pnl = build_pnl(pnl_mapped)
 
+                current_bs = build_balance_sheet_from_gl(bs_mapped)
+
+                bs_disclaimer = None
                 if latest_bs is not None:
-                    consolidated_bs = build_balance_sheet(latest_bs)
-                elif not bs_mapped.empty:
-                    consolidated_bs = build_balance_sheet(bs_mapped)
+                    consolidated_bs = combine_opening_and_current_bs(latest_bs, current_bs)
                 else:
-                    consolidated_bs = pd.DataFrame()
+                    consolidated_bs = current_bs
+                    bs_disclaimer = (
+                        "Balance Sheet may not fully match because latest previous balance sheet / opening balances "
+                        "were not provided. Current output is based only on mapped balance sheet movements available "
+                        "in the uploaded GL."
+                    )
 
                 consolidated_kpis = build_kpis(pnl_mapped, kpi_master) if kpi_master is not None else None
 
@@ -450,6 +484,7 @@ with tab_upload:
                 st.session_state["branch_summary"] = branch_summary
                 st.session_state["detected_branches"] = detected_branches
                 st.session_state["validation_passed"] = unmapped.empty
+                st.session_state["bs_disclaimer"] = bs_disclaimer
 
                 if unmapped.empty:
                     st.success("Files validated and loaded successfully. No unmapped accounts found.")
@@ -488,10 +523,10 @@ with tab_validation:
         m3.metric("Unmapped Rows", len(unmapped))
         m4.metric("Branches Found", len(detected_branches))
 
-        if st.session_state["consolidated_bs"] is not None and not st.session_state["consolidated_bs"].empty:
-            st.success("Consolidated Balance Sheet source is available.")
+        if st.session_state["latest_bs"] is not None:
+            st.success("Latest previous balance sheet uploaded. Consolidated BS will include carried-forward balances.")
         else:
-            st.info("No Balance Sheet source detected. Upload latest BS or include BS accounts in GL + mapping.")
+            st.info("Latest previous balance sheet not uploaded. Consolidated BS will be built from mapped BS movements only.")
 
         st.write("**Detected Branches:**")
         st.write(", ".join(detected_branches) if detected_branches else "No branches detected")
@@ -540,6 +575,8 @@ with tab_reports:
         if b2.button("Show Consolidated Balance Sheet", use_container_width=True):
             st.markdown("### Consolidated Balance Sheet")
             if st.session_state["consolidated_bs"] is not None and not st.session_state["consolidated_bs"].empty:
+                if st.session_state["bs_disclaimer"]:
+                    st.warning(st.session_state["bs_disclaimer"])
                 st.dataframe(st.session_state["consolidated_bs"], use_container_width=True)
             else:
                 st.info("No consolidated balance sheet available.")
@@ -695,6 +732,9 @@ with tab_download:
                     )
 
         st.markdown("### Full Pack")
+        if st.session_state["bs_disclaimer"]:
+            st.warning(st.session_state["bs_disclaimer"])
+
         full_pack_bytes = create_excel_pack(
             consolidated_pnl=st.session_state["consolidated_pnl"],
             consolidated_bs=st.session_state["consolidated_bs"],
