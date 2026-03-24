@@ -122,11 +122,6 @@ def build_balance_sheet_from_gl(bs_df: pd.DataFrame) -> pd.DataFrame:
 
 
 def combine_opening_and_current_bs(opening_bs: pd.DataFrame, current_bs: pd.DataFrame) -> pd.DataFrame:
-    """
-    Combines prior/latest BS balances with current GL-derived BS movement.
-    Assumes both dataframes contain:
-    Reporting Group, Reporting Subgroup, Balance
-    """
     if opening_bs is None or opening_bs.empty:
         return current_bs.copy()
 
@@ -269,7 +264,6 @@ def prepare_data(gl_file, mapping_file, kpi_file=None, latest_bs_file=None):
         gl["Net"] = pd.to_numeric(gl["Net"], errors="coerce")
         gl["Net"] = gl["Net"].fillna(gl["Debit"] - gl["Credit"])
 
-    # Merge once and let statement mapping split to P&L vs BS
     data = gl.merge(coa, on="Account code", how="left")
     unmapped = data[data["Reporting Group"].isna()].copy()
     mapped = data[data["Reporting Group"].notna()].copy()
@@ -652,12 +646,14 @@ with tab_download:
     elif not st.session_state["validation_passed"]:
         st.error("Unmapped GL rows exist. Resolve them before downloading reports.")
     else:
-        st.markdown("### Individual Downloads")
+        st.markdown("### Core Reports")
 
         col1, col2 = st.columns(2)
 
         with col1:
-            pnl_bytes = dataframe_to_excel_bytes({"Consolidated P&L": st.session_state["consolidated_pnl"]})
+            pnl_bytes = dataframe_to_excel_bytes({
+                "Consolidated P&L": st.session_state["consolidated_pnl"]
+            })
             st.download_button(
                 label="Download Consolidated P&L",
                 data=pnl_bytes,
@@ -666,18 +662,10 @@ with tab_download:
                 use_container_width=True,
             )
 
-            if st.session_state["consolidated_bs"] is not None and not st.session_state["consolidated_bs"].empty:
-                bs_bytes = dataframe_to_excel_bytes({"Consolidated BS": st.session_state["consolidated_bs"]})
-                st.download_button(
-                    label="Download Consolidated Balance Sheet",
-                    data=bs_bytes,
-                    file_name="consolidated_balance_sheet.xlsx",
-                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                    use_container_width=True,
-                )
-
             if st.session_state["consolidated_kpis"] is not None:
-                kpi_bytes = dataframe_to_excel_bytes({"Consolidated KPIs": st.session_state["consolidated_kpis"]})
+                kpi_bytes = dataframe_to_excel_bytes({
+                    "Consolidated KPIs": st.session_state["consolidated_kpis"]
+                })
                 st.download_button(
                     label="Download Consolidated KPIs",
                     data=kpi_bytes,
@@ -687,8 +675,33 @@ with tab_download:
                 )
 
         with col2:
-            if st.session_state["branch_summary"] is not None and not st.session_state["branch_summary"].empty:
-                summary_bytes = dataframe_to_excel_bytes({"Branch Summary KPIs": st.session_state["branch_summary"]})
+            if (
+                st.session_state["consolidated_bs"] is not None
+                and not st.session_state["consolidated_bs"].empty
+            ):
+                bs_bytes = dataframe_to_excel_bytes({
+                    "Consolidated Balance Sheet": st.session_state["consolidated_bs"]
+                })
+                st.download_button(
+                    label="Download Consolidated Balance Sheet",
+                    data=bs_bytes,
+                    file_name="consolidated_balance_sheet.xlsx",
+                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                    use_container_width=True,
+                )
+
+                if st.session_state.get("bs_disclaimer"):
+                    st.warning(st.session_state["bs_disclaimer"])
+            else:
+                st.info("No balance sheet available for download.")
+
+            if (
+                st.session_state["branch_summary"] is not None
+                and not st.session_state["branch_summary"].empty
+            ):
+                summary_bytes = dataframe_to_excel_bytes({
+                    "Branch Summary KPIs": st.session_state["branch_summary"]
+                })
                 st.download_button(
                     label="Download Branch Summary KPIs",
                     data=summary_bytes,
@@ -697,43 +710,48 @@ with tab_download:
                     use_container_width=True,
                 )
 
-            if not st.session_state["unmapped"].empty:
-                unmapped_csv = st.session_state["unmapped"].to_csv(index=False).encode("utf-8")
-                st.download_button(
-                    label="Download Unmapped GL",
-                    data=unmapped_csv,
-                    file_name="unmapped_gl.csv",
-                    mime="text/csv",
-                    use_container_width=True,
-                )
+        st.markdown("### Data Issues")
 
-        st.markdown("### Branch-wise Individual Downloads")
+        if not st.session_state["unmapped"].empty:
+            unmapped_csv = st.session_state["unmapped"].to_csv(index=False).encode("utf-8")
+            st.download_button(
+                label="Download Unmapped GL",
+                data=unmapped_csv,
+                file_name="unmapped_gl.csv",
+                mime="text/csv",
+                use_container_width=True,
+            )
+        else:
+            st.success("No unmapped GL entries")
+
+        st.markdown("### Branch-wise Downloads")
+
         for branch in st.session_state["detected_branches"]:
-            with st.expander(f"{branch} Downloads"):
-                branch_pnl_bytes = dataframe_to_excel_bytes({f"{branch} P&L": st.session_state["branch_outputs"][branch]["pnl"]})
+            with st.expander(f"{branch} Reports"):
+                branch_pnl_bytes = dataframe_to_excel_bytes({
+                    f"{branch} P&L": st.session_state["branch_outputs"][branch]["pnl"]
+                })
                 st.download_button(
                     label=f"Download {branch} P&L",
                     data=branch_pnl_bytes,
                     file_name=f"{branch.lower().replace(' ', '_')}_pnl.xlsx",
                     mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                    use_container_width=True,
-                    key=f"dl_pnl_{branch}",
+                    key=f"pnl_{branch}",
                 )
 
                 if st.session_state["branch_outputs"][branch]["kpis"] is not None:
-                    branch_kpi_bytes = dataframe_to_excel_bytes({f"{branch} KPIs": st.session_state["branch_outputs"][branch]["kpis"]})
+                    branch_kpi_bytes = dataframe_to_excel_bytes({
+                        f"{branch} KPIs": st.session_state["branch_outputs"][branch]["kpis"]
+                    })
                     st.download_button(
                         label=f"Download {branch} KPIs",
                         data=branch_kpi_bytes,
                         file_name=f"{branch.lower().replace(' ', '_')}_kpis.xlsx",
                         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                        use_container_width=True,
-                        key=f"dl_kpi_{branch}",
+                        key=f"kpi_{branch}",
                     )
 
-        st.markdown("### Full Pack")
-        if st.session_state["bs_disclaimer"]:
-            st.warning(st.session_state["bs_disclaimer"])
+        st.markdown("### Full Management Pack")
 
         full_pack_bytes = create_excel_pack(
             consolidated_pnl=st.session_state["consolidated_pnl"],
