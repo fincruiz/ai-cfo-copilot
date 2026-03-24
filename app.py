@@ -5,8 +5,55 @@ from openai import OpenAI
 import os
 import re
 from pathlib import Path
+from openpyxl.styles import Font, PatternFill, Border, Side, Alignment
+from openpyxl.utils import get_column_letter
 
 st.set_page_config(page_title="AI CFO Copilot", layout="wide")
+
+st.markdown("""
+<style>
+html, body, [class*="css"]  {
+    font-family: Arial, sans-serif;
+}
+
+h1 {
+    font-family: Arial, sans-serif !important;
+    font-size: 32px !important;
+    font-weight: 700 !important;
+}
+
+h2 {
+    font-family: Arial, sans-serif !important;
+    font-size: 24px !important;
+    font-weight: 700 !important;
+}
+
+h3 {
+    font-family: Arial, sans-serif !important;
+    font-size: 20px !important;
+    font-weight: 700 !important;
+}
+
+div[data-testid="stDataFrame"] * {
+    font-family: Arial, sans-serif !important;
+    font-size: 13px !important;
+}
+
+div[data-testid="stMetric"] * {
+    font-family: Arial, sans-serif !important;
+}
+
+button {
+    font-family: Arial, sans-serif !important;
+    font-size: 14px !important;
+    font-weight: 600 !important;
+}
+
+section[data-testid="stSidebar"] * {
+    font-family: Arial, sans-serif !important;
+}
+</style>
+""", unsafe_allow_html=True)
 
 
 # ----------------------------
@@ -30,6 +77,14 @@ def slugify_company_name(name: str) -> str:
     name = re.sub(r"[^a-z0-9]+", "_", name)
     name = re.sub(r"_+", "_", name).strip("_")
     return name or "unknown_company"
+
+
+def style_dataframe(df: pd.DataFrame):
+    return df.style.set_properties(**{
+        "font-family": "Arial",
+        "font-size": "13px",
+        "text-align": "left"
+    })
 
 
 def standardize_key_columns(
@@ -240,12 +295,54 @@ def build_kpis(report_df: pd.DataFrame, kpi_master: pd.DataFrame) -> pd.DataFram
     return kpi_df[["KPI", "Value", "Output Type", "Display Value"]]
 
 
+def format_excel_sheet(ws):
+    header_fill = PatternFill(fill_type="solid", fgColor="D9EAF7")
+    header_font = Font(name="Arial", size=11, bold=True)
+    body_font = Font(name="Arial", size=10)
+    thin_border = Border(
+        left=Side(style="thin", color="D9D9D9"),
+        right=Side(style="thin", color="D9D9D9"),
+        top=Side(style="thin", color="D9D9D9"),
+        bottom=Side(style="thin", color="D9D9D9"),
+    )
+
+    for cell in ws[1]:
+        cell.font = header_font
+        cell.fill = header_fill
+        cell.alignment = Alignment(horizontal="center", vertical="center")
+        cell.border = thin_border
+
+    for row in ws.iter_rows(min_row=2):
+        for cell in row:
+            cell.font = body_font
+            cell.alignment = Alignment(horizontal="left", vertical="center")
+            cell.border = thin_border
+
+    for col_cells in ws.columns:
+        max_length = 0
+        col_letter = get_column_letter(col_cells[0].column)
+        for cell in col_cells:
+            try:
+                value_len = len(str(cell.value)) if cell.value is not None else 0
+                if value_len > max_length:
+                    max_length = value_len
+            except Exception:
+                pass
+        adjusted_width = min(max_length + 3, 35)
+        ws.column_dimensions[col_letter].width = adjusted_width
+
+    ws.freeze_panes = "A2"
+    ws.row_dimensions[1].height = 22
+
+
 def dataframe_to_excel_bytes(df_dict: dict[str, pd.DataFrame]) -> bytes:
     output = BytesIO()
     with pd.ExcelWriter(output, engine="openpyxl") as writer:
         for sheet_name, df in df_dict.items():
             safe_sheet = str(sheet_name)[:31]
             df.to_excel(writer, sheet_name=safe_sheet, index=False)
+            ws = writer.book[safe_sheet]
+            format_excel_sheet(ws)
     return output.getvalue()
 
 
@@ -285,6 +382,7 @@ def save_run_to_history(company_profile, consolidated_pnl, consolidated_bs, cons
     run_folder = company_folder / f"{financial_year}_{reporting_period}"
     run_folder.mkdir(parents=True, exist_ok=True)
 
+    dataframe_to_excel_bytes({"Consolidated P&L": consolidated_pnl})
     consolidated_pnl.to_excel(run_folder / "consolidated_pnl.xlsx", index=False)
 
     if consolidated_bs is not None and not consolidated_bs.empty:
@@ -696,7 +794,7 @@ with tab_profile:
             st.session_state["company_profile"].items(),
             columns=["Field", "Value"]
         )
-        st.dataframe(profile_df, use_container_width=True)
+        st.dataframe(style_dataframe(profile_df), use_container_width=True)
         st.write(f"**Save future runs:** {'Yes' if st.session_state['save_run_preference'] else 'No'}")
 
 
@@ -894,15 +992,15 @@ with tab_history:
 
         if st.session_state.get("prior_pnl") is not None:
             with st.expander("Preview Prior P&L"):
-                st.dataframe(st.session_state["prior_pnl"], use_container_width=True)
+                st.dataframe(style_dataframe(st.session_state["prior_pnl"]), use_container_width=True)
 
         if st.session_state.get("prior_bs") is not None:
             with st.expander("Preview Prior Balance Sheet"):
-                st.dataframe(st.session_state["prior_bs"], use_container_width=True)
+                st.dataframe(style_dataframe(st.session_state["prior_bs"]), use_container_width=True)
 
         if st.session_state.get("prior_kpis") is not None:
             with st.expander("Preview Prior KPIs"):
-                st.dataframe(st.session_state["prior_kpis"], use_container_width=True)
+                st.dataframe(style_dataframe(st.session_state["prior_kpis"]), use_container_width=True)
 
 
 # ----------------------------
@@ -925,7 +1023,7 @@ with tab_validation:
                 st.session_state["company_profile"].items(),
                 columns=["Field", "Value"]
             )
-            st.dataframe(profile_df, use_container_width=True)
+            st.dataframe(style_dataframe(profile_df), use_container_width=True)
 
         m1, m2, m3, m4 = st.columns(4)
         m1.metric("GL Rows", len(gl))
@@ -942,10 +1040,11 @@ with tab_validation:
         st.write(", ".join(detected_branches) if detected_branches else "No branches detected")
 
         with st.expander("Preview GL Columns"):
-            st.write(list(gl.columns))
+            cols_df = pd.DataFrame({"GL Columns": list(gl.columns)})
+            st.dataframe(style_dataframe(cols_df), use_container_width=True)
 
         with st.expander("Preview Mapped Data"):
-            st.dataframe(mapped.head(20), use_container_width=True)
+            st.dataframe(style_dataframe(mapped.head(20)), use_container_width=True)
 
         st.subheader("Unmapped GL Preview")
         if unmapped.empty:
@@ -953,7 +1052,7 @@ with tab_validation:
         else:
             st.error(f"{len(unmapped)} unmapped rows found. Resolve these before generating reports.")
             cols_to_show = [c for c in ["Account code", "Description", "Branch", "Debit", "Credit", "Net"] if c in unmapped.columns]
-            st.dataframe(unmapped[cols_to_show], use_container_width=True)
+            st.dataframe(style_dataframe(unmapped[cols_to_show]), use_container_width=True)
 
             csv_data = unmapped.to_csv(index=False).encode("utf-8")
             st.download_button(
@@ -980,14 +1079,14 @@ with tab_reports:
 
         if b1.button("Show Consolidated P&L", use_container_width=True):
             st.markdown("### Consolidated P&L")
-            st.dataframe(st.session_state["consolidated_pnl"], use_container_width=True)
+            st.dataframe(style_dataframe(st.session_state["consolidated_pnl"]), use_container_width=True)
 
         if b2.button("Show Consolidated Balance Sheet", use_container_width=True):
             st.markdown("### Consolidated Balance Sheet")
             if st.session_state["consolidated_bs"] is not None and not st.session_state["consolidated_bs"].empty:
                 if st.session_state["bs_disclaimer"]:
                     st.warning(st.session_state["bs_disclaimer"])
-                st.dataframe(st.session_state["consolidated_bs"], use_container_width=True)
+                st.dataframe(style_dataframe(st.session_state["consolidated_bs"]), use_container_width=True)
             else:
                 st.info("No consolidated balance sheet available.")
 
@@ -995,7 +1094,7 @@ with tab_reports:
             st.markdown("### Branch-wise P&L")
             for branch in st.session_state["detected_branches"]:
                 with st.expander(f"{branch} P&L"):
-                    st.dataframe(st.session_state["branch_outputs"][branch]["pnl"], use_container_width=True)
+                    st.dataframe(style_dataframe(st.session_state["branch_outputs"][branch]["pnl"]), use_container_width=True)
 
 
 # ----------------------------
@@ -1016,18 +1115,18 @@ with tab_kpis:
         if b1.button("Show Consolidated KPIs", use_container_width=True):
             st.markdown("### Consolidated KPIs")
             st.dataframe(
-                st.session_state["consolidated_kpis"][["KPI", "Display Value"]],
+                style_dataframe(st.session_state["consolidated_kpis"][["KPI", "Display Value"]]),
                 use_container_width=True,
             )
 
         if b2.button("Show Branch KPI Pack", use_container_width=True):
             st.markdown("### Branch Summary KPIs")
-            st.dataframe(st.session_state["branch_summary"], use_container_width=True)
+            st.dataframe(style_dataframe(st.session_state["branch_summary"]), use_container_width=True)
 
             for branch in st.session_state["detected_branches"]:
                 with st.expander(f"{branch} KPIs"):
                     st.dataframe(
-                        st.session_state["branch_outputs"][branch]["kpis"][["KPI", "Display Value"]],
+                        style_dataframe(st.session_state["branch_outputs"][branch]["kpis"][["KPI", "Display Value"]]),
                         use_container_width=True,
                     )
 
@@ -1096,7 +1195,7 @@ with tab_issues:
         else:
             st.error(f"{len(unmapped)} unmapped rows found. Review before relying on outputs.")
             cols_to_show = [c for c in ["Account code", "Description", "Branch", "Debit", "Credit", "Net"] if c in unmapped.columns]
-            st.dataframe(unmapped[cols_to_show], use_container_width=True)
+            st.dataframe(style_dataframe(unmapped[cols_to_show]), use_container_width=True)
 
 
 # ----------------------------
