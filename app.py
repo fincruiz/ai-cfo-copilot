@@ -382,7 +382,6 @@ def save_run_to_history(company_profile, consolidated_pnl, consolidated_bs, cons
     run_folder = company_folder / f"{financial_year}_{reporting_period}"
     run_folder.mkdir(parents=True, exist_ok=True)
 
-    dataframe_to_excel_bytes({"Consolidated P&L": consolidated_pnl})
     consolidated_pnl.to_excel(run_folder / "consolidated_pnl.xlsx", index=False)
 
     if consolidated_bs is not None and not consolidated_bs.empty:
@@ -581,7 +580,9 @@ def prepare_data(gl_file, mapping_file, kpi_file=None, latest_bs_file=None):
     kpi_master = pd.read_excel(kpi_file) if kpi_file is not None else None
     latest_bs = pd.read_excel(latest_bs_file) if latest_bs_file is not None else None
 
-    gl, coa, kpi_master, latest_bs = standardize_key_columns(gl, coa, kpi_master, latest_bs)
+    gl, coa, kpi_master, latest_bs, _, _, _ = standardize_key_columns(
+        gl, coa, kpi_master, latest_bs
+    )
 
     validate_required_columns(gl, ["Account code", "Debit", "Credit", "Branch"], "GL report")
     validate_required_columns(coa, ["Account code", "Reporting Group", "Reporting Subgroup", "Statement"], "COA mapping")
