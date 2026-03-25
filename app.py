@@ -15,56 +15,45 @@ st.markdown("""
 html, body, [class*="css"]  {
     font-family: Arial, sans-serif;
 }
-
 h1 {
     font-family: Arial, sans-serif !important;
     font-size: 32px !important;
     font-weight: 700 !important;
 }
-
 h2 {
     font-family: Arial, sans-serif !important;
     font-size: 24px !important;
     font-weight: 700 !important;
 }
-
 h3 {
     font-family: Arial, sans-serif !important;
     font-size: 20px !important;
     font-weight: 700 !important;
 }
-
 div[data-testid="stDataFrame"] * {
     font-family: Arial, sans-serif !important;
     font-size: 13px !important;
 }
-
 div[data-testid="stMetric"] * {
     font-family: Arial, sans-serif !important;
 }
-
 button {
     font-family: Arial, sans-serif !important;
     font-size: 14px !important;
     font-weight: 600 !important;
 }
-
 section[data-testid="stSidebar"] * {
     font-family: Arial, sans-serif !important;
 }
 </style>
 """, unsafe_allow_html=True)
 
-
-# ----------------------------
-# Config / Paths
-# ----------------------------
 HISTORY_ROOT = Path("history")
 HISTORY_ROOT.mkdir(exist_ok=True)
 
 
 # ----------------------------
-# Helpers
+# Generic helpers
 # ----------------------------
 def clean_columns(df: pd.DataFrame) -> pd.DataFrame:
     df = df.copy()
@@ -87,14 +76,20 @@ def style_dataframe(df: pd.DataFrame):
     })
 
 
+def validate_required_columns(df: pd.DataFrame, required_cols: list[str], file_label: str):
+    missing = [c for c in required_cols if c not in df.columns]
+    if missing:
+        raise ValueError(f"{file_label} is missing required columns: {', '.join(missing)}")
+
+
+# ----------------------------
+# GL / COA / KPI helpers
+# ----------------------------
 def standardize_key_columns(
     gl: pd.DataFrame,
     coa: pd.DataFrame,
     kpi: pd.DataFrame | None = None,
     latest_bs: pd.DataFrame | None = None,
-    prior_pnl: pd.DataFrame | None = None,
-    prior_bs: pd.DataFrame | None = None,
-    prior_kpi: pd.DataFrame | None = None,
 ):
     gl = clean_columns(gl)
     coa = clean_columns(coa)
@@ -151,37 +146,7 @@ def standardize_key_columns(
             inplace=True,
         )
 
-    if prior_pnl is not None:
-        prior_pnl = clean_columns(prior_pnl)
-
-    if prior_bs is not None:
-        prior_bs = clean_columns(prior_bs)
-        prior_bs.rename(
-            columns={
-                "Reporting group": "Reporting Group",
-                "Reporting subgroup": "Reporting Subgroup",
-                "Balance ": "Balance",
-            },
-            inplace=True,
-        )
-
-    if prior_kpi is not None:
-        prior_kpi = clean_columns(prior_kpi)
-        prior_kpi.rename(
-            columns={
-                "Kpi": "KPI",
-                "Display value": "Display Value",
-            },
-            inplace=True,
-        )
-
-    return gl, coa, kpi, latest_bs, prior_pnl, prior_bs, prior_kpi
-
-
-def validate_required_columns(df: pd.DataFrame, required_cols: list[str], file_label: str):
-    missing = [c for c in required_cols if c not in df.columns]
-    if missing:
-        raise ValueError(f"{file_label} is missing required columns: {', '.join(missing)}")
+    return gl, coa, kpi, latest_bs
 
 
 def apply_sign_convention_to_gl(row) -> float:
@@ -192,13 +157,15 @@ def apply_sign_convention_to_gl(row) -> float:
         return 0.0
 
     abs_net = abs(float(net))
-
     if sign == "negative":
         return -abs_net
     return abs_net
 
 
 def build_pnl(report_df: pd.DataFrame) -> pd.DataFrame:
+    if report_df.empty:
+        return pd.DataFrame(columns=["Reporting Group", "Reporting Subgroup", "Report Value"])
+
     pnl = (
         report_df.groupby(["Reporting Group", "Reporting Subgroup"], dropna=False)["Report Value"]
         .sum()
@@ -265,19 +232,16 @@ def build_kpis(report_df: pd.DataFrame, kpi_master: pd.DataFrame) -> pd.DataFram
 
         if formula_type == "direct":
             value = group_values.get(numerator, 0.0)
-
         elif formula_type == "derived":
             num_val = calculated.get(numerator, group_values.get(numerator, 0.0))
             den_val = calculated.get(denominator, group_values.get(denominator, 0.0))
             value = num_val - den_val
-
         elif formula_type == "ratio":
             num_val = calculated.get(numerator, group_values.get(numerator, 0.0))
             den_val = calculated.get(denominator, group_values.get(denominator, 0.0))
             value = (num_val / den_val * 100) if den_val != 0 else 0.0
 
         calculated[kpi_name] = value
-
         results.append(
             {
                 "KPI": kpi_name,
@@ -291,10 +255,157 @@ def build_kpis(report_df: pd.DataFrame, kpi_master: pd.DataFrame) -> pd.DataFram
         lambda r: f"{r['Value']:.2f}%" if r["Output Type"] == "percent" else round(r["Value"], 2),
         axis=1,
     )
-
     return kpi_df[["KPI", "Value", "Output Type", "Display Value"]]
 
 
+def kpi_map_from_df(kpi_df: pd.DataFrame | None) -> dict:
+    if kpi_df is None or kpi_df.empty:
+        return {}
+    return {row["KPI"]: row["Value"] for _, row in kpi_df.iterrows()}
+
+
+# ----------------------------
+# AR / AP helpers
+# ----------------------------
+def normalize_ageing_df(df: pd.DataFrame, kind: str) -> pd.DataFrame:
+    df = clean_columns(df)
+
+    rename_map = {
+        "Customer": "Party Name",
+        "Customer Name": "Party Name",
+        "Supplier": "Party Name",
+        "Supplier Name": "Party Name",
+        "Vendor": "Party Name",
+        "Vendor Name": "Party Name",
+        "Invoice Number": "Document Number",
+        "Bill Number": "Document Number",
+        "Invoice No": "Document Number",
+        "Bill No": "Document Number",
+        "Outstanding": "Outstanding Amount",
+        "Outstanding Balance": "Outstanding Amount",
+        "Amount": "Outstanding Amount",
+        "Due Date ": "Due Date",
+        "Invoice Date ": "Document Date",
+        "Bill Date": "Document Date",
+        "Ageing Bucket": "Age Bucket",
+        "Aging Bucket": "Age Bucket",
+        "Age Bucket ": "Age Bucket",
+        "Branch ": "Branch",
+    }
+    df.rename(columns=rename_map, inplace=True)
+
+    required_min = ["Party Name", "Outstanding Amount"]
+    missing = [c for c in required_min if c not in df.columns]
+    if missing:
+        label = "AR Ageing" if kind == "AR" else "AP Ageing"
+        raise ValueError(f"{label} is missing required columns: {', '.join(missing)}")
+
+    if "Branch" not in df.columns:
+        df["Branch"] = "Unassigned"
+
+    if "Document Number" not in df.columns:
+        df["Document Number"] = ""
+
+    if "Document Date" not in df.columns:
+        df["Document Date"] = pd.NaT
+
+    if "Due Date" not in df.columns:
+        df["Due Date"] = pd.NaT
+
+    df["Outstanding Amount"] = pd.to_numeric(df["Outstanding Amount"], errors="coerce").fillna(0)
+    df["Document Date"] = pd.to_datetime(df["Document Date"], errors="coerce")
+    df["Due Date"] = pd.to_datetime(df["Due Date"], errors="coerce")
+
+    if "Age Bucket" not in df.columns:
+        df["Age Bucket"] = None
+
+    today = pd.Timestamp.today().normalize()
+
+    def calc_bucket(row):
+        existing = row.get("Age Bucket")
+        if pd.notna(existing) and str(existing).strip():
+            return str(existing).strip()
+
+        due_date = row.get("Due Date")
+        if pd.isna(due_date):
+            return "Unknown"
+
+        days_overdue = (today - due_date.normalize()).days
+
+        if days_overdue <= 0:
+            return "Current"
+        elif days_overdue <= 30:
+            return "1-30"
+        elif days_overdue <= 60:
+            return "31-60"
+        elif days_overdue <= 90:
+            return "61-90"
+        else:
+            return "90+"
+
+    df["Age Bucket"] = df.apply(calc_bucket, axis=1)
+    df["Branch"] = df["Branch"].astype(str).str.strip()
+    df["Party Name"] = df["Party Name"].astype(str).str.strip()
+
+    return df
+
+
+def build_ageing_summary(df: pd.DataFrame | None, kind: str) -> dict:
+    if df is None or df.empty:
+        return {
+            "total": 0.0,
+            "overdue": 0.0,
+            "overdue_pct": 0.0,
+            "by_bucket": pd.DataFrame(columns=["Age Bucket", "Outstanding Amount"]),
+            "by_branch": pd.DataFrame(columns=["Branch", "Outstanding Amount"]),
+            "top_parties": pd.DataFrame(columns=["Party Name", "Outstanding Amount"]),
+            "kind": kind,
+        }
+
+    total = float(df["Outstanding Amount"].sum())
+    overdue_df = df[df["Age Bucket"].isin(["1-30", "31-60", "61-90", "90+"])]
+    overdue = float(overdue_df["Outstanding Amount"].sum())
+    overdue_pct = (overdue / total * 100) if total != 0 else 0.0
+
+    bucket_order = ["Current", "1-30", "31-60", "61-90", "90+", "Unknown"]
+
+    by_bucket = (
+        df.groupby("Age Bucket", dropna=False)["Outstanding Amount"]
+        .sum()
+        .reset_index()
+    )
+    by_bucket["Age Bucket"] = pd.Categorical(by_bucket["Age Bucket"], categories=bucket_order, ordered=True)
+    by_bucket = by_bucket.sort_values("Age Bucket")
+
+    by_branch = (
+        df.groupby("Branch", dropna=False)["Outstanding Amount"]
+        .sum()
+        .reset_index()
+        .sort_values("Outstanding Amount", ascending=False)
+    )
+
+    top_parties = (
+        df.groupby("Party Name", dropna=False)["Outstanding Amount"]
+        .sum()
+        .reset_index()
+        .sort_values("Outstanding Amount", ascending=False)
+        .head(10)
+    )
+
+    return {
+        "total": total,
+        "overdue": overdue,
+        "overdue_pct": overdue_pct,
+        "by_bucket": by_bucket,
+        "by_branch": by_branch,
+        "top_parties": top_parties,
+        "kind": kind,
+    }
+
+
+# ----------------------------
+# Excel formatting helpers
+# ----------------------------
 def format_excel_sheet(ws):
     header_fill = PatternFill(fill_type="solid", fgColor="D9EAF7")
     header_font = Font(name="Arial", size=11, bold=True)
@@ -346,7 +457,16 @@ def dataframe_to_excel_bytes(df_dict: dict[str, pd.DataFrame]) -> bytes:
     return output.getvalue()
 
 
-def create_excel_pack(consolidated_pnl, consolidated_bs, consolidated_kpis, branch_summary, branch_outputs, unmapped):
+def create_excel_pack(
+    consolidated_pnl,
+    consolidated_bs,
+    consolidated_kpis,
+    branch_summary,
+    branch_outputs,
+    unmapped,
+    ar_df=None,
+    ap_df=None,
+):
     df_dict = {"Consolidated P&L": consolidated_pnl}
 
     if consolidated_bs is not None and not consolidated_bs.empty:
@@ -366,9 +486,18 @@ def create_excel_pack(consolidated_pnl, consolidated_bs, consolidated_kpis, bran
     if not unmapped.empty:
         df_dict["Unmapped Accounts"] = unmapped
 
+    if ar_df is not None and not ar_df.empty:
+        df_dict["AR Ageing"] = ar_df
+
+    if ap_df is not None and not ap_df.empty:
+        df_dict["AP Ageing"] = ap_df
+
     return dataframe_to_excel_bytes(df_dict)
 
 
+# ----------------------------
+# History helpers
+# ----------------------------
 def save_run_to_history(company_profile, consolidated_pnl, consolidated_bs, consolidated_kpis, branch_summary):
     company_name = company_profile.get("Company Name", "").strip()
     if not company_name:
@@ -397,15 +526,9 @@ def save_run_to_history(company_profile, consolidated_pnl, consolidated_bs, cons
 def list_saved_company_runs(company_name: str):
     company_slug = slugify_company_name(company_name)
     company_folder = HISTORY_ROOT / company_slug
-
     if not company_folder.exists():
         return []
-
-    runs = []
-    for item in company_folder.iterdir():
-        if item.is_dir():
-            runs.append(item.name)
-
+    runs = [item.name for item in company_folder.iterdir() if item.is_dir()]
     return sorted(runs, reverse=True)
 
 
@@ -427,13 +550,13 @@ def restore_run_from_history(company_name: str, run_name: str):
     return restored
 
 
-def detect_anomalies(consolidated_kpis, branch_outputs, prior_kpis=None):
+# ----------------------------
+# Analysis helpers
+# ----------------------------
+def detect_anomalies(consolidated_kpis, branch_outputs, prior_kpis=None, ar_summary=None, ap_summary=None):
     flags = []
 
-    current_kpi_map = {}
-    if consolidated_kpis is not None and not consolidated_kpis.empty:
-        for _, row in consolidated_kpis.iterrows():
-            current_kpi_map[row["KPI"]] = row["Value"]
+    current_kpi_map = kpi_map_from_df(consolidated_kpis)
 
     revenue = current_kpi_map.get("Revenue", 0)
     gross_margin = current_kpi_map.get("Gross Margin %", 0)
@@ -452,10 +575,7 @@ def detect_anomalies(consolidated_kpis, branch_outputs, prior_kpis=None):
     branch_margins = []
     for branch, reports in branch_outputs.items():
         if reports["kpis"] is not None and not reports["kpis"].empty:
-            branch_kpi_map = {}
-            for _, row in reports["kpis"].iterrows():
-                branch_kpi_map[row["KPI"]] = row["Value"]
-
+            branch_kpi_map = kpi_map_from_df(reports["kpis"])
             gm = branch_kpi_map.get("Gross Margin %", None)
             opm = branch_kpi_map.get("Operating Margin %", None)
 
@@ -472,10 +592,7 @@ def detect_anomalies(consolidated_kpis, branch_outputs, prior_kpis=None):
                 flags.append(f"{branch} gross margin ({gm:.2f}%) is materially below branch average ({avg_margin:.2f}%).")
 
     if prior_kpis is not None and not prior_kpis.empty and "KPI" in prior_kpis.columns and "Value" in prior_kpis.columns:
-        prior_kpi_map = {}
-        for _, row in prior_kpis.iterrows():
-            prior_kpi_map[row["KPI"]] = row["Value"]
-
+        prior_kpi_map = {row["KPI"]: row["Value"] for _, row in prior_kpis.iterrows()}
         prior_revenue = prior_kpi_map.get("Revenue", None)
         prior_gm = prior_kpi_map.get("Gross Margin %", None)
         prior_opm = prior_kpi_map.get("Operating Margin %", None)
@@ -495,10 +612,18 @@ def detect_anomalies(consolidated_kpis, branch_outputs, prior_kpis=None):
             if opm_change < -3:
                 flags.append(f"Operating margin dropped by {opm_change:.2f} percentage points versus prior period.")
 
+    if ar_summary is not None:
+        if ar_summary["overdue_pct"] > 40:
+            flags.append(f"AR overdue is high at {ar_summary['overdue_pct']:.2f}% of total receivables.")
+
+    if ap_summary is not None:
+        if ap_summary["overdue_pct"] > 40:
+            flags.append(f"AP overdue is high at {ap_summary['overdue_pct']:.2f}% of total payables.")
+
     return flags
 
 
-def generate_ai_commentary(pnl_df, kpi_df, bs_df, profile, anomaly_flags=None):
+def generate_ai_commentary(pnl_df, kpi_df, bs_df, profile, anomaly_flags=None, ar_summary=None, ap_summary=None):
     try:
         client = OpenAI()
         model_name = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
@@ -514,6 +639,22 @@ def generate_ai_commentary(pnl_df, kpi_df, bs_df, profile, anomaly_flags=None):
         )
 
         anomaly_text = "\n".join(anomaly_flags) if anomaly_flags else "No anomaly flags detected."
+
+        ar_text = "No AR ageing data available."
+        if ar_summary is not None:
+            ar_text = (
+                f"Total AR: {ar_summary['total']:.2f}\n"
+                f"Overdue AR: {ar_summary['overdue']:.2f}\n"
+                f"Overdue AR %: {ar_summary['overdue_pct']:.2f}%"
+            )
+
+        ap_text = "No AP ageing data available."
+        if ap_summary is not None:
+            ap_text = (
+                f"Total AP: {ap_summary['total']:.2f}\n"
+                f"Overdue AP: {ap_summary['overdue']:.2f}\n"
+                f"Overdue AP %: {ap_summary['overdue_pct']:.2f}%"
+            )
 
         company_name = profile.get("Company Name", "Unknown Company")
         industry = profile.get("Industry", "Unknown Industry")
@@ -548,6 +689,12 @@ KPIs:
 Consolidated Balance Sheet:
 {bs_summary}
 
+AR Ageing Summary:
+{ar_text}
+
+AP Ageing Summary:
+{ap_text}
+
 Write in this format:
 
 1. Executive Summary
@@ -558,7 +705,6 @@ Write in this format:
 
 Keep it practical, management-ready, and concise.
 """
-
         response = client.chat.completions.create(
             model=model_name,
             messages=[
@@ -574,13 +720,16 @@ Keep it practical, management-ready, and concise.
         return f"AI Commentary failed: {str(e)}"
 
 
+# ----------------------------
+# Data preparation
+# ----------------------------
 def prepare_data(gl_file, mapping_file, kpi_file=None, latest_bs_file=None):
     gl = pd.read_excel(gl_file)
     coa = pd.read_excel(mapping_file)
     kpi_master = pd.read_excel(kpi_file) if kpi_file is not None else None
     latest_bs = pd.read_excel(latest_bs_file) if latest_bs_file is not None else None
 
-    gl, coa, kpi_master, latest_bs, _, _, _ = standardize_key_columns(
+    gl, coa, kpi_master, latest_bs = standardize_key_columns(
         gl, coa, kpi_master, latest_bs
     )
 
@@ -683,7 +832,7 @@ for key in [
     "consolidated_pnl", "consolidated_bs", "consolidated_kpis", "branch_outputs",
     "branch_summary", "detected_branches", "validation_passed", "company_profile",
     "bs_disclaimer", "ai_commentary", "prior_pnl", "prior_bs", "prior_kpis",
-    "save_run_preference", "anomaly_flags"
+    "save_run_preference", "anomaly_flags", "ar_df", "ap_df", "ar_summary", "ap_summary"
 ]:
     if key not in st.session_state:
         st.session_state[key] = None
@@ -696,14 +845,42 @@ if st.session_state["save_run_preference"] is None:
 
 
 # ----------------------------
-# Header
+# Header / tabs
 # ----------------------------
 st.title("AI CFO Copilot")
-st.caption("Automated branch-wise P&L, consolidated balance sheet, KPI packs, management reporting, memory, and AI commentary")
+st.caption("Automated branch-wise P&L, consolidated balance sheet, KPI packs, dashboards, working capital, memory, and AI commentary")
 
-tab_profile, tab_upload, tab_history, tab_validation, tab_reports, tab_kpis, tab_ai, tab_anomalies, tab_issues, tab_download = st.tabs(
-    ["Profile", "Upload", "History & Prior Period", "Validation", "Reports", "KPIs", "AI Insights", "Anomalies", "Issues", "Download"]
+tabs = st.tabs(
+    [
+        "Profile",
+        "Upload",
+        "History & Prior Period",
+        "Validation",
+        "Dashboard",
+        "Reports",
+        "KPIs",
+        "Working Capital",
+        "AI Insights",
+        "Anomalies",
+        "Issues",
+        "Download",
+    ]
 )
+
+(
+    tab_profile,
+    tab_upload,
+    tab_history,
+    tab_validation,
+    tab_dashboard,
+    tab_reports,
+    tab_kpis,
+    tab_working_capital,
+    tab_ai,
+    tab_anomalies,
+    tab_issues,
+    tab_download,
+) = tabs
 
 
 # ----------------------------
@@ -805,19 +982,23 @@ with tab_profile:
 with tab_upload:
     st.subheader("Upload Current Period Source Files")
 
-    c1, c2 = st.columns(2)
+    c1, c2, c3 = st.columns(3)
     with c1:
         gl_file = st.file_uploader("Current GL Report", type=["xlsx"])
         mapping_file = st.file_uploader("COA Mapping", type=["xlsx"])
     with c2:
         kpi_file = st.file_uploader("KPI Master (Optional)", type=["xlsx"])
         latest_bs_file = st.file_uploader("Latest Previous Balance Sheet (Optional)", type=["xlsx"])
+    with c3:
+        ar_file = st.file_uploader("AR Ageing (Optional)", type=["xlsx"])
+        ap_file = st.file_uploader("AP Ageing (Optional)", type=["xlsx"])
 
     st.info(
         "GL required columns: Account code, Debit, Credit, Branch. Optional: Net, Date, Description.\n\n"
         "COA mapping required columns: Account code, Reporting Group, Reporting Subgroup, Statement. Recommended: Sign Convention.\n\n"
         "KPI master is optional.\n\n"
-        "Latest Previous Balance Sheet is optional. Required columns if uploaded: Reporting Group, Reporting Subgroup, Balance."
+        "Latest Previous Balance Sheet is optional. Required columns if uploaded: Reporting Group, Reporting Subgroup, Balance.\n\n"
+        "AR/AP are optional. Minimum recommended columns: Party Name (or Customer/Supplier), Outstanding Amount, Due Date, Branch."
     )
 
     if st.button("Validate & Load Current Files", use_container_width=True):
@@ -869,6 +1050,12 @@ with tab_upload:
 
                 branch_summary = pd.DataFrame(branch_summary_rows) if branch_summary_rows else pd.DataFrame()
 
+                ar_df = normalize_ageing_df(pd.read_excel(ar_file), "AR") if ar_file is not None else None
+                ap_df = normalize_ageing_df(pd.read_excel(ap_file), "AP") if ap_file is not None else None
+
+                ar_summary = build_ageing_summary(ar_df, "AR") if ar_df is not None else None
+                ap_summary = build_ageing_summary(ap_df, "AP") if ap_df is not None else None
+
                 st.session_state["gl"] = gl
                 st.session_state["coa"] = coa
                 st.session_state["kpi_master"] = kpi_master
@@ -886,6 +1073,10 @@ with tab_upload:
                 st.session_state["validation_passed"] = unmapped.empty
                 st.session_state["bs_disclaimer"] = bs_disclaimer
                 st.session_state["ai_commentary"] = None
+                st.session_state["ar_df"] = ar_df
+                st.session_state["ap_df"] = ap_df
+                st.session_state["ar_summary"] = ar_summary
+                st.session_state["ap_summary"] = ap_summary
 
                 if st.session_state["save_run_preference"]:
                     save_run_to_history(
@@ -900,7 +1091,9 @@ with tab_upload:
                 anomaly_flags = detect_anomalies(
                     consolidated_kpis,
                     branch_outputs,
-                    prior_kpis=prior_kpis
+                    prior_kpis=prior_kpis,
+                    ar_summary=ar_summary,
+                    ap_summary=ap_summary,
                 ) if consolidated_kpis is not None else []
                 st.session_state["anomaly_flags"] = anomaly_flags
 
@@ -914,7 +1107,7 @@ with tab_upload:
 
 
 # ----------------------------
-# History & Prior Period Tab
+# History / Prior Period Tab
 # ----------------------------
 with tab_history:
     st.subheader("History / Prior Period Inputs")
@@ -931,11 +1124,9 @@ with tab_history:
             selected_run = st.selectbox("Select Saved Run", saved_runs)
             if st.button("Restore Selected Run", use_container_width=True):
                 restored = restore_run_from_history(company_name_for_history, selected_run)
-
                 st.session_state["prior_pnl"] = restored.get("prior_pnl", None)
                 st.session_state["prior_bs"] = restored.get("prior_bs", None)
                 st.session_state["prior_kpis"] = restored.get("prior_kpis", None)
-
                 st.success(f"Restored saved run: {selected_run}")
         else:
             st.info("No saved history found for this company yet.")
@@ -955,7 +1146,6 @@ with tab_history:
             try:
                 coa = st.session_state.get("coa", None)
                 kpi_master = st.session_state.get("kpi_master", None)
-
                 loaded_any = False
 
                 if prior_gl_file is not None:
@@ -967,16 +1157,13 @@ with tab_history:
                         st.session_state["prior_bs"] = prior_bs
                         st.session_state["prior_kpis"] = prior_kpis
                         loaded_any = True
-
                 else:
                     if prior_pnl_file is not None:
                         st.session_state["prior_pnl"] = clean_columns(pd.read_excel(prior_pnl_file))
                         loaded_any = True
-
                     if prior_bs_file is not None:
                         st.session_state["prior_bs"] = clean_columns(pd.read_excel(prior_bs_file))
                         loaded_any = True
-
                     if prior_kpi_file is not None:
                         pk = clean_columns(pd.read_excel(prior_kpi_file))
                         pk.rename(columns={"Kpi": "KPI", "Display value": "Display Value"}, inplace=True)
@@ -987,7 +1174,6 @@ with tab_history:
                     st.success("Prior period data loaded successfully.")
                 else:
                     st.info("No prior period file uploaded.")
-
             except Exception as e:
                 st.error(f"Error loading prior period data: {e}")
 
@@ -1066,6 +1252,88 @@ with tab_validation:
 
 
 # ----------------------------
+# Dashboard Tab
+# ----------------------------
+with tab_dashboard:
+    st.subheader("Management Dashboard")
+
+    if st.session_state["mapped"] is None:
+        st.warning("Please validate and load files first.")
+    elif not st.session_state["validation_passed"]:
+        st.error("Resolve unmapped GL rows before using dashboard.")
+    else:
+        current_kpi_map = kpi_map_from_df(st.session_state["consolidated_kpis"])
+
+        revenue = current_kpi_map.get("Revenue", 0)
+        gp = current_kpi_map.get("Gross Profit", 0)
+        gm = current_kpi_map.get("Gross Margin %", 0)
+        op = current_kpi_map.get("Operating Profit", 0)
+        opm = current_kpi_map.get("Operating Margin %", 0)
+        opex_pct = current_kpi_map.get("Opex as % of Revenue", 0)
+
+        top1, top2, top3, top4, top5, top6 = st.columns(6)
+        top1.metric("Revenue", f"{revenue:,.2f}")
+        top2.metric("Gross Profit", f"{gp:,.2f}")
+        top3.metric("Gross Margin %", f"{gm:.2f}%")
+        top4.metric("Operating Profit", f"{op:,.2f}")
+        top5.metric("Operating Margin %", f"{opm:.2f}%")
+        top6.metric("Opex %", f"{opex_pct:.2f}%")
+
+        if st.session_state["ar_summary"] is not None or st.session_state["ap_summary"] is not None:
+            wc1, wc2, wc3, wc4 = st.columns(4)
+            ar_summary = st.session_state["ar_summary"]
+            ap_summary = st.session_state["ap_summary"]
+
+            wc1.metric("Total AR", f"{ar_summary['total']:,.2f}" if ar_summary else "0.00")
+            wc2.metric("AR Overdue %", f"{ar_summary['overdue_pct']:.2f}%" if ar_summary else "0.00%")
+            wc3.metric("Total AP", f"{ap_summary['total']:,.2f}" if ap_summary else "0.00")
+            wc4.metric("AP Overdue %", f"{ap_summary['overdue_pct']:.2f}%" if ap_summary else "0.00%")
+
+        st.markdown("### Branch Revenue and Margin")
+        branch_rows = []
+        for branch, reports in st.session_state["branch_outputs"].items():
+            branch_kpi_map = kpi_map_from_df(reports["kpis"])
+            branch_rows.append({
+                "Branch": branch,
+                "Revenue": branch_kpi_map.get("Revenue", 0),
+                "Gross Margin %": branch_kpi_map.get("Gross Margin %", 0),
+                "Operating Margin %": branch_kpi_map.get("Operating Margin %", 0),
+            })
+
+        branch_dashboard_df = pd.DataFrame(branch_rows)
+
+        if not branch_dashboard_df.empty:
+            c1, c2 = st.columns(2)
+            with c1:
+                st.write("**Revenue by Branch**")
+                st.bar_chart(branch_dashboard_df.set_index("Branch")[["Revenue"]])
+            with c2:
+                st.write("**Gross Margin % by Branch**")
+                st.bar_chart(branch_dashboard_df.set_index("Branch")[["Gross Margin %"]])
+
+            st.write("**Branch KPI Table**")
+            st.dataframe(style_dataframe(branch_dashboard_df), use_container_width=True)
+
+        if st.session_state["ar_summary"] is not None or st.session_state["ap_summary"] is not None:
+            st.markdown("### Working Capital Charts")
+            c3, c4 = st.columns(2)
+
+            with c3:
+                if st.session_state["ar_summary"] is not None:
+                    st.write("**AR Ageing by Bucket**")
+                    ar_bucket_df = st.session_state["ar_summary"]["by_bucket"].copy()
+                    if not ar_bucket_df.empty:
+                        st.bar_chart(ar_bucket_df.set_index("Age Bucket")[["Outstanding Amount"]])
+
+            with c4:
+                if st.session_state["ap_summary"] is not None:
+                    st.write("**AP Ageing by Bucket**")
+                    ap_bucket_df = st.session_state["ap_summary"]["by_bucket"].copy()
+                    if not ap_bucket_df.empty:
+                        st.bar_chart(ap_bucket_df.set_index("Age Bucket")[["Outstanding Amount"]])
+
+
+# ----------------------------
 # Reports Tab
 # ----------------------------
 with tab_reports:
@@ -1099,7 +1367,7 @@ with tab_reports:
 
 
 # ----------------------------
-# KPIs Tab
+# KPI Tab
 # ----------------------------
 with tab_kpis:
     st.subheader("KPI Generation")
@@ -1133,6 +1401,62 @@ with tab_kpis:
 
 
 # ----------------------------
+# Working Capital Tab
+# ----------------------------
+with tab_working_capital:
+    st.subheader("Working Capital Analysis")
+
+    if st.session_state["ar_df"] is None and st.session_state["ap_df"] is None:
+        st.info("Upload AR and/or AP ageing files in the Upload tab to see working capital analysis.")
+    else:
+        if st.session_state["ar_summary"] is not None:
+            st.markdown("### Accounts Receivable")
+            ar_summary = st.session_state["ar_summary"]
+
+            a1, a2, a3 = st.columns(3)
+            a1.metric("Total AR", f"{ar_summary['total']:,.2f}")
+            a2.metric("Overdue AR", f"{ar_summary['overdue']:,.2f}")
+            a3.metric("Overdue AR %", f"{ar_summary['overdue_pct']:.2f}%")
+
+            c1, c2 = st.columns(2)
+            with c1:
+                st.write("**AR by Age Bucket**")
+                st.dataframe(style_dataframe(ar_summary["by_bucket"]), use_container_width=True)
+                if not ar_summary["by_bucket"].empty:
+                    st.bar_chart(ar_summary["by_bucket"].set_index("Age Bucket")[["Outstanding Amount"]])
+
+            with c2:
+                st.write("**Top 10 Customers by Outstanding**")
+                st.dataframe(style_dataframe(ar_summary["top_parties"]), use_container_width=True)
+
+            st.write("**AR by Branch**")
+            st.dataframe(style_dataframe(ar_summary["by_branch"]), use_container_width=True)
+
+        if st.session_state["ap_summary"] is not None:
+            st.markdown("### Accounts Payable")
+            ap_summary = st.session_state["ap_summary"]
+
+            p1, p2, p3 = st.columns(3)
+            p1.metric("Total AP", f"{ap_summary['total']:,.2f}")
+            p2.metric("Overdue AP", f"{ap_summary['overdue']:,.2f}")
+            p3.metric("Overdue AP %", f"{ap_summary['overdue_pct']:.2f}%")
+
+            c3, c4 = st.columns(2)
+            with c3:
+                st.write("**AP by Age Bucket**")
+                st.dataframe(style_dataframe(ap_summary["by_bucket"]), use_container_width=True)
+                if not ap_summary["by_bucket"].empty:
+                    st.bar_chart(ap_summary["by_bucket"].set_index("Age Bucket")[["Outstanding Amount"]])
+
+            with c4:
+                st.write("**Top 10 Suppliers by Outstanding**")
+                st.dataframe(style_dataframe(ap_summary["top_parties"]), use_container_width=True)
+
+            st.write("**AP by Branch**")
+            st.dataframe(style_dataframe(ap_summary["by_branch"]), use_container_width=True)
+
+
+# ----------------------------
 # AI Insights Tab
 # ----------------------------
 with tab_ai:
@@ -1143,7 +1467,7 @@ with tab_ai:
     elif not st.session_state["validation_passed"]:
         st.error("Resolve unmapped accounts before generating AI insights.")
     else:
-        st.info("Generate CFO-style commentary based on the current outputs, company profile, and anomaly flags.")
+        st.info("Generate CFO-style commentary based on the current outputs, company profile, anomaly flags, and working capital.")
 
         if st.button("Generate AI Insights", use_container_width=True):
             with st.spinner("Analyzing financials..."):
@@ -1153,6 +1477,8 @@ with tab_ai:
                     st.session_state["consolidated_bs"],
                     st.session_state["company_profile"],
                     anomaly_flags=st.session_state.get("anomaly_flags", []),
+                    ar_summary=st.session_state.get("ar_summary"),
+                    ap_summary=st.session_state.get("ap_summary"),
                 )
                 st.session_state["ai_commentary"] = commentary
 
@@ -1239,10 +1565,7 @@ with tab_download:
                 )
 
         with col2:
-            if (
-                st.session_state["consolidated_bs"] is not None
-                and not st.session_state["consolidated_bs"].empty
-            ):
+            if st.session_state["consolidated_bs"] is not None and not st.session_state["consolidated_bs"].empty:
                 bs_bytes = dataframe_to_excel_bytes({
                     "Consolidated Balance Sheet": st.session_state["consolidated_bs"]
                 })
@@ -1259,10 +1582,7 @@ with tab_download:
             else:
                 st.info("No balance sheet available for download.")
 
-            if (
-                st.session_state["branch_summary"] is not None
-                and not st.session_state["branch_summary"].empty
-            ):
+            if st.session_state["branch_summary"] is not None and not st.session_state["branch_summary"].empty:
                 summary_bytes = dataframe_to_excel_bytes({
                     "Branch Summary KPIs": st.session_state["branch_summary"]
                 })
@@ -1270,6 +1590,29 @@ with tab_download:
                     label="Download Branch Summary KPIs",
                     data=summary_bytes,
                     file_name="branch_summary_kpis.xlsx",
+                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                    use_container_width=True,
+                )
+
+        st.markdown("### Working Capital Downloads")
+        w1, w2 = st.columns(2)
+        with w1:
+            if st.session_state["ar_df"] is not None and not st.session_state["ar_df"].empty:
+                ar_bytes = dataframe_to_excel_bytes({"AR Ageing": st.session_state["ar_df"]})
+                st.download_button(
+                    label="Download AR Ageing",
+                    data=ar_bytes,
+                    file_name="ar_ageing.xlsx",
+                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                    use_container_width=True,
+                )
+        with w2:
+            if st.session_state["ap_df"] is not None and not st.session_state["ap_df"].empty:
+                ap_bytes = dataframe_to_excel_bytes({"AP Ageing": st.session_state["ap_df"]})
+                st.download_button(
+                    label="Download AP Ageing",
+                    data=ap_bytes,
+                    file_name="ap_ageing.xlsx",
                     mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                     use_container_width=True,
                 )
@@ -1324,6 +1667,8 @@ with tab_download:
             branch_summary=st.session_state["branch_summary"],
             branch_outputs=st.session_state["branch_outputs"],
             unmapped=st.session_state["unmapped"],
+            ar_df=st.session_state["ar_df"],
+            ap_df=st.session_state["ap_df"],
         )
 
         st.download_button(
