@@ -302,13 +302,10 @@ def normalize_ageing_df(df: pd.DataFrame, kind: str) -> pd.DataFrame:
 
     if "Branch" not in df.columns:
         df["Branch"] = "Unassigned"
-
     if "Document Number" not in df.columns:
         df["Document Number"] = ""
-
     if "Document Date" not in df.columns:
         df["Document Date"] = pd.NaT
-
     if "Due Date" not in df.columns:
         df["Due Date"] = pd.NaT
 
@@ -404,6 +401,83 @@ def build_ageing_summary(df: pd.DataFrame | None, kind: str) -> dict:
 
 
 # ----------------------------
+# Budget / Forecast helpers
+# ----------------------------
+def normalize_plan_df(df: pd.DataFrame, label: str) -> pd.DataFrame:
+    df = clean_columns(df)
+    df.rename(
+        columns={
+            "Month ": "Month",
+            "Branch ": "Branch",
+            "Reporting group": "Reporting Group",
+            "Amount ": "Amount",
+            "Budget Amount": "Amount",
+            "Forecast Amount": "Amount",
+        },
+        inplace=True,
+    )
+
+    validate_required_columns(df, ["Month", "Branch", "Reporting Group", "Amount"], label)
+
+    df["Month"] = df["Month"].astype(str).str.strip()
+    df["Branch"] = df["Branch"].astype(str).str.strip()
+    df["Reporting Group"] = df["Reporting Group"].astype(str).str.strip()
+    df["Amount"] = pd.to_numeric(df["Amount"], errors="coerce").fillna(0)
+
+    return df
+
+
+def build_actuals_by_branch_reporting_group(pnl_mapped: pd.DataFrame) -> pd.DataFrame:
+    if pnl_mapped is None or pnl_mapped.empty:
+        return pd.DataFrame(columns=["Branch", "Reporting Group", "Actual"])
+
+    actuals = (
+        pnl_mapped.groupby(["Branch", "Reporting Group"], dropna=False)["Report Value"]
+        .sum()
+        .reset_index()
+        .rename(columns={"Report Value": "Actual"})
+    )
+    return actuals
+
+
+def compare_plan_vs_actual(actuals_df: pd.DataFrame, plan_df: pd.DataFrame, label: str) -> pd.DataFrame:
+    if plan_df is None or plan_df.empty:
+        return pd.DataFrame(columns=["Branch", "Reporting Group", "Actual", label, "Variance", "Variance %"])
+
+    plan_agg = (
+        plan_df.groupby(["Branch", "Reporting Group"], dropna=False)["Amount"]
+        .sum()
+        .reset_index()
+        .rename(columns={"Amount": label})
+    )
+
+    merged = actuals_df.merge(plan_agg, on=["Branch", "Reporting Group"], how="outer").fillna(0)
+    merged["Variance"] = merged["Actual"] - merged[label]
+    merged["Variance %"] = merged.apply(
+        lambda r: (r["Variance"] / r[label] * 100) if r[label] != 0 else 0.0,
+        axis=1,
+    )
+
+    return merged.sort_values(["Branch", "Reporting Group"]).reset_index(drop=True)
+
+
+def summarize_plan_vs_actual(compare_df: pd.DataFrame, label: str) -> pd.DataFrame:
+    if compare_df is None or compare_df.empty:
+        return pd.DataFrame(columns=["Reporting Group", "Actual", label, "Variance", "Variance %"])
+
+    out = (
+        compare_df.groupby("Reporting Group", dropna=False)[["Actual", label, "Variance"]]
+        .sum()
+        .reset_index()
+    )
+    out["Variance %"] = out.apply(
+        lambda r: (r["Variance"] / r[label] * 100) if r[label] != 0 else 0.0,
+        axis=1,
+    )
+    return out.sort_values("Reporting Group").reset_index(drop=True)
+
+
+# ----------------------------
 # Excel formatting helpers
 # ----------------------------
 def format_excel_sheet(ws):
@@ -466,6 +540,8 @@ def create_excel_pack(
     unmapped,
     ar_df=None,
     ap_df=None,
+    budget_compare=None,
+    forecast_compare=None,
 ):
     df_dict = {"Consolidated P&L": consolidated_pnl}
 
@@ -491,6 +567,12 @@ def create_excel_pack(
 
     if ap_df is not None and not ap_df.empty:
         df_dict["AP Ageing"] = ap_df
+
+    if budget_compare is not None and not budget_compare.empty:
+        df_dict["Budget vs Actual"] = budget_compare
+
+    if forecast_compare is not None and not forecast_compare.empty:
+        df_dict["Forecast vs Actual"] = forecast_compare
 
     return dataframe_to_excel_bytes(df_dict)
 
@@ -553,7 +635,15 @@ def restore_run_from_history(company_name: str, run_name: str):
 # ----------------------------
 # Analysis helpers
 # ----------------------------
-def detect_anomalies(consolidated_kpis, branch_outputs, prior_kpis=None, ar_summary=None, ap_summary=None):
+def detect_anomalies(
+    consolidated_kpis,
+    branch_outputs,
+    prior_kpis=None,
+    ar_summary=None,
+    ap_summary=None,
+    budget_summary=None,
+    forecast_summary=None,
+):
     flags = []
 
     current_kpi_map = kpi_map_from_df(consolidated_kpis)
@@ -612,18 +702,42 @@ def detect_anomalies(consolidated_kpis, branch_outputs, prior_kpis=None, ar_summ
             if opm_change < -3:
                 flags.append(f"Operating margin dropped by {opm_change:.2f} percentage points versus prior period.")
 
-    if ar_summary is not None:
-        if ar_summary["overdue_pct"] > 40:
-            flags.append(f"AR overdue is high at {ar_summary['overdue_pct']:.2f}% of total receivables.")
+    if ar_summary is not None and ar_summary["overdue_pct"] > 40:
+        flags.append(f"AR overdue is high at {ar_summary['overdue_pct']:.2f}% of total receivables.")
 
-    if ap_summary is not None:
-        if ap_summary["overdue_pct"] > 40:
-            flags.append(f"AP overdue is high at {ap_summary['overdue_pct']:.2f}% of total payables.")
+    if ap_summary is not None and ap_summary["overdue_pct"] > 40:
+        flags.append(f"AP overdue is high at {ap_summary['overdue_pct']:.2f}% of total payables.")
+
+    if budget_summary is not None and not budget_summary.empty:
+        total_budget = budget_summary["Budget"].sum() if "Budget" in budget_summary.columns else 0
+        total_variance = budget_summary["Variance"].sum() if "Variance" in budget_summary.columns else 0
+        if total_budget != 0:
+            total_variance_pct = total_variance / total_budget * 100
+            if total_variance_pct < -10:
+                flags.append(f"Actual performance is {total_variance_pct:.2f}% below budget.")
+
+    if forecast_summary is not None and not forecast_summary.empty:
+        total_forecast = forecast_summary["Forecast"].sum() if "Forecast" in forecast_summary.columns else 0
+        total_variance = forecast_summary["Variance"].sum() if "Variance" in forecast_summary.columns else 0
+        if total_forecast != 0:
+            total_variance_pct = total_variance / total_forecast * 100
+            if total_variance_pct < -10:
+                flags.append(f"Actual performance is {total_variance_pct:.2f}% below forecast.")
 
     return flags
 
 
-def generate_ai_commentary(pnl_df, kpi_df, bs_df, profile, anomaly_flags=None, ar_summary=None, ap_summary=None):
+def generate_ai_commentary(
+    pnl_df,
+    kpi_df,
+    bs_df,
+    profile,
+    anomaly_flags=None,
+    ar_summary=None,
+    ap_summary=None,
+    budget_summary=None,
+    forecast_summary=None,
+):
     try:
         client = OpenAI()
         model_name = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
@@ -642,19 +756,19 @@ def generate_ai_commentary(pnl_df, kpi_df, bs_df, profile, anomaly_flags=None, a
 
         ar_text = "No AR ageing data available."
         if ar_summary is not None:
-            ar_text = (
-                f"Total AR: {ar_summary['total']:.2f}\n"
-                f"Overdue AR: {ar_summary['overdue']:.2f}\n"
-                f"Overdue AR %: {ar_summary['overdue_pct']:.2f}%"
-            )
+            ar_text = f"Total AR: {ar_summary['total']:.2f}, Overdue AR %: {ar_summary['overdue_pct']:.2f}%"
 
         ap_text = "No AP ageing data available."
         if ap_summary is not None:
-            ap_text = (
-                f"Total AP: {ap_summary['total']:.2f}\n"
-                f"Overdue AP: {ap_summary['overdue']:.2f}\n"
-                f"Overdue AP %: {ap_summary['overdue_pct']:.2f}%"
-            )
+            ap_text = f"Total AP: {ap_summary['total']:.2f}, Overdue AP %: {ap_summary['overdue_pct']:.2f}%"
+
+        budget_text = "No budget data available."
+        if budget_summary is not None and not budget_summary.empty:
+            budget_text = budget_summary.to_string(index=False)[:2000]
+
+        forecast_text = "No forecast data available."
+        if forecast_summary is not None and not forecast_summary.empty:
+            forecast_text = forecast_summary.to_string(index=False)[:2000]
 
         company_name = profile.get("Company Name", "Unknown Company")
         industry = profile.get("Industry", "Unknown Industry")
@@ -689,11 +803,17 @@ KPIs:
 Consolidated Balance Sheet:
 {bs_summary}
 
-AR Ageing Summary:
+AR Summary:
 {ar_text}
 
-AP Ageing Summary:
+AP Summary:
 {ap_text}
+
+Budget vs Actual:
+{budget_text}
+
+Forecast vs Actual:
+{forecast_text}
 
 Write in this format:
 
@@ -729,9 +849,7 @@ def prepare_data(gl_file, mapping_file, kpi_file=None, latest_bs_file=None):
     kpi_master = pd.read_excel(kpi_file) if kpi_file is not None else None
     latest_bs = pd.read_excel(latest_bs_file) if latest_bs_file is not None else None
 
-    gl, coa, kpi_master, latest_bs = standardize_key_columns(
-        gl, coa, kpi_master, latest_bs
-    )
+    gl, coa, kpi_master, latest_bs = standardize_key_columns(gl, coa, kpi_master, latest_bs)
 
     validate_required_columns(gl, ["Account code", "Debit", "Credit", "Branch"], "GL report")
     validate_required_columns(coa, ["Account code", "Reporting Group", "Reporting Subgroup", "Statement"], "COA mapping")
@@ -832,7 +950,8 @@ for key in [
     "consolidated_pnl", "consolidated_bs", "consolidated_kpis", "branch_outputs",
     "branch_summary", "detected_branches", "validation_passed", "company_profile",
     "bs_disclaimer", "ai_commentary", "prior_pnl", "prior_bs", "prior_kpis",
-    "save_run_preference", "anomaly_flags", "ar_df", "ap_df", "ar_summary", "ap_summary"
+    "save_run_preference", "anomaly_flags", "ar_df", "ap_df", "ar_summary", "ap_summary",
+    "budget_df", "forecast_df", "budget_compare", "forecast_compare", "budget_summary", "forecast_summary"
 ]:
     if key not in st.session_state:
         st.session_state[key] = None
@@ -848,7 +967,7 @@ if st.session_state["save_run_preference"] is None:
 # Header / tabs
 # ----------------------------
 st.title("AI CFO Copilot")
-st.caption("Automated branch-wise P&L, consolidated balance sheet, KPI packs, dashboards, working capital, memory, and AI commentary")
+st.caption("Automated branch-wise P&L, consolidated balance sheet, KPI packs, dashboards, working capital, budget, forecast, memory, and AI commentary")
 
 tabs = st.tabs(
     [
@@ -860,6 +979,8 @@ tabs = st.tabs(
         "Reports",
         "KPIs",
         "Working Capital",
+        "Budget vs Actual",
+        "Forecast vs Actual",
         "AI Insights",
         "Anomalies",
         "Issues",
@@ -876,6 +997,8 @@ tabs = st.tabs(
     tab_reports,
     tab_kpis,
     tab_working_capital,
+    tab_budget,
+    tab_forecast,
     tab_ai,
     tab_anomalies,
     tab_issues,
@@ -986,9 +1109,11 @@ with tab_upload:
     with c1:
         gl_file = st.file_uploader("Current GL Report", type=["xlsx"])
         mapping_file = st.file_uploader("COA Mapping", type=["xlsx"])
+        budget_file = st.file_uploader("Budget Data (Optional)", type=["xlsx"])
     with c2:
         kpi_file = st.file_uploader("KPI Master (Optional)", type=["xlsx"])
         latest_bs_file = st.file_uploader("Latest Previous Balance Sheet (Optional)", type=["xlsx"])
+        forecast_file = st.file_uploader("Forecast Data (Optional)", type=["xlsx"])
     with c3:
         ar_file = st.file_uploader("AR Ageing (Optional)", type=["xlsx"])
         ap_file = st.file_uploader("AP Ageing (Optional)", type=["xlsx"])
@@ -996,8 +1121,7 @@ with tab_upload:
     st.info(
         "GL required columns: Account code, Debit, Credit, Branch. Optional: Net, Date, Description.\n\n"
         "COA mapping required columns: Account code, Reporting Group, Reporting Subgroup, Statement. Recommended: Sign Convention.\n\n"
-        "KPI master is optional.\n\n"
-        "Latest Previous Balance Sheet is optional. Required columns if uploaded: Reporting Group, Reporting Subgroup, Balance.\n\n"
+        "Budget / Forecast required columns: Month, Branch, Reporting Group, Amount.\n\n"
         "AR/AP are optional. Minimum recommended columns: Party Name (or Customer/Supplier), Outstanding Amount, Due Date, Branch."
     )
 
@@ -1056,6 +1180,17 @@ with tab_upload:
                 ar_summary = build_ageing_summary(ar_df, "AR") if ar_df is not None else None
                 ap_summary = build_ageing_summary(ap_df, "AP") if ap_df is not None else None
 
+                budget_df = normalize_plan_df(pd.read_excel(budget_file), "Budget Data") if budget_file is not None else None
+                forecast_df = normalize_plan_df(pd.read_excel(forecast_file), "Forecast Data") if forecast_file is not None else None
+
+                actuals_df = build_actuals_by_branch_reporting_group(pnl_mapped)
+
+                budget_compare = compare_plan_vs_actual(actuals_df, budget_df, "Budget") if budget_df is not None else None
+                forecast_compare = compare_plan_vs_actual(actuals_df, forecast_df, "Forecast") if forecast_df is not None else None
+
+                budget_summary = summarize_plan_vs_actual(budget_compare, "Budget") if budget_compare is not None else None
+                forecast_summary = summarize_plan_vs_actual(forecast_compare, "Forecast") if forecast_compare is not None else None
+
                 st.session_state["gl"] = gl
                 st.session_state["coa"] = coa
                 st.session_state["kpi_master"] = kpi_master
@@ -1077,6 +1212,12 @@ with tab_upload:
                 st.session_state["ap_df"] = ap_df
                 st.session_state["ar_summary"] = ar_summary
                 st.session_state["ap_summary"] = ap_summary
+                st.session_state["budget_df"] = budget_df
+                st.session_state["forecast_df"] = forecast_df
+                st.session_state["budget_compare"] = budget_compare
+                st.session_state["forecast_compare"] = forecast_compare
+                st.session_state["budget_summary"] = budget_summary
+                st.session_state["forecast_summary"] = forecast_summary
 
                 if st.session_state["save_run_preference"]:
                     save_run_to_history(
@@ -1094,6 +1235,8 @@ with tab_upload:
                     prior_kpis=prior_kpis,
                     ar_summary=ar_summary,
                     ap_summary=ap_summary,
+                    budget_summary=budget_summary,
+                    forecast_summary=forecast_summary,
                 ) if consolidated_kpis is not None else []
                 st.session_state["anomaly_flags"] = anomaly_flags
 
@@ -1314,6 +1457,20 @@ with tab_dashboard:
             st.write("**Branch KPI Table**")
             st.dataframe(style_dataframe(branch_dashboard_df), use_container_width=True)
 
+        if st.session_state["budget_summary"] is not None and not st.session_state["budget_summary"].empty:
+            st.markdown("### Budget vs Actual Overview")
+            st.bar_chart(
+                st.session_state["budget_summary"]
+                .set_index("Reporting Group")[["Actual", "Budget"]]
+            )
+
+        if st.session_state["forecast_summary"] is not None and not st.session_state["forecast_summary"].empty:
+            st.markdown("### Forecast vs Actual Overview")
+            st.bar_chart(
+                st.session_state["forecast_summary"]
+                .set_index("Reporting Group")[["Actual", "Forecast"]]
+            )
+
         if st.session_state["ar_summary"] is not None or st.session_state["ap_summary"] is not None:
             st.markdown("### Working Capital Charts")
             c3, c4 = st.columns(2)
@@ -1457,6 +1614,44 @@ with tab_working_capital:
 
 
 # ----------------------------
+# Budget vs Actual Tab
+# ----------------------------
+with tab_budget:
+    st.subheader("Budget vs Actual")
+
+    if st.session_state["budget_compare"] is None or st.session_state["budget_compare"].empty:
+        st.info("Upload Budget Data in the Upload tab to use this section.")
+    else:
+        st.markdown("### Summary by Reporting Group")
+        st.dataframe(style_dataframe(st.session_state["budget_summary"]), use_container_width=True)
+
+        st.markdown("### Chart")
+        st.bar_chart(st.session_state["budget_summary"].set_index("Reporting Group")[["Actual", "Budget"]])
+
+        st.markdown("### Detailed Branch-Level Comparison")
+        st.dataframe(style_dataframe(st.session_state["budget_compare"]), use_container_width=True)
+
+
+# ----------------------------
+# Forecast vs Actual Tab
+# ----------------------------
+with tab_forecast:
+    st.subheader("Forecast vs Actual")
+
+    if st.session_state["forecast_compare"] is None or st.session_state["forecast_compare"].empty:
+        st.info("Upload Forecast Data in the Upload tab to use this section.")
+    else:
+        st.markdown("### Summary by Reporting Group")
+        st.dataframe(style_dataframe(st.session_state["forecast_summary"]), use_container_width=True)
+
+        st.markdown("### Chart")
+        st.bar_chart(st.session_state["forecast_summary"].set_index("Reporting Group")[["Actual", "Forecast"]])
+
+        st.markdown("### Detailed Branch-Level Comparison")
+        st.dataframe(style_dataframe(st.session_state["forecast_compare"]), use_container_width=True)
+
+
+# ----------------------------
 # AI Insights Tab
 # ----------------------------
 with tab_ai:
@@ -1467,7 +1662,7 @@ with tab_ai:
     elif not st.session_state["validation_passed"]:
         st.error("Resolve unmapped accounts before generating AI insights.")
     else:
-        st.info("Generate CFO-style commentary based on the current outputs, company profile, anomaly flags, and working capital.")
+        st.info("Generate CFO-style commentary based on current outputs, working capital, budget, forecast, and anomaly flags.")
 
         if st.button("Generate AI Insights", use_container_width=True):
             with st.spinner("Analyzing financials..."):
@@ -1479,6 +1674,8 @@ with tab_ai:
                     anomaly_flags=st.session_state.get("anomaly_flags", []),
                     ar_summary=st.session_state.get("ar_summary"),
                     ap_summary=st.session_state.get("ap_summary"),
+                    budget_summary=st.session_state.get("budget_summary"),
+                    forecast_summary=st.session_state.get("forecast_summary"),
                 )
                 st.session_state["ai_commentary"] = commentary
 
@@ -1617,6 +1814,29 @@ with tab_download:
                     use_container_width=True,
                 )
 
+        st.markdown("### Budget / Forecast Downloads")
+        bf1, bf2 = st.columns(2)
+        with bf1:
+            if st.session_state["budget_compare"] is not None and not st.session_state["budget_compare"].empty:
+                budget_bytes = dataframe_to_excel_bytes({"Budget vs Actual": st.session_state["budget_compare"]})
+                st.download_button(
+                    label="Download Budget vs Actual",
+                    data=budget_bytes,
+                    file_name="budget_vs_actual.xlsx",
+                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                    use_container_width=True,
+                )
+        with bf2:
+            if st.session_state["forecast_compare"] is not None and not st.session_state["forecast_compare"].empty:
+                forecast_bytes = dataframe_to_excel_bytes({"Forecast vs Actual": st.session_state["forecast_compare"]})
+                st.download_button(
+                    label="Download Forecast vs Actual",
+                    data=forecast_bytes,
+                    file_name="forecast_vs_actual.xlsx",
+                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                    use_container_width=True,
+                )
+
         st.markdown("### Data Issues")
 
         if not st.session_state["unmapped"].empty:
@@ -1669,6 +1889,8 @@ with tab_download:
             unmapped=st.session_state["unmapped"],
             ar_df=st.session_state["ar_df"],
             ap_df=st.session_state["ap_df"],
+            budget_compare=st.session_state["budget_compare"],
+            forecast_compare=st.session_state["forecast_compare"],
         )
 
         st.download_button(
