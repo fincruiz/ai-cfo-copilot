@@ -1111,352 +1111,239 @@ if st.session_state["save_run_preference"] is None:
 
 
 # ----------------------------
-# Header / tabs
+# Header / top-level tabs
 # ----------------------------
 st.title("AI CFO Copilot")
-st.caption("Automated branch-wise P&L, consolidated balance sheet, KPI packs, dashboards, working capital, budget, forecast, PY comparison, benchmarking, monthly trends, memory, and AI commentary")
+st.caption("Automated branch-wise P&L, KPI packs, dashboarding, working capital, budget/forecast comparison, and AI insights")
 
-tabs = st.tabs([
-    "Profile",
-    "Upload",
-    "History & Prior Period",
-    "Validation",
-    "Executive Summary",
-    "Charts & Dashboard",
-    "Monthly Trends",
-    "Reports",
-    "KPIs",
+main_tabs = st.tabs([
+    "Setup",
+    "Dashboard",
+    "Financials",
     "Working Capital",
-    "Budget vs Actual",
-    "Forecast vs Actual",
-    "AI Insights",
-    "Anomalies",
-    "Issues",
-    "Download",
+    "Insights",
+    "Downloads",
 ])
 
-(
-    tab_profile,
-    tab_upload,
-    tab_history,
-    tab_validation,
-    tab_exec,
-    tab_dashboard,
-    tab_monthly,
-    tab_reports,
-    tab_kpis,
-    tab_working_capital,
-    tab_budget,
-    tab_forecast,
-    tab_ai,
-    tab_anomalies,
-    tab_issues,
-    tab_download,
-) = tabs
+tab_setup, tab_dashboard, tab_financials, tab_working_capital, tab_insights, tab_downloads = main_tabs
 
 
 # ----------------------------
-# Profile
+# SETUP TAB
 # ----------------------------
-with tab_profile:
-    st.subheader("Company Profile")
-    c1, c2 = st.columns(2)
+with tab_setup:
+    st.subheader("Setup")
 
-    with c1:
-        company_name = st.text_input("Company Name *")
-        industry = st.selectbox("Industry", ["Select Industry", "Manufacturing", "Wholesale / Distribution", "Retail", "Professional Services", "Construction", "Logistics", "Hospitality", "Healthcare", "Technology", "Other"])
-        country = st.selectbox("Country", ["Select Country", "Australia", "India", "United States", "United Kingdom", "Canada", "New Zealand", "Other"])
-        state_region = st.text_input("State / Region")
-        financial_year = st.text_input("Financial Year", placeholder="Example: FY2025 or 2024-25")
+    with st.expander("Company Profile", expanded=True):
+        c1, c2 = st.columns(2)
 
-    with c2:
-        currency = st.selectbox("Currency", ["Select Currency", "AUD", "INR", "USD", "GBP", "CAD", "NZD", "Other"])
-        tax_identifier = st.text_input("Tax Identifier / ABN / GSTIN (Optional)")
-        reporting_period = st.selectbox("Reporting Period", ["Monthly", "Quarterly", "Annual"])
-        benchmark_group = st.text_input("Benchmark Group (Optional)")
+        with c1:
+            company_name = st.text_input("Company Name *")
+            industry = st.selectbox("Industry", ["Select Industry", "Manufacturing", "Wholesale / Distribution", "Retail", "Professional Services", "Construction", "Logistics", "Hospitality", "Healthcare", "Technology", "Other"])
+            country = st.selectbox("Country", ["Select Country", "Australia", "India", "United States", "United Kingdom", "Canada", "New Zealand", "Other"])
+            state_region = st.text_input("State / Region")
+            financial_year = st.text_input("Financial Year", placeholder="Example: FY2025 or 2024-25")
 
-    business_notes = st.text_area("Business Notes (Optional)")
-    save_run_preference = st.checkbox("Save this run for future comparison", value=st.session_state["save_run_preference"])
+        with c2:
+            currency = st.selectbox("Currency", ["Select Currency", "AUD", "INR", "USD", "GBP", "CAD", "NZD", "Other"])
+            tax_identifier = st.text_input("Tax Identifier / ABN / GSTIN (Optional)")
+            reporting_period = st.selectbox("Reporting Period", ["Monthly", "Quarterly", "Annual"])
+            benchmark_group = st.text_input("Benchmark Group (Optional)")
 
-    if st.button("Save Company Profile", use_container_width=True):
-        if not company_name.strip():
-            st.error("Company Name is mandatory.")
-        elif industry == "Select Industry" or country == "Select Country":
-            st.error("Please select at least Industry and Country.")
-        else:
-            st.session_state["company_profile"] = {
-                "Company Name": company_name.strip(),
-                "Industry": industry,
-                "Country": country,
-                "State / Region": state_region,
-                "Financial Year": financial_year,
-                "Currency": currency if currency != "Select Currency" else "",
-                "Tax Identifier": tax_identifier,
-                "Reporting Period": reporting_period,
-                "Benchmark Group": benchmark_group,
-                "Business Notes": business_notes,
-            }
-            st.session_state["save_run_preference"] = save_run_preference
-            st.success("Company profile saved successfully.")
+        business_notes = st.text_area("Business Notes (Optional)")
+        save_run_preference = st.checkbox("Save this run for future comparison", value=st.session_state["save_run_preference"])
 
-    if st.session_state["company_profile"]:
-        profile_df = pd.DataFrame(st.session_state["company_profile"].items(), columns=["Field", "Value"])
-        st.dataframe(style_dataframe(profile_df), use_container_width=True)
-
-
-# ----------------------------
-# Upload
-# ----------------------------
-with tab_upload:
-    st.subheader("Upload Current Period Source Files")
-
-    c1, c2, c3 = st.columns(3)
-    with c1:
-        gl_file = st.file_uploader("Current GL Report", type=["xlsx"])
-        mapping_file = st.file_uploader("COA Mapping", type=["xlsx"])
-        budget_file = st.file_uploader("Budget Data (Optional)", type=["xlsx"])
-    with c2:
-        kpi_file = st.file_uploader("KPI Master (Optional)", type=["xlsx"])
-        latest_bs_file = st.file_uploader("Latest Previous Balance Sheet (Optional)", type=["xlsx"])
-        forecast_file = st.file_uploader("Forecast Data (Optional)", type=["xlsx"])
-    with c3:
-        ar_file = st.file_uploader("AR Ageing (Optional)", type=["xlsx"])
-        ap_file = st.file_uploader("AP Ageing (Optional)", type=["xlsx"])
-        benchmark_file = st.file_uploader("Industry Benchmark File (Optional)", type=["xlsx"])
-
-    st.markdown("### Required File Structures")
-
-    info1, info2 = st.columns(2)
-
-    with info1:
-        with st.expander("Current GL Report"):
-            show_required_columns(
-                "Current GL Report",
-                required_cols=["Account code", "Debit", "Credit", "Branch"],
-                optional_cols=["Net", "Date", "Description"]
-            )
-
-        with st.expander("COA Mapping"):
-            show_required_columns(
-                "COA Mapping",
-                required_cols=["Account code", "Reporting Group", "Reporting Subgroup", "Statement"],
-                optional_cols=["Sign Convention"]
-            )
-
-        with st.expander("KPI Master"):
-            show_required_columns(
-                "KPI Master",
-                required_cols=[
-                    "KPI Name",
-                    "Formula Type",
-                    "Numerator Group",
-                    "Denominator Group",
-                    "Output Type",
-                    "Display Order"
-                ],
-                optional_cols=[]
-            )
-
-        with st.expander("Latest Previous Balance Sheet"):
-            show_required_columns(
-                "Latest Previous Balance Sheet",
-                required_cols=["Reporting Group", "Reporting Subgroup", "Balance"],
-                optional_cols=[]
-            )
-
-        with st.expander("Budget Data"):
-            show_required_columns(
-                "Budget Data",
-                required_cols=["Month", "Branch", "Reporting Group", "Amount"],
-                optional_cols=[]
-            )
-
-    with info2:
-        with st.expander("Forecast Data"):
-            show_required_columns(
-                "Forecast Data",
-                required_cols=["Month", "Branch", "Reporting Group", "Amount"],
-                optional_cols=[]
-            )
-
-        with st.expander("AR Ageing"):
-            show_required_columns(
-                "AR Ageing",
-                required_cols=["Party Name", "Outstanding Amount"],
-                optional_cols=["Document Number", "Document Date", "Due Date", "Branch", "Age Bucket"]
-            )
-
-        with st.expander("AP Ageing"):
-            show_required_columns(
-                "AP Ageing",
-                required_cols=["Party Name", "Outstanding Amount"],
-                optional_cols=["Document Number", "Document Date", "Due Date", "Branch", "Age Bucket"]
-            )
-
-        with st.expander("Industry Benchmark File"):
-            show_required_columns(
-                "Industry Benchmark File",
-                required_cols=["Metric", "Benchmark Value"],
-                optional_cols=[]
-            )
-
-    if st.button("Validate & Load Current Files", use_container_width=True):
-        try:
-            profile = st.session_state["company_profile"]
-            if not profile or not profile.get("Company Name", "").strip():
-                st.error("Please save Company Profile first. Company Name is mandatory.")
-            elif not (gl_file and mapping_file):
-                st.error("Please upload Current GL Report and COA Mapping.")
+        if st.button("Save Company Profile", use_container_width=True):
+            if not company_name.strip():
+                st.error("Company Name is mandatory.")
+            elif industry == "Select Industry" or country == "Select Country":
+                st.error("Please select at least Industry and Country.")
             else:
-                gl, coa, kpi_master, latest_bs, mapped, pnl_mapped, bs_mapped, unmapped = prepare_data(
-                    gl_file, mapping_file, kpi_file, latest_bs_file
-                )
+                st.session_state["company_profile"] = {
+                    "Company Name": company_name.strip(),
+                    "Industry": industry,
+                    "Country": country,
+                    "State / Region": state_region,
+                    "Financial Year": financial_year,
+                    "Currency": currency if currency != "Select Currency" else "",
+                    "Tax Identifier": tax_identifier,
+                    "Reporting Period": reporting_period,
+                    "Benchmark Group": benchmark_group,
+                    "Business Notes": business_notes,
+                }
+                st.session_state["save_run_preference"] = save_run_preference
+                st.success("Company profile saved successfully.")
 
-                consolidated_pnl = build_pnl(pnl_mapped)
-                current_bs = build_balance_sheet_from_gl(bs_mapped)
+        if st.session_state["company_profile"]:
+            profile_df = pd.DataFrame(st.session_state["company_profile"].items(), columns=["Field", "Value"])
+            st.dataframe(style_dataframe(profile_df), use_container_width=True)
 
-                bs_disclaimer = None
-                if latest_bs is not None:
-                    consolidated_bs = combine_opening_and_current_bs(latest_bs, current_bs)
+    with st.expander("Current Period Uploads", expanded=True):
+        c1, c2, c3 = st.columns(3)
+        with c1:
+            gl_file = st.file_uploader("Current GL Report", type=["xlsx"])
+            mapping_file = st.file_uploader("COA Mapping", type=["xlsx"])
+            budget_file = st.file_uploader("Budget Data (Optional)", type=["xlsx"])
+        with c2:
+            kpi_file = st.file_uploader("KPI Master (Optional)", type=["xlsx"])
+            latest_bs_file = st.file_uploader("Latest Previous Balance Sheet (Optional)", type=["xlsx"])
+            forecast_file = st.file_uploader("Forecast Data (Optional)", type=["xlsx"])
+        with c3:
+            ar_file = st.file_uploader("AR Ageing (Optional)", type=["xlsx"])
+            ap_file = st.file_uploader("AP Ageing (Optional)", type=["xlsx"])
+            benchmark_file = st.file_uploader("Industry Benchmark File (Optional)", type=["xlsx"])
+
+        if st.button("Validate & Load Current Files", use_container_width=True):
+            try:
+                profile = st.session_state["company_profile"]
+                if not profile or not profile.get("Company Name", "").strip():
+                    st.error("Please save Company Profile first. Company Name is mandatory.")
+                elif not (gl_file and mapping_file):
+                    st.error("Please upload Current GL Report and COA Mapping.")
                 else:
-                    consolidated_bs = current_bs
-                    bs_disclaimer = "Balance Sheet may not fully match because opening balances were not provided."
-
-                consolidated_kpis = build_kpis(pnl_mapped, kpi_master) if kpi_master is not None else None
-
-                detected_branches = sorted(pnl_mapped["Branch"].dropna().unique().tolist())
-
-                branch_outputs = {}
-                branch_summary_rows = []
-                for branch in detected_branches:
-                    branch_df = pnl_mapped[pnl_mapped["Branch"] == branch].copy()
-                    branch_pnl = build_pnl(branch_df)
-                    branch_kpis = build_kpis(branch_df, kpi_master) if kpi_master is not None else None
-                    branch_outputs[branch] = {"pnl": branch_pnl, "kpis": branch_kpis}
-
-                    if branch_kpis is not None:
-                        row = {"Branch": branch}
-                        for _, r in branch_kpis.iterrows():
-                            row[r["KPI"]] = r["Display Value"]
-                        branch_summary_rows.append(row)
-
-                branch_summary = pd.DataFrame(branch_summary_rows) if branch_summary_rows else pd.DataFrame()
-
-                ar_df = normalize_ageing_df(pd.read_excel(ar_file), "AR") if ar_file is not None else None
-                ap_df = normalize_ageing_df(pd.read_excel(ap_file), "AP") if ap_file is not None else None
-                ar_summary = build_ageing_summary(ar_df, "AR") if ar_df is not None else None
-                ap_summary = build_ageing_summary(ap_df, "AP") if ap_df is not None else None
-
-                budget_df = normalize_plan_df(pd.read_excel(budget_file), "Budget Data") if budget_file is not None else None
-                forecast_df = normalize_plan_df(pd.read_excel(forecast_file), "Forecast Data") if forecast_file is not None else None
-                benchmark_df = normalize_benchmark_df(pd.read_excel(benchmark_file)) if benchmark_file is not None else None
-
-                actuals_df = build_actuals_by_branch_reporting_group(pnl_mapped)
-                budget_compare = compare_plan_vs_actual(actuals_df, budget_df, "Budget") if budget_df is not None else None
-                forecast_compare = compare_plan_vs_actual(actuals_df, forecast_df, "Forecast") if forecast_df is not None else None
-                budget_summary = summarize_plan_vs_actual(budget_compare, "Budget") if budget_compare is not None else None
-                forecast_summary = summarize_plan_vs_actual(forecast_compare, "Forecast") if forecast_compare is not None else None
-
-                py_compare = build_py_comparison(consolidated_kpis, st.session_state.get("prior_kpis"))
-                benchmark_compare = build_benchmark_comparison(consolidated_kpis, benchmark_df, ar_summary, ap_summary)
-
-                monthly_actuals = build_monthly_actuals(pnl_mapped)
-                monthly_branch_actuals = build_monthly_branch_actuals(pnl_mapped)
-
-                executive_summary_df = build_executive_summary(
-                    consolidated_kpis,
-                    ar_summary=ar_summary,
-                    ap_summary=ap_summary,
-                    budget_summary=budget_summary,
-                    forecast_summary=forecast_summary,
-                    benchmark_compare=benchmark_compare,
-                )
-
-                st.session_state["gl"] = gl
-                st.session_state["coa"] = coa
-                st.session_state["kpi_master"] = kpi_master
-                st.session_state["latest_bs"] = latest_bs
-                st.session_state["mapped"] = mapped
-                st.session_state["pnl_mapped"] = pnl_mapped
-                st.session_state["bs_mapped"] = bs_mapped
-                st.session_state["unmapped"] = unmapped
-                st.session_state["consolidated_pnl"] = consolidated_pnl
-                st.session_state["consolidated_bs"] = consolidated_bs
-                st.session_state["consolidated_kpis"] = consolidated_kpis
-                st.session_state["branch_outputs"] = branch_outputs
-                st.session_state["branch_summary"] = branch_summary
-                st.session_state["detected_branches"] = detected_branches
-                st.session_state["validation_passed"] = unmapped.empty
-                st.session_state["bs_disclaimer"] = bs_disclaimer
-                st.session_state["ai_commentary"] = None
-                st.session_state["ar_df"] = ar_df
-                st.session_state["ap_df"] = ap_df
-                st.session_state["ar_summary"] = ar_summary
-                st.session_state["ap_summary"] = ap_summary
-                st.session_state["budget_df"] = budget_df
-                st.session_state["forecast_df"] = forecast_df
-                st.session_state["benchmark_df"] = benchmark_df
-                st.session_state["budget_compare"] = budget_compare
-                st.session_state["forecast_compare"] = forecast_compare
-                st.session_state["budget_summary"] = budget_summary
-                st.session_state["forecast_summary"] = forecast_summary
-                st.session_state["py_compare"] = py_compare
-                st.session_state["benchmark_compare"] = benchmark_compare
-                st.session_state["monthly_actuals"] = monthly_actuals
-                st.session_state["monthly_branch_actuals"] = monthly_branch_actuals
-                st.session_state["executive_summary_df"] = executive_summary_df
-
-                if st.session_state["save_run_preference"]:
-                    save_run_to_history(
-                        st.session_state["company_profile"],
-                        consolidated_pnl,
-                        consolidated_bs,
-                        consolidated_kpis,
-                        branch_summary,
+                    gl, coa, kpi_master, latest_bs, mapped, pnl_mapped, bs_mapped, unmapped = prepare_data(
+                        gl_file, mapping_file, kpi_file, latest_bs_file
                     )
 
-                st.session_state["anomaly_flags"] = detect_anomalies(
-                    consolidated_kpis,
-                    branch_outputs,
-                    prior_kpis=st.session_state.get("prior_kpis"),
-                    ar_summary=ar_summary,
-                    ap_summary=ap_summary,
-                    budget_summary=budget_summary,
-                    forecast_summary=forecast_summary,
-                ) if consolidated_kpis is not None else []
+                    consolidated_pnl = build_pnl(pnl_mapped)
+                    current_bs = build_balance_sheet_from_gl(bs_mapped)
 
-                if unmapped.empty:
-                    st.success("Files validated and loaded successfully.")
-                else:
-                    st.warning("Files loaded, but unmapped GL rows were found.")
+                    bs_disclaimer = None
+                    if latest_bs is not None:
+                        consolidated_bs = combine_opening_and_current_bs(latest_bs, current_bs)
+                    else:
+                        consolidated_bs = current_bs
+                        bs_disclaimer = "Balance Sheet may not fully match because opening balances were not provided."
 
-        except Exception as e:
-            st.error(f"Error: {e}")
+                    consolidated_kpis = build_kpis(pnl_mapped, kpi_master) if kpi_master is not None else None
 
+                    detected_branches = sorted(pnl_mapped["Branch"].dropna().unique().tolist())
 
-# ----------------------------
-# History / Prior Period
-# ----------------------------
-with tab_history:
-    st.subheader("History / Prior Period Inputs")
+                    branch_outputs = {}
+                    branch_summary_rows = []
+                    for branch in detected_branches:
+                        branch_df = pnl_mapped[pnl_mapped["Branch"] == branch].copy()
+                        branch_pnl = build_pnl(branch_df)
+                        branch_kpis = build_kpis(branch_df, kpi_master) if kpi_master is not None else None
+                        branch_outputs[branch] = {"pnl": branch_pnl, "kpis": branch_kpis}
 
-    company_name_for_history = st.session_state["company_profile"].get("Company Name", "").strip()
+                        if branch_kpis is not None:
+                            row = {"Branch": branch}
+                            for _, r in branch_kpis.iterrows():
+                                row[r["KPI"]] = r["Display Value"]
+                            branch_summary_rows.append(row)
 
-    if not company_name_for_history:
-        st.warning("Please save Company Profile first.")
-    else:
-        saved_runs = list_saved_company_runs(company_name_for_history)
+                    branch_summary = pd.DataFrame(branch_summary_rows) if branch_summary_rows else pd.DataFrame()
 
-        if saved_runs:
-            selected_run = st.selectbox("Select Saved Run", saved_runs)
-            if st.button("Restore Selected Run", use_container_width=True):
-                restored = restore_run_from_history(company_name_for_history, selected_run)
-                st.session_state["prior_pnl"] = restored.get("prior_pnl")
-                st.session_state["prior_bs"] = restored.get("prior_bs")
-                st.session_state["prior_kpis"] = restored.get("prior_kpis")
-                st.success(f"Restored: {selected_run}")
+                    ar_df = normalize_ageing_df(pd.read_excel(ar_file), "AR") if ar_file is not None else None
+                    ap_df = normalize_ageing_df(pd.read_excel(ap_file), "AP") if ap_file is not None else None
+                    ar_summary = build_ageing_summary(ar_df, "AR") if ar_df is not None else None
+                    ap_summary = build_ageing_summary(ap_df, "AP") if ap_df is not None else None
+
+                    budget_df = normalize_plan_df(pd.read_excel(budget_file), "Budget Data") if budget_file is not None else None
+                    forecast_df = normalize_plan_df(pd.read_excel(forecast_file), "Forecast Data") if forecast_file is not None else None
+                    benchmark_df = normalize_benchmark_df(pd.read_excel(benchmark_file)) if benchmark_file is not None else None
+
+                    actuals_df = build_actuals_by_branch_reporting_group(pnl_mapped)
+                    budget_compare = compare_plan_vs_actual(actuals_df, budget_df, "Budget") if budget_df is not None else None
+                    forecast_compare = compare_plan_vs_actual(actuals_df, forecast_df, "Forecast") if forecast_df is not None else None
+                    budget_summary = summarize_plan_vs_actual(budget_compare, "Budget") if budget_compare is not None else None
+                    forecast_summary = summarize_plan_vs_actual(forecast_compare, "Forecast") if forecast_compare is not None else None
+
+                    py_compare = build_py_comparison(consolidated_kpis, st.session_state.get("prior_kpis"))
+                    benchmark_compare = build_benchmark_comparison(consolidated_kpis, benchmark_df, ar_summary, ap_summary)
+
+                    monthly_actuals = build_monthly_actuals(pnl_mapped)
+                    monthly_branch_actuals = build_monthly_branch_actuals(pnl_mapped)
+
+                    executive_summary_df = build_executive_summary(
+                        consolidated_kpis,
+                        ar_summary=ar_summary,
+                        ap_summary=ap_summary,
+                        budget_summary=budget_summary,
+                        forecast_summary=forecast_summary,
+                        benchmark_compare=benchmark_compare,
+                    )
+
+                    st.session_state["gl"] = gl
+                    st.session_state["coa"] = coa
+                    st.session_state["kpi_master"] = kpi_master
+                    st.session_state["latest_bs"] = latest_bs
+                    st.session_state["mapped"] = mapped
+                    st.session_state["pnl_mapped"] = pnl_mapped
+                    st.session_state["bs_mapped"] = bs_mapped
+                    st.session_state["unmapped"] = unmapped
+                    st.session_state["consolidated_pnl"] = consolidated_pnl
+                    st.session_state["consolidated_bs"] = consolidated_bs
+                    st.session_state["consolidated_kpis"] = consolidated_kpis
+                    st.session_state["branch_outputs"] = branch_outputs
+                    st.session_state["branch_summary"] = branch_summary
+                    st.session_state["detected_branches"] = detected_branches
+                    st.session_state["validation_passed"] = unmapped.empty
+                    st.session_state["bs_disclaimer"] = bs_disclaimer
+                    st.session_state["ai_commentary"] = None
+                    st.session_state["ar_df"] = ar_df
+                    st.session_state["ap_df"] = ap_df
+                    st.session_state["ar_summary"] = ar_summary
+                    st.session_state["ap_summary"] = ap_summary
+                    st.session_state["budget_df"] = budget_df
+                    st.session_state["forecast_df"] = forecast_df
+                    st.session_state["benchmark_df"] = benchmark_df
+                    st.session_state["budget_compare"] = budget_compare
+                    st.session_state["forecast_compare"] = forecast_compare
+                    st.session_state["budget_summary"] = budget_summary
+                    st.session_state["forecast_summary"] = forecast_summary
+                    st.session_state["py_compare"] = py_compare
+                    st.session_state["benchmark_compare"] = benchmark_compare
+                    st.session_state["monthly_actuals"] = monthly_actuals
+                    st.session_state["monthly_branch_actuals"] = monthly_branch_actuals
+                    st.session_state["executive_summary_df"] = executive_summary_df
+
+                    if st.session_state["save_run_preference"]:
+                        save_run_to_history(
+                            st.session_state["company_profile"],
+                            consolidated_pnl,
+                            consolidated_bs,
+                            consolidated_kpis,
+                            branch_summary,
+                        )
+
+                    st.session_state["anomaly_flags"] = detect_anomalies(
+                        consolidated_kpis,
+                        branch_outputs,
+                        prior_kpis=st.session_state.get("prior_kpis"),
+                        ar_summary=ar_summary,
+                        ap_summary=ap_summary,
+                        budget_summary=budget_summary,
+                        forecast_summary=forecast_summary,
+                    ) if consolidated_kpis is not None else []
+
+                    if unmapped.empty:
+                        st.success("Files validated and loaded successfully.")
+                    else:
+                        st.warning("Files loaded, but unmapped GL rows were found.")
+
+            except Exception as e:
+                st.error(f"Error: {e}")
+
+    with st.expander("Prior Period / Restore"):
+        company_name_for_history = st.session_state["company_profile"].get("Company Name", "").strip()
+
+        if not company_name_for_history:
+            st.warning("Please save Company Profile first.")
         else:
-            st.info("No saved history found for this company.")
+            saved_runs = list_saved_company_runs(company_name_for_history)
+
+            if saved_runs:
+                selected_run = st.selectbox("Select Saved Run", saved_runs)
+                if st.button("Restore Selected Run", use_container_width=True):
+                    restored = restore_run_from_history(company_name_for_history, selected_run)
+                    st.session_state["prior_pnl"] = restored.get("prior_pnl")
+                    st.session_state["prior_bs"] = restored.get("prior_bs")
+                    st.session_state["prior_kpis"] = restored.get("prior_kpis")
+                    st.success(f"Restored: {selected_run}")
+            else:
+                st.info("No saved history found for this company.")
 
         c1, c2 = st.columns(2)
         with c1:
@@ -1465,40 +1352,6 @@ with tab_history:
         with c2:
             prior_bs_file = st.file_uploader("Prior Period Balance Sheet (Optional)", type=["xlsx"])
             prior_kpi_file = st.file_uploader("Prior Period KPI Pack (Optional)", type=["xlsx"])
-
-        st.markdown("### Prior Period File Structures")
-
-        h1, h2 = st.columns(2)
-
-        with h1:
-            with st.expander("Prior Period GL Report"):
-                show_required_columns(
-                    "Prior Period GL Report",
-                    required_cols=["Account code", "Debit", "Credit", "Branch"],
-                    optional_cols=["Net", "Date", "Description"]
-                )
-
-            with st.expander("Prior Period P&L"):
-                show_required_columns(
-                    "Prior Period P&L",
-                    required_cols=["Reporting Group", "Reporting Subgroup", "Report Value"],
-                    optional_cols=[]
-                )
-
-        with h2:
-            with st.expander("Prior Period Balance Sheet"):
-                show_required_columns(
-                    "Prior Period Balance Sheet",
-                    required_cols=["Reporting Group", "Reporting Subgroup", "Balance"],
-                    optional_cols=[]
-                )
-
-            with st.expander("Prior Period KPI Pack"):
-                show_required_columns(
-                    "Prior Period KPI Pack",
-                    required_cols=["KPI", "Value"],
-                    optional_cols=["Display Value", "Output Type"]
-                )
 
         if st.button("Load Prior Period Inputs", use_container_width=True):
             try:
@@ -1535,83 +1388,63 @@ with tab_history:
             except Exception as e:
                 st.error(f"Error loading prior period data: {e}")
 
-
-# ----------------------------
-# Validation
-# ----------------------------
-with tab_validation:
-    st.subheader("Validation Summary")
-
-    if st.session_state["gl"] is None:
-        st.warning("No validated files loaded yet.")
-    else:
-        gl = st.session_state["gl"]
-        mapped = st.session_state["mapped"]
-        unmapped = st.session_state["unmapped"]
-        detected_branches = st.session_state["detected_branches"]
-
-        m1, m2, m3, m4 = st.columns(4)
-        m1.metric("GL Rows", len(gl))
-        m2.metric("Mapped Rows", len(mapped))
-        m3.metric("Unmapped Rows", len(unmapped))
-        m4.metric("Branches Found", len(detected_branches))
-
-        with st.expander("Preview Mapped Data"):
-            st.dataframe(style_dataframe(mapped.head(20)), use_container_width=True)
-
-        st.subheader("Unmapped GL Preview")
-        if unmapped.empty:
-            st.success("All GL rows mapped correctly.")
+    with st.expander("Validation Summary"):
+        if st.session_state["gl"] is None:
+            st.info("No validated files loaded yet.")
         else:
-            cols_to_show = [c for c in ["Account code", "Description", "Branch", "Debit", "Credit", "Net"] if c in unmapped.columns]
-            st.dataframe(style_dataframe(unmapped[cols_to_show]), use_container_width=True)
+            gl = st.session_state["gl"]
+            mapped = st.session_state["mapped"]
+            unmapped = st.session_state["unmapped"]
+            detected_branches = st.session_state["detected_branches"]
+
+            m1, m2, m3, m4 = st.columns(4)
+            m1.metric("GL Rows", len(gl))
+            m2.metric("Mapped Rows", len(mapped))
+            m3.metric("Unmapped Rows", len(unmapped))
+            m4.metric("Branches Found", len(detected_branches))
+
+            if not unmapped.empty:
+                cols_to_show = [c for c in ["Account code", "Description", "Branch", "Debit", "Credit", "Net"] if c in unmapped.columns]
+                st.dataframe(style_dataframe(unmapped[cols_to_show]), use_container_width=True)
+
+    with st.expander("Required Columns Guide"):
+        g1, g2 = st.columns(2)
+
+        with g1:
+            show_required_columns("Current GL Report", ["Account code", "Debit", "Credit", "Branch"], ["Net", "Date", "Description"])
+            show_required_columns("COA Mapping", ["Account code", "Reporting Group", "Reporting Subgroup", "Statement"], ["Sign Convention"])
+            show_required_columns("KPI Master", ["KPI Name", "Formula Type", "Numerator Group", "Denominator Group", "Output Type", "Display Order"], [])
+            show_required_columns("Latest Previous Balance Sheet", ["Reporting Group", "Reporting Subgroup", "Balance"], [])
+            show_required_columns("Budget Data", ["Month", "Branch", "Reporting Group", "Amount"], [])
+
+        with g2:
+            show_required_columns("Forecast Data", ["Month", "Branch", "Reporting Group", "Amount"], [])
+            show_required_columns("AR Ageing", ["Party Name", "Outstanding Amount"], ["Document Number", "Document Date", "Due Date", "Branch", "Age Bucket"])
+            show_required_columns("AP Ageing", ["Party Name", "Outstanding Amount"], ["Document Number", "Document Date", "Due Date", "Branch", "Age Bucket"])
+            show_required_columns("Industry Benchmark File", ["Metric", "Benchmark Value"], [])
+            show_required_columns("Prior Period GL Report", ["Account code", "Debit", "Credit", "Branch"], ["Net", "Date", "Description"])
+            show_required_columns("Prior KPI Pack", ["KPI", "Value"], ["Display Value", "Output Type"])
 
 
 # ----------------------------
-# Executive Summary
-# ----------------------------
-with tab_exec:
-    st.subheader("Executive Summary")
-
-    if st.session_state["executive_summary_df"] is None or st.session_state["executive_summary_df"].empty:
-        st.info("Load current files to generate executive summary.")
-    else:
-        summary_df = st.session_state["executive_summary_df"].copy()
-
-        c1, c2, c3 = st.columns(3)
-        with c1:
-            st.metric("Green", int((summary_df["Status"] == "Green").sum()))
-        with c2:
-            st.metric("Amber", int((summary_df["Status"] == "Amber").sum()))
-        with c3:
-            st.metric("Red", int((summary_df["Status"] == "Red").sum()))
-
-        st.dataframe(style_dataframe(summary_df), use_container_width=True)
-
-        st.markdown("### Management Focus Areas")
-        for _, row in summary_df.iterrows():
-            status = row["Status"]
-            metric = row["Metric"]
-            value = row["Current Value"]
-            if status == "Red":
-                st.error(f"{metric}: {value:.2f}")
-            elif status == "Amber":
-                st.warning(f"{metric}: {value:.2f}")
-            else:
-                st.success(f"{metric}: {value:.2f}")
-
-
-# ----------------------------
-# Charts & Dashboard
+# DASHBOARD TAB
 # ----------------------------
 with tab_dashboard:
-    st.subheader("Management Charts & Dashboard")
+    st.subheader("Dashboard")
 
     if st.session_state["mapped"] is None:
-        st.warning("Please validate and load files first.")
+        st.warning("Please complete setup and load files first.")
     elif not st.session_state["validation_passed"]:
-        st.error("Resolve unmapped GL rows before using charts.")
+        st.error("Resolve unmapped GL rows before using dashboard.")
     else:
+        exec_df = st.session_state["executive_summary_df"]
+
+        if exec_df is not None and not exec_df.empty:
+            c1, c2, c3 = st.columns(3)
+            c1.metric("Green", int((exec_df["Status"] == "Green").sum()))
+            c2.metric("Amber", int((exec_df["Status"] == "Amber").sum()))
+            c3.metric("Red", int((exec_df["Status"] == "Red").sum()))
+
         current_kpi_map = kpi_map_from_df(st.session_state["consolidated_kpis"])
         revenue = current_kpi_map.get("Revenue", 0)
         gp = current_kpi_map.get("Gross Profit", 0)
@@ -1628,7 +1461,26 @@ with tab_dashboard:
         e.metric("Operating Margin %", f"{opm:.2f}%")
         f.metric("Opex %", f"{opex_pct:.2f}%")
 
-        st.markdown("### Branch Comparison")
+        st.markdown("### Key Charts")
+
+        if st.session_state["budget_summary"] is not None and not st.session_state["budget_summary"].empty:
+            st.markdown("**Budget vs Actual**")
+            st.bar_chart(st.session_state["budget_summary"].set_index("Reporting Group")[["Actual", "Budget"]])
+
+        if st.session_state["forecast_summary"] is not None and not st.session_state["forecast_summary"].empty:
+            st.markdown("**Forecast vs Actual**")
+            st.bar_chart(st.session_state["forecast_summary"].set_index("Reporting Group")[["Actual", "Forecast"]])
+
+        if st.session_state["py_compare"] is not None and not st.session_state["py_compare"].empty:
+            st.markdown("**Actual vs Prior Year**")
+            py_chart = st.session_state["py_compare"].copy().set_index("Metric")[["Current", "Prior Year"]]
+            st.bar_chart(py_chart)
+
+        if st.session_state["benchmark_compare"] is not None and not st.session_state["benchmark_compare"].empty:
+            st.markdown("**Industry Benchmark Comparison**")
+            bench_chart = st.session_state["benchmark_compare"].copy().set_index("Metric")[["Current Value", "Benchmark Value"]]
+            st.bar_chart(bench_chart)
+
         branch_rows = []
         for branch, reports in st.session_state["branch_outputs"].items():
             branch_kpi_map = kpi_map_from_df(reports["kpis"])
@@ -1643,220 +1495,192 @@ with tab_dashboard:
         if not branch_df.empty:
             c1, c2 = st.columns(2)
             with c1:
-                st.write("**Revenue by Branch**")
+                st.markdown("**Revenue by Branch**")
                 st.bar_chart(branch_df.set_index("Branch")[["Revenue"]])
             with c2:
-                st.write("**Operating Margin % by Branch**")
+                st.markdown("**Operating Margin % by Branch**")
                 st.bar_chart(branch_df.set_index("Branch")[["Operating Margin %"]])
 
-        if st.session_state["budget_summary"] is not None and not st.session_state["budget_summary"].empty:
-            st.markdown("### Budget vs Actual")
-            st.bar_chart(st.session_state["budget_summary"].set_index("Reporting Group")[["Actual", "Budget"]])
-
-        if st.session_state["forecast_summary"] is not None and not st.session_state["forecast_summary"].empty:
-            st.markdown("### Forecast vs Actual")
-            st.bar_chart(st.session_state["forecast_summary"].set_index("Reporting Group")[["Actual", "Forecast"]])
-
-        if st.session_state["py_compare"] is not None and not st.session_state["py_compare"].empty:
-            st.markdown("### Actual vs Prior Year")
-            py_chart = st.session_state["py_compare"].copy().set_index("Metric")[["Current", "Prior Year"]]
-            st.bar_chart(py_chart)
-
-        if st.session_state["benchmark_compare"] is not None and not st.session_state["benchmark_compare"].empty:
-            st.markdown("### Industry Benchmark Comparison")
-            bench_chart = st.session_state["benchmark_compare"].copy().set_index("Metric")[["Current Value", "Benchmark Value"]]
-            st.bar_chart(bench_chart)
-
-        if st.session_state["ar_summary"] is not None:
-            st.markdown("### AR Ageing")
-            st.bar_chart(st.session_state["ar_summary"]["by_bucket"].set_index("Age Bucket")[["Outstanding Amount"]])
-
-        if st.session_state["ap_summary"] is not None:
-            st.markdown("### AP Ageing")
-            st.bar_chart(st.session_state["ap_summary"]["by_bucket"].set_index("Age Bucket")[["Outstanding Amount"]])
-
 
 # ----------------------------
-# Monthly Trends
+# FINANCIALS TAB
 # ----------------------------
-with tab_monthly:
-    st.subheader("Monthly Trends")
+with tab_financials:
+    st.subheader("Financials")
 
-    monthly_actuals = st.session_state.get("monthly_actuals")
-    monthly_branch_actuals = st.session_state.get("monthly_branch_actuals")
+    sub_pnl, sub_bs, sub_kpi, sub_trends, sub_variance = st.tabs(
+        ["P&L", "Balance Sheet", "KPIs", "Trends", "Variance"]
+    )
 
-    if monthly_actuals is None or monthly_actuals.empty:
-        st.info("No monthly trend data available. Upload GL with a valid Date column.")
-    else:
-        revenue_monthly = monthly_actuals[monthly_actuals["Reporting Group"].astype(str).str.strip().str.lower() == "revenue"].copy()
-        gp_monthly = monthly_actuals[monthly_actuals["Reporting Group"].astype(str).str.strip().str.lower() == "gross profit"].copy()
-        op_monthly = monthly_actuals[monthly_actuals["Reporting Group"].astype(str).str.strip().str.lower() == "operating profit"].copy()
+    with sub_pnl:
+        if st.session_state["consolidated_pnl"] is None:
+            st.info("No P&L available yet.")
+        else:
+            st.markdown("### Consolidated P&L")
+            st.dataframe(style_dataframe(st.session_state["consolidated_pnl"]), use_container_width=True)
 
-        if not revenue_monthly.empty:
-            st.markdown("### Revenue Trend")
-            st.line_chart(revenue_monthly.set_index("Month")[["Amount"]])
+            if st.session_state["branch_outputs"]:
+                st.markdown("### Branch P&L")
+                for branch, reports in st.session_state["branch_outputs"].items():
+                    with st.expander(branch):
+                        st.dataframe(style_dataframe(reports["pnl"]), use_container_width=True)
 
-        if not gp_monthly.empty:
-            st.markdown("### Gross Profit Trend")
-            st.line_chart(gp_monthly.set_index("Month")[["Amount"]])
-
-        if not op_monthly.empty:
-            st.markdown("### Operating Profit Trend")
-            st.line_chart(op_monthly.set_index("Month")[["Amount"]])
-
-        if monthly_branch_actuals is not None and not monthly_branch_actuals.empty:
-            st.markdown("### Branch Revenue Trend")
-            pivot_branch = monthly_branch_actuals.pivot(index="Month", columns="Branch", values="Amount").fillna(0)
-            st.line_chart(pivot_branch)
-
-        st.markdown("### Monthly Trend Data")
-        st.dataframe(style_dataframe(monthly_actuals), use_container_width=True)
-
-
-# ----------------------------
-# Reports
-# ----------------------------
-with tab_reports:
-    st.subheader("Reports")
-    if st.session_state["mapped"] is None:
-        st.warning("Please validate and load files first.")
-    elif not st.session_state["validation_passed"]:
-        st.error("Resolve unmapped GL rows before generating reports.")
-    else:
-        st.markdown("### Consolidated P&L")
-        st.dataframe(style_dataframe(st.session_state["consolidated_pnl"]), use_container_width=True)
-
-        st.markdown("### Consolidated Balance Sheet")
-        if st.session_state["consolidated_bs"] is not None and not st.session_state["consolidated_bs"].empty:
+    with sub_bs:
+        if st.session_state["consolidated_bs"] is None or st.session_state["consolidated_bs"].empty:
+            st.info("No Balance Sheet available yet.")
+        else:
             if st.session_state["bs_disclaimer"]:
                 st.warning(st.session_state["bs_disclaimer"])
             st.dataframe(style_dataframe(st.session_state["consolidated_bs"]), use_container_width=True)
 
+    with sub_kpi:
+        if st.session_state["consolidated_kpis"] is None:
+            st.info("No KPI master uploaded.")
+        else:
+            st.markdown("### Consolidated KPIs")
+            st.dataframe(style_dataframe(st.session_state["consolidated_kpis"][["KPI", "Display Value"]]), use_container_width=True)
+
+            if st.session_state["branch_summary"] is not None and not st.session_state["branch_summary"].empty:
+                st.markdown("### Branch KPI Summary")
+                st.dataframe(style_dataframe(st.session_state["branch_summary"]), use_container_width=True)
+
+    with sub_trends:
+        monthly_actuals = st.session_state.get("monthly_actuals")
+        monthly_branch_actuals = st.session_state.get("monthly_branch_actuals")
+
+        if monthly_actuals is None or monthly_actuals.empty:
+            st.info("No monthly trend data available. Upload GL with a valid Date column.")
+        else:
+            revenue_monthly = monthly_actuals[monthly_actuals["Reporting Group"].astype(str).str.strip().str.lower() == "revenue"].copy()
+            gp_monthly = monthly_actuals[monthly_actuals["Reporting Group"].astype(str).str.strip().str.lower() == "gross profit"].copy()
+            op_monthly = monthly_actuals[monthly_actuals["Reporting Group"].astype(str).str.strip().str.lower() == "operating profit"].copy()
+
+            if not revenue_monthly.empty:
+                st.markdown("### Revenue Trend")
+                st.line_chart(revenue_monthly.set_index("Month")[["Amount"]])
+
+            if not gp_monthly.empty:
+                st.markdown("### Gross Profit Trend")
+                st.line_chart(gp_monthly.set_index("Month")[["Amount"]])
+
+            if not op_monthly.empty:
+                st.markdown("### Operating Profit Trend")
+                st.line_chart(op_monthly.set_index("Month")[["Amount"]])
+
+            if monthly_branch_actuals is not None and not monthly_branch_actuals.empty:
+                st.markdown("### Branch Revenue Trend")
+                pivot_branch = monthly_branch_actuals.pivot(index="Month", columns="Branch", values="Amount").fillna(0)
+                st.line_chart(pivot_branch)
+
+            st.markdown("### Monthly Trend Data")
+            st.dataframe(style_dataframe(monthly_actuals), use_container_width=True)
+
+    with sub_variance:
+        if st.session_state["budget_compare"] is not None and not st.session_state["budget_compare"].empty:
+            st.markdown("### Budget vs Actual")
+            st.dataframe(style_dataframe(st.session_state["budget_summary"]), use_container_width=True)
+            st.dataframe(style_dataframe(st.session_state["budget_compare"]), use_container_width=True)
+        else:
+            st.info("No budget data uploaded.")
+
+        if st.session_state["forecast_compare"] is not None and not st.session_state["forecast_compare"].empty:
+            st.markdown("### Forecast vs Actual")
+            st.dataframe(style_dataframe(st.session_state["forecast_summary"]), use_container_width=True)
+            st.dataframe(style_dataframe(st.session_state["forecast_compare"]), use_container_width=True)
+        else:
+            st.info("No forecast data uploaded.")
+
+        if st.session_state["py_compare"] is not None and not st.session_state["py_compare"].empty:
+            st.markdown("### Actual vs Prior Year")
+            st.dataframe(style_dataframe(st.session_state["py_compare"]), use_container_width=True)
+
+        if st.session_state["benchmark_compare"] is not None and not st.session_state["benchmark_compare"].empty:
+            st.markdown("### Benchmark Comparison")
+            st.dataframe(style_dataframe(st.session_state["benchmark_compare"]), use_container_width=True)
+
 
 # ----------------------------
-# KPIs
-# ----------------------------
-with tab_kpis:
-    st.subheader("KPIs")
-    if st.session_state["consolidated_kpis"] is None:
-        st.info("No KPI master uploaded.")
-    else:
-        st.dataframe(style_dataframe(st.session_state["consolidated_kpis"][["KPI", "Display Value"]]), use_container_width=True)
-
-
-# ----------------------------
-# Working Capital
+# WORKING CAPITAL TAB
 # ----------------------------
 with tab_working_capital:
     st.subheader("Working Capital")
 
-    if st.session_state["ar_summary"] is None and st.session_state["ap_summary"] is None:
-        st.info("Upload AR/AP files to view working capital analysis.")
-    else:
-        if st.session_state["ar_summary"] is not None:
+    wc_ar, wc_ap = st.tabs(["AR", "AP"])
+
+    with wc_ar:
+        if st.session_state["ar_summary"] is None:
+            st.info("Upload AR file to view AR ageing.")
+        else:
             ar = st.session_state["ar_summary"]
             x1, x2, x3 = st.columns(3)
             x1.metric("Total AR", f"{ar['total']:,.2f}")
             x2.metric("Overdue AR", f"{ar['overdue']:,.2f}")
             x3.metric("Overdue AR %", f"{ar['overdue_pct']:.2f}%")
+            st.bar_chart(ar["by_bucket"].set_index("Age Bucket")[["Outstanding Amount"]])
             st.dataframe(style_dataframe(ar["by_bucket"]), use_container_width=True)
+            st.dataframe(style_dataframe(ar["by_branch"]), use_container_width=True)
+            st.dataframe(style_dataframe(ar["top_parties"]), use_container_width=True)
 
-        if st.session_state["ap_summary"] is not None:
+    with wc_ap:
+        if st.session_state["ap_summary"] is None:
+            st.info("Upload AP file to view AP ageing.")
+        else:
             ap = st.session_state["ap_summary"]
             y1, y2, y3 = st.columns(3)
             y1.metric("Total AP", f"{ap['total']:,.2f}")
             y2.metric("Overdue AP", f"{ap['overdue']:,.2f}")
             y3.metric("Overdue AP %", f"{ap['overdue_pct']:.2f}%")
+            st.bar_chart(ap["by_bucket"].set_index("Age Bucket")[["Outstanding Amount"]])
             st.dataframe(style_dataframe(ap["by_bucket"]), use_container_width=True)
+            st.dataframe(style_dataframe(ap["by_branch"]), use_container_width=True)
+            st.dataframe(style_dataframe(ap["top_parties"]), use_container_width=True)
 
 
 # ----------------------------
-# Budget vs Actual
+# INSIGHTS TAB
 # ----------------------------
-with tab_budget:
-    st.subheader("Budget vs Actual")
-    if st.session_state["budget_compare"] is None or st.session_state["budget_compare"].empty:
-        st.info("Upload Budget Data to use this section.")
-    else:
-        st.dataframe(style_dataframe(st.session_state["budget_summary"]), use_container_width=True)
-        st.bar_chart(st.session_state["budget_summary"].set_index("Reporting Group")[["Actual", "Budget"]])
-        st.dataframe(style_dataframe(st.session_state["budget_compare"]), use_container_width=True)
+with tab_insights:
+    st.subheader("Insights")
+
+    insight_anom, insight_ai = st.tabs(["Anomalies", "AI Commentary"])
+
+    with insight_anom:
+        flags = st.session_state.get("anomaly_flags", [])
+        if flags:
+            for flag in flags:
+                st.warning(flag)
+        else:
+            st.success("No major anomalies detected based on current rules.")
+
+    with insight_ai:
+        if st.session_state["mapped"] is None:
+            st.warning("Please upload and validate data first.")
+        elif not st.session_state["validation_passed"]:
+            st.error("Resolve unmapped accounts before generating AI insights.")
+        else:
+            if st.button("Generate AI Insights", use_container_width=True):
+                with st.spinner("Analyzing financials..."):
+                    st.session_state["ai_commentary"] = generate_ai_commentary(
+                        st.session_state["consolidated_pnl"],
+                        st.session_state["consolidated_kpis"],
+                        st.session_state["consolidated_bs"],
+                        st.session_state["company_profile"],
+                        anomaly_flags=st.session_state.get("anomaly_flags", []),
+                        ar_summary=st.session_state.get("ar_summary"),
+                        ap_summary=st.session_state.get("ap_summary"),
+                        budget_summary=st.session_state.get("budget_summary"),
+                        forecast_summary=st.session_state.get("forecast_summary"),
+                    )
+
+            if st.session_state["ai_commentary"]:
+                st.write(st.session_state["ai_commentary"])
 
 
 # ----------------------------
-# Forecast vs Actual
+# DOWNLOADS TAB
 # ----------------------------
-with tab_forecast:
-    st.subheader("Forecast vs Actual")
-    if st.session_state["forecast_compare"] is None or st.session_state["forecast_compare"].empty:
-        st.info("Upload Forecast Data to use this section.")
-    else:
-        st.dataframe(style_dataframe(st.session_state["forecast_summary"]), use_container_width=True)
-        st.bar_chart(st.session_state["forecast_summary"].set_index("Reporting Group")[["Actual", "Forecast"]])
-        st.dataframe(style_dataframe(st.session_state["forecast_compare"]), use_container_width=True)
-
-
-# ----------------------------
-# AI
-# ----------------------------
-with tab_ai:
-    st.subheader("AI Financial Insights")
-    if st.session_state["mapped"] is None:
-        st.warning("Please upload and validate data first.")
-    elif not st.session_state["validation_passed"]:
-        st.error("Resolve unmapped accounts before generating AI insights.")
-    else:
-        if st.button("Generate AI Insights", use_container_width=True):
-            with st.spinner("Analyzing financials..."):
-                st.session_state["ai_commentary"] = generate_ai_commentary(
-                    st.session_state["consolidated_pnl"],
-                    st.session_state["consolidated_kpis"],
-                    st.session_state["consolidated_bs"],
-                    st.session_state["company_profile"],
-                    anomaly_flags=st.session_state.get("anomaly_flags", []),
-                    ar_summary=st.session_state.get("ar_summary"),
-                    ap_summary=st.session_state.get("ap_summary"),
-                    budget_summary=st.session_state.get("budget_summary"),
-                    forecast_summary=st.session_state.get("forecast_summary"),
-                )
-
-        if st.session_state["ai_commentary"]:
-            st.write(st.session_state["ai_commentary"])
-
-
-# ----------------------------
-# Anomalies
-# ----------------------------
-with tab_anomalies:
-    st.subheader("Anomalies")
-    flags = st.session_state.get("anomaly_flags", [])
-    if flags:
-        for flag in flags:
-            st.warning(flag)
-    else:
-        st.success("No major anomalies detected based on current rules.")
-
-
-# ----------------------------
-# Issues
-# ----------------------------
-with tab_issues:
-    st.subheader("Issues")
-    unmapped = st.session_state.get("unmapped")
-    if unmapped is None:
-        st.info("No data loaded yet.")
-    elif unmapped.empty:
-        st.success("No unmapped accounts found.")
-    else:
-        cols_to_show = [c for c in ["Account code", "Description", "Branch", "Debit", "Credit", "Net"] if c in unmapped.columns]
-        st.dataframe(style_dataframe(unmapped[cols_to_show]), use_container_width=True)
-
-
-# ----------------------------
-# Download
-# ----------------------------
-with tab_download:
-    st.subheader("Download Outputs")
+with tab_downloads:
+    st.subheader("Downloads")
 
     if st.session_state["mapped"] is None:
         st.warning("Please validate and load files first.")
@@ -1888,3 +1712,13 @@ with tab_download:
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
             use_container_width=True,
         )
+
+        if st.session_state["unmapped"] is not None and not st.session_state["unmapped"].empty:
+            unmapped_csv = st.session_state["unmapped"].to_csv(index=False).encode("utf-8")
+            st.download_button(
+                label="Download Unmapped GL",
+                data=unmapped_csv,
+                file_name="unmapped_gl.csv",
+                mime="text/csv",
+                use_container_width=True,
+            )
