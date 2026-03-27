@@ -88,6 +88,25 @@ def safe_float(value, default=0.0):
         return default
 
 
+def show_required_columns(title, required_cols, optional_cols=None):
+    st.markdown(f"**{title}**")
+    req_df = pd.DataFrame({
+        "Column": required_cols,
+        "Required": ["Yes"] * len(required_cols),
+    })
+
+    if optional_cols:
+        opt_df = pd.DataFrame({
+            "Column": optional_cols,
+            "Required": ["Optional"] * len(optional_cols),
+        })
+        display_df = pd.concat([req_df, opt_df], ignore_index=True)
+    else:
+        display_df = req_df
+
+    st.dataframe(display_df, use_container_width=True, hide_index=True)
+
+
 # ----------------------------
 # Standardization helpers
 # ----------------------------
@@ -487,7 +506,6 @@ def build_monthly_branch_actuals(pnl_mapped: pd.DataFrame) -> pd.DataFrame:
         return pd.DataFrame(columns=["Month", "Branch", "Amount"])
 
     df["Month"] = df["Date"].dt.to_period("M").astype(str)
-
     revenue_df = df[df["Reporting Group"].astype(str).str.strip().str.lower() == "revenue"].copy()
 
     out = (
@@ -538,10 +556,11 @@ def build_benchmark_comparison(current_kpis: pd.DataFrame | None, benchmark_df: 
     return merged.sort_values("Metric").reset_index(drop=True)
 
 
-def rag_status(metric_name: str, current_value: float, benchmark_value: float | None = None) -> str:
+def rag_status(metric_name: str, current_value: float, benchmark_value=None) -> str:
     metric_name = str(metric_name).strip().lower()
 
-    if benchmark_value is not None:
+    if benchmark_value not in [None, ""]:
+        benchmark_value = safe_float(benchmark_value)
         gap = current_value - benchmark_value
         if "margin" in metric_name:
             if gap >= 0:
@@ -601,7 +620,7 @@ def build_executive_summary(current_kpis, ar_summary=None, ap_summary=None, budg
 
     for metric in key_metrics:
         current_value = safe_float(current_kpi_map.get(metric, 0))
-        benchmark_value = None
+        benchmark_value = ""
         if benchmark_compare is not None and not benchmark_compare.empty:
             match = benchmark_compare[benchmark_compare["Metric"] == metric]
             if not match.empty:
@@ -609,7 +628,7 @@ def build_executive_summary(current_kpis, ar_summary=None, ap_summary=None, budg
         rows.append({
             "Metric": metric,
             "Current Value": current_value,
-            "Benchmark Value": benchmark_value if benchmark_value is not None else "",
+            "Benchmark Value": benchmark_value,
             "Status": rag_status(metric, current_value, benchmark_value),
         })
 
@@ -1205,6 +1224,82 @@ with tab_upload:
         ap_file = st.file_uploader("AP Ageing (Optional)", type=["xlsx"])
         benchmark_file = st.file_uploader("Industry Benchmark File (Optional)", type=["xlsx"])
 
+    st.markdown("### Required File Structures")
+
+    info1, info2 = st.columns(2)
+
+    with info1:
+        with st.expander("Current GL Report"):
+            show_required_columns(
+                "Current GL Report",
+                required_cols=["Account code", "Debit", "Credit", "Branch"],
+                optional_cols=["Net", "Date", "Description"]
+            )
+
+        with st.expander("COA Mapping"):
+            show_required_columns(
+                "COA Mapping",
+                required_cols=["Account code", "Reporting Group", "Reporting Subgroup", "Statement"],
+                optional_cols=["Sign Convention"]
+            )
+
+        with st.expander("KPI Master"):
+            show_required_columns(
+                "KPI Master",
+                required_cols=[
+                    "KPI Name",
+                    "Formula Type",
+                    "Numerator Group",
+                    "Denominator Group",
+                    "Output Type",
+                    "Display Order"
+                ],
+                optional_cols=[]
+            )
+
+        with st.expander("Latest Previous Balance Sheet"):
+            show_required_columns(
+                "Latest Previous Balance Sheet",
+                required_cols=["Reporting Group", "Reporting Subgroup", "Balance"],
+                optional_cols=[]
+            )
+
+        with st.expander("Budget Data"):
+            show_required_columns(
+                "Budget Data",
+                required_cols=["Month", "Branch", "Reporting Group", "Amount"],
+                optional_cols=[]
+            )
+
+    with info2:
+        with st.expander("Forecast Data"):
+            show_required_columns(
+                "Forecast Data",
+                required_cols=["Month", "Branch", "Reporting Group", "Amount"],
+                optional_cols=[]
+            )
+
+        with st.expander("AR Ageing"):
+            show_required_columns(
+                "AR Ageing",
+                required_cols=["Party Name", "Outstanding Amount"],
+                optional_cols=["Document Number", "Document Date", "Due Date", "Branch", "Age Bucket"]
+            )
+
+        with st.expander("AP Ageing"):
+            show_required_columns(
+                "AP Ageing",
+                required_cols=["Party Name", "Outstanding Amount"],
+                optional_cols=["Document Number", "Document Date", "Due Date", "Branch", "Age Bucket"]
+            )
+
+        with st.expander("Industry Benchmark File"):
+            show_required_columns(
+                "Industry Benchmark File",
+                required_cols=["Metric", "Benchmark Value"],
+                optional_cols=[]
+            )
+
     if st.button("Validate & Load Current Files", use_container_width=True):
         try:
             profile = st.session_state["company_profile"]
@@ -1371,6 +1466,40 @@ with tab_history:
             prior_bs_file = st.file_uploader("Prior Period Balance Sheet (Optional)", type=["xlsx"])
             prior_kpi_file = st.file_uploader("Prior Period KPI Pack (Optional)", type=["xlsx"])
 
+        st.markdown("### Prior Period File Structures")
+
+        h1, h2 = st.columns(2)
+
+        with h1:
+            with st.expander("Prior Period GL Report"):
+                show_required_columns(
+                    "Prior Period GL Report",
+                    required_cols=["Account code", "Debit", "Credit", "Branch"],
+                    optional_cols=["Net", "Date", "Description"]
+                )
+
+            with st.expander("Prior Period P&L"):
+                show_required_columns(
+                    "Prior Period P&L",
+                    required_cols=["Reporting Group", "Reporting Subgroup", "Report Value"],
+                    optional_cols=[]
+                )
+
+        with h2:
+            with st.expander("Prior Period Balance Sheet"):
+                show_required_columns(
+                    "Prior Period Balance Sheet",
+                    required_cols=["Reporting Group", "Reporting Subgroup", "Balance"],
+                    optional_cols=[]
+                )
+
+            with st.expander("Prior Period KPI Pack"):
+                show_required_columns(
+                    "Prior Period KPI Pack",
+                    required_cols=["KPI", "Value"],
+                    optional_cols=["Display Value", "Output Type"]
+                )
+
         if st.button("Load Prior Period Inputs", use_container_width=True):
             try:
                 coa = st.session_state.get("coa")
@@ -1451,14 +1580,11 @@ with tab_exec:
 
         c1, c2, c3 = st.columns(3)
         with c1:
-            green_count = (summary_df["Status"] == "Green").sum()
-            st.metric("Green", int(green_count))
+            st.metric("Green", int((summary_df["Status"] == "Green").sum()))
         with c2:
-            amber_count = (summary_df["Status"] == "Amber").sum()
-            st.metric("Amber", int(amber_count))
+            st.metric("Amber", int((summary_df["Status"] == "Amber").sum()))
         with c3:
-            red_count = (summary_df["Status"] == "Red").sum()
-            st.metric("Red", int(red_count))
+            st.metric("Red", int((summary_df["Status"] == "Red").sum()))
 
         st.dataframe(style_dataframe(summary_df), use_container_width=True)
 
