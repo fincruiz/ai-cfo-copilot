@@ -1,11 +1,12 @@
-import streamlit as st
-import pandas as pd
-from io import BytesIO
-from openai import OpenAI
 import os
 import re
+from io import BytesIO
 from pathlib import Path
-from openpyxl.styles import Font, PatternFill, Border, Side, Alignment
+
+import pandas as pd
+import streamlit as st
+from openai import OpenAI
+from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
 from openpyxl.utils import get_column_letter
 
 st.set_page_config(page_title="AI CFO Copilot", layout="wide")
@@ -105,6 +106,149 @@ def show_required_columns(title, required_cols, optional_cols=None):
         display_df = req_df
 
     st.dataframe(display_df, use_container_width=True, hide_index=True)
+
+
+# ----------------------------
+# Excel / template helpers
+# ----------------------------
+def format_excel_sheet(ws):
+    header_fill = PatternFill(fill_type="solid", fgColor="D9EAF7")
+    header_font = Font(name="Arial", size=11, bold=True)
+    body_font = Font(name="Arial", size=10)
+    thin_border = Border(
+        left=Side(style="thin", color="D9D9D9"),
+        right=Side(style="thin", color="D9D9D9"),
+        top=Side(style="thin", color="D9D9D9"),
+        bottom=Side(style="thin", color="D9D9D9"),
+    )
+
+    for cell in ws[1]:
+        cell.font = header_font
+        cell.fill = header_fill
+        cell.alignment = Alignment(horizontal="center", vertical="center")
+        cell.border = thin_border
+
+    for row in ws.iter_rows(min_row=2):
+        for cell in row:
+            cell.font = body_font
+            cell.alignment = Alignment(horizontal="left", vertical="center")
+            cell.border = thin_border
+
+    for col_cells in ws.columns:
+        max_length = 0
+        col_letter = get_column_letter(col_cells[0].column)
+        for cell in col_cells:
+            try:
+                max_length = max(max_length, len(str(cell.value)) if cell.value is not None else 0)
+            except Exception:
+                pass
+        ws.column_dimensions[col_letter].width = min(max_length + 3, 35)
+
+    ws.freeze_panes = "A2"
+    ws.row_dimensions[1].height = 22
+
+
+def dataframe_to_excel_bytes(df_dict: dict[str, pd.DataFrame]) -> bytes:
+    output = BytesIO()
+    with pd.ExcelWriter(output, engine="openpyxl") as writer:
+        for sheet_name, df in df_dict.items():
+            safe_sheet = str(sheet_name)[:31]
+            df.to_excel(writer, sheet_name=safe_sheet, index=False)
+            format_excel_sheet(writer.book[safe_sheet])
+    return output.getvalue()
+
+
+def make_sample_template_bytes(df: pd.DataFrame) -> bytes:
+    output = BytesIO()
+    with pd.ExcelWriter(output, engine="openpyxl") as writer:
+        df.to_excel(writer, sheet_name="Template", index=False)
+        ws = writer.book["Template"]
+        format_excel_sheet(ws)
+    return output.getvalue()
+
+
+def get_sample_templates():
+    templates = {}
+
+    templates["Current GL Report"] = pd.DataFrame([
+        {"Account code": "4000", "Debit": 0, "Credit": 25000, "Branch": "Sydney", "Net": -25000, "Date": "2026-03-01", "Description": "Sales invoice"},
+        {"Account code": "5000", "Debit": 8000, "Credit": 0, "Branch": "Sydney", "Net": 8000, "Date": "2026-03-02", "Description": "Cost of sales"},
+        {"Account code": "6100", "Debit": 3000, "Credit": 0, "Branch": "Melbourne", "Net": 3000, "Date": "2026-03-03", "Description": "Rent expense"},
+    ])
+
+    templates["COA Mapping"] = pd.DataFrame([
+        {"Account code": "4000", "Reporting Group": "Revenue", "Reporting Subgroup": "Sales", "Statement": "Income Statement", "Sign Convention": "positive"},
+        {"Account code": "5000", "Reporting Group": "Gross Profit", "Reporting Subgroup": "Cost of Sales", "Statement": "Income Statement", "Sign Convention": "negative"},
+        {"Account code": "6100", "Reporting Group": "Operating Expenses", "Reporting Subgroup": "Rent", "Statement": "Income Statement", "Sign Convention": "positive"},
+    ])
+
+    templates["KPI Master"] = pd.DataFrame([
+        {"KPI Name": "Revenue", "Formula Type": "direct", "Numerator Group": "Revenue", "Denominator Group": "", "Output Type": "value", "Display Order": 1},
+        {"KPI Name": "Gross Margin %", "Formula Type": "ratio", "Numerator Group": "Gross Profit", "Denominator Group": "Revenue", "Output Type": "percent", "Display Order": 2},
+        {"KPI Name": "Operating Margin %", "Formula Type": "ratio", "Numerator Group": "Operating Profit", "Denominator Group": "Revenue", "Output Type": "percent", "Display Order": 3},
+    ])
+
+    templates["Latest Previous Balance Sheet"] = pd.DataFrame([
+        {"Reporting Group": "Assets", "Reporting Subgroup": "Cash", "Balance": 50000},
+        {"Reporting Group": "Liabilities", "Reporting Subgroup": "Trade Payables", "Balance": 22000},
+        {"Reporting Group": "Equity", "Reporting Subgroup": "Retained Earnings", "Balance": 28000},
+    ])
+
+    templates["Budget Data"] = pd.DataFrame([
+        {"Month": "2026-01", "Branch": "Sydney", "Reporting Group": "Revenue", "Amount": 100000},
+        {"Month": "2026-01", "Branch": "Sydney", "Reporting Group": "Gross Profit", "Amount": 42000},
+        {"Month": "2026-01", "Branch": "Melbourne", "Reporting Group": "Revenue", "Amount": 85000},
+    ])
+
+    templates["Forecast Data"] = pd.DataFrame([
+        {"Month": "2026-01", "Branch": "Sydney", "Reporting Group": "Revenue", "Amount": 98000},
+        {"Month": "2026-01", "Branch": "Sydney", "Reporting Group": "Gross Profit", "Amount": 40000},
+        {"Month": "2026-01", "Branch": "Melbourne", "Reporting Group": "Revenue", "Amount": 82000},
+    ])
+
+    templates["AR Ageing"] = pd.DataFrame([
+        {"Party Name": "Customer A", "Outstanding Amount": 12000, "Document Number": "INV001", "Document Date": "2026-02-01", "Due Date": "2026-03-01", "Branch": "Sydney", "Age Bucket": "1-30"},
+        {"Party Name": "Customer B", "Outstanding Amount": 8000, "Document Number": "INV002", "Document Date": "2026-01-15", "Due Date": "2026-02-15", "Branch": "Melbourne", "Age Bucket": "31-60"},
+        {"Party Name": "Customer C", "Outstanding Amount": 5000, "Document Number": "INV003", "Document Date": "2026-03-05", "Due Date": "2026-04-05", "Branch": "Sydney", "Age Bucket": "Current"},
+    ])
+
+    templates["AP Ageing"] = pd.DataFrame([
+        {"Party Name": "Supplier A", "Outstanding Amount": 9000, "Document Number": "BILL001", "Document Date": "2026-02-01", "Due Date": "2026-03-01", "Branch": "Sydney", "Age Bucket": "1-30"},
+        {"Party Name": "Supplier B", "Outstanding Amount": 14000, "Document Number": "BILL002", "Document Date": "2026-01-10", "Due Date": "2026-02-10", "Branch": "Melbourne", "Age Bucket": "31-60"},
+        {"Party Name": "Supplier C", "Outstanding Amount": 6000, "Document Number": "BILL003", "Document Date": "2026-03-04", "Due Date": "2026-04-04", "Branch": "Sydney", "Age Bucket": "Current"},
+    ])
+
+    templates["Industry Benchmark File"] = pd.DataFrame([
+        {"Metric": "Gross Margin %", "Benchmark Value": 35},
+        {"Metric": "Operating Margin %", "Benchmark Value": 12},
+        {"Metric": "Opex as % of Revenue", "Benchmark Value": 20},
+    ])
+
+    templates["Prior Period GL Report"] = pd.DataFrame([
+        {"Account code": "4000", "Debit": 0, "Credit": 22000, "Branch": "Sydney", "Net": -22000, "Date": "2025-03-01", "Description": "Prior sales"},
+        {"Account code": "5000", "Debit": 7000, "Credit": 0, "Branch": "Sydney", "Net": 7000, "Date": "2025-03-02", "Description": "Prior COS"},
+        {"Account code": "6100", "Debit": 2500, "Credit": 0, "Branch": "Melbourne", "Net": 2500, "Date": "2025-03-03", "Description": "Prior rent"},
+    ])
+
+    templates["Prior Period P&L"] = pd.DataFrame([
+        {"Reporting Group": "Revenue", "Reporting Subgroup": "Sales", "Report Value": 22000},
+        {"Reporting Group": "Gross Profit", "Reporting Subgroup": "Gross Profit", "Report Value": 15000},
+        {"Reporting Group": "Operating Profit", "Reporting Subgroup": "EBIT", "Report Value": 7000},
+    ])
+
+    templates["Prior Period Balance Sheet"] = pd.DataFrame([
+        {"Reporting Group": "Assets", "Reporting Subgroup": "Cash", "Balance": 42000},
+        {"Reporting Group": "Liabilities", "Reporting Subgroup": "Trade Payables", "Balance": 18000},
+        {"Reporting Group": "Equity", "Reporting Subgroup": "Retained Earnings", "Balance": 24000},
+    ])
+
+    templates["Prior Period KPI Pack"] = pd.DataFrame([
+        {"KPI": "Revenue", "Value": 22000, "Display Value": 22000, "Output Type": "value"},
+        {"KPI": "Gross Margin %", "Value": 68.18, "Display Value": "68.18%", "Output Type": "percent"},
+        {"KPI": "Operating Margin %", "Value": 31.82, "Display Value": "31.82%", "Output Type": "percent"},
+    ])
+
+    return templates
 
 
 # ----------------------------
@@ -670,55 +814,8 @@ def build_executive_summary(current_kpis, ar_summary=None, ap_summary=None, budg
 
 
 # ----------------------------
-# Excel helpers
+# Pack creation
 # ----------------------------
-def format_excel_sheet(ws):
-    header_fill = PatternFill(fill_type="solid", fgColor="D9EAF7")
-    header_font = Font(name="Arial", size=11, bold=True)
-    body_font = Font(name="Arial", size=10)
-    thin_border = Border(
-        left=Side(style="thin", color="D9D9D9"),
-        right=Side(style="thin", color="D9D9D9"),
-        top=Side(style="thin", color="D9D9D9"),
-        bottom=Side(style="thin", color="D9D9D9"),
-    )
-
-    for cell in ws[1]:
-        cell.font = header_font
-        cell.fill = header_fill
-        cell.alignment = Alignment(horizontal="center", vertical="center")
-        cell.border = thin_border
-
-    for row in ws.iter_rows(min_row=2):
-        for cell in row:
-            cell.font = body_font
-            cell.alignment = Alignment(horizontal="left", vertical="center")
-            cell.border = thin_border
-
-    for col_cells in ws.columns:
-        max_length = 0
-        col_letter = get_column_letter(col_cells[0].column)
-        for cell in col_cells:
-            try:
-                max_length = max(max_length, len(str(cell.value)) if cell.value is not None else 0)
-            except Exception:
-                pass
-        ws.column_dimensions[col_letter].width = min(max_length + 3, 35)
-
-    ws.freeze_panes = "A2"
-    ws.row_dimensions[1].height = 22
-
-
-def dataframe_to_excel_bytes(df_dict: dict[str, pd.DataFrame]) -> bytes:
-    output = BytesIO()
-    with pd.ExcelWriter(output, engine="openpyxl") as writer:
-        for sheet_name, df in df_dict.items():
-            safe_sheet = str(sheet_name)[:31]
-            df.to_excel(writer, sheet_name=safe_sheet, index=False)
-            format_excel_sheet(writer.book[safe_sheet])
-    return output.getvalue()
-
-
 def create_excel_pack(
     consolidated_pnl,
     consolidated_bs,
@@ -1425,6 +1522,21 @@ with tab_setup:
             show_required_columns("Prior Period GL Report", ["Account code", "Debit", "Credit", "Branch"], ["Net", "Date", "Description"])
             show_required_columns("Prior KPI Pack", ["KPI", "Value"], ["Display Value", "Output Type"])
 
+    with st.expander("Download Sample Templates"):
+        st.info("Download a template, replace the sample rows with your own data, and upload the same file back into the app.")
+
+        templates = get_sample_templates()
+        for name, df in templates.items():
+            template_bytes = make_sample_template_bytes(df)
+            st.download_button(
+                label=f"Download {name} Template",
+                data=template_bytes,
+                file_name=f"{name.lower().replace(' ', '_')}_template.xlsx",
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                use_container_width=True,
+                key=f"tpl_{name}"
+            )
+
 
 # ----------------------------
 # DASHBOARD TAB
@@ -1446,6 +1558,9 @@ with tab_dashboard:
             c3.metric("Red", int((exec_df["Status"] == "Red").sum()))
 
         current_kpi_map = kpi_map_from_df(st.session_state["consolidated_kpis"])
+        ar_summary = st.session_state.get("ar_summary")
+        ap_summary = st.session_state.get("ap_summary")
+
         revenue = current_kpi_map.get("Revenue", 0)
         gp = current_kpi_map.get("Gross Profit", 0)
         gm = current_kpi_map.get("Gross Margin %", 0)
@@ -1453,13 +1568,20 @@ with tab_dashboard:
         opm = current_kpi_map.get("Operating Margin %", 0)
         opex_pct = current_kpi_map.get("Opex as % of Revenue", 0)
 
-        a, b, c, d, e, f = st.columns(6)
-        a.metric("Revenue", f"{revenue:,.2f}")
-        b.metric("Gross Profit", f"{gp:,.2f}")
-        c.metric("Gross Margin %", f"{gm:.2f}%")
-        d.metric("Operating Profit", f"{op:,.2f}")
-        e.metric("Operating Margin %", f"{opm:.2f}%")
-        f.metric("Opex %", f"{opex_pct:.2f}%")
+        st.markdown("### Core KPI Snapshot")
+        k1, k2, k3, k4, k5 = st.columns(5)
+        k1.metric("Revenue", f"{revenue:,.2f}")
+        k2.metric("Gross Profit", f"{gp:,.2f}")
+        k3.metric("Gross Margin %", f"{gm:.2f}%")
+        k4.metric("Operating Profit", f"{op:,.2f}")
+        k5.metric("Operating Margin %", f"{opm:.2f}%")
+
+        k6, k7, k8, k9, k10 = st.columns(5)
+        k6.metric("Opex %", f"{opex_pct:.2f}%")
+        k7.metric("Total AR", f"{ar_summary['total']:,.2f}" if ar_summary else "0.00")
+        k8.metric("AR Overdue %", f"{ar_summary['overdue_pct']:.2f}%" if ar_summary else "0.00%")
+        k9.metric("Total AP", f"{ap_summary['total']:,.2f}" if ap_summary else "0.00")
+        k10.metric("AP Overdue %", f"{ap_summary['overdue_pct']:.2f}%" if ap_summary else "0.00%")
 
         st.markdown("### Key Charts")
 
