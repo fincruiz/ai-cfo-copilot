@@ -200,10 +200,16 @@ def get_sample_templates():
         {"Month": "2026-01", "Branch": "Melbourne", "Reporting Group": "Revenue", "Amount": 85000},
     ])
 
-    templates["Forecast Data"] = pd.DataFrame([
-        {"Month": "2026-01", "Branch": "Sydney", "Reporting Group": "Revenue", "Amount": 98000},
-        {"Month": "2026-01", "Branch": "Sydney", "Reporting Group": "Gross Profit", "Amount": 40000},
-        {"Month": "2026-01", "Branch": "Melbourne", "Reporting Group": "Revenue", "Amount": 82000},
+    templates["Forecast P&L"] = pd.DataFrame([
+        {"Reporting Group": "Revenue", "Reporting Subgroup": "Sales", "Report Value": 120000},
+        {"Reporting Group": "Gross Profit", "Reporting Subgroup": "Gross Profit", "Report Value": 48000},
+        {"Reporting Group": "Operating Profit", "Reporting Subgroup": "EBIT", "Report Value": 18000},
+    ])
+
+    templates["Forecast Balance Sheet"] = pd.DataFrame([
+        {"Reporting Group": "Assets", "Reporting Subgroup": "Cash", "Balance": 65000},
+        {"Reporting Group": "Liabilities", "Reporting Subgroup": "Trade Payables", "Balance": 28000},
+        {"Reporting Group": "Equity", "Reporting Subgroup": "Retained Earnings", "Balance": 37000},
     ])
 
     templates["AR Ageing"] = pd.DataFrame([
@@ -242,6 +248,12 @@ def get_sample_templates():
         {"Reporting Group": "Equity", "Reporting Subgroup": "Retained Earnings", "Balance": 24000},
     ])
 
+    templates["Previous Year P&L"] = pd.DataFrame([
+        {"Reporting Group": "Revenue", "Reporting Subgroup": "Sales", "Report Value": 98000},
+        {"Reporting Group": "Gross Profit", "Reporting Subgroup": "Gross Profit", "Report Value": 39000},
+        {"Reporting Group": "Operating Profit", "Reporting Subgroup": "EBIT", "Report Value": 14000},
+    ])
+
     templates["Prior Period KPI Pack"] = pd.DataFrame([
         {"KPI": "Revenue", "Value": 22000, "Display Value": 22000, "Output Type": "value"},
         {"KPI": "Gross Margin %", "Value": 68.18, "Display Value": "68.18%", "Output Type": "percent"},
@@ -252,506 +264,161 @@ def get_sample_templates():
 
 
 # ----------------------------
-# Standardization helpers
+# Normalizers for direct P&L / BS uploads
 # ----------------------------
-def standardize_key_columns(gl, coa, kpi=None, latest_bs=None):
-    gl = clean_columns(gl)
-    coa = clean_columns(coa)
-
-    gl.rename(columns={
-        "Account Code": "Account code",
-        "account code": "Account code",
-        "Account code ": "Account code",
-        "branch": "Branch",
-        "net": "Net",
-        "Debit ": "Debit",
-        "Credit ": "Credit",
-        "Description ": "Description",
-        "Date ": "Date",
-        "Posting Date": "Date",
-        "Txn Date": "Date",
-    }, inplace=True)
-
-    coa.rename(columns={
-        "Account Code": "Account code",
-        "account code": "Account code",
+def normalize_uploaded_pnl(df: pd.DataFrame, label: str) -> pd.DataFrame:
+    df = clean_columns(df)
+    df.rename(columns={
         "Reporting group": "Reporting Group",
         "Reporting subgroup": "Reporting Subgroup",
-        "Sign convention": "Sign Convention",
-        "Statement type": "Statement",
+        "Report value": "Report Value",
     }, inplace=True)
 
-    if kpi is not None:
-        kpi = clean_columns(kpi)
-        kpi.rename(columns={
-            "Formula type": "Formula Type",
-            "Numerator group": "Numerator Group",
-            "Denominator group": "Denominator Group",
-            "Output type": "Output Type",
-            "Display order": "Display Order",
-            "Kpi name": "KPI Name",
-        }, inplace=True)
-
-    if latest_bs is not None:
-        latest_bs = clean_columns(latest_bs)
-        latest_bs.rename(columns={
-            "Balance ": "Balance",
-            "Reporting group": "Reporting Group",
-            "Reporting subgroup": "Reporting Subgroup",
-        }, inplace=True)
-
-    return gl, coa, kpi, latest_bs
-
-
-def normalize_plan_df(df: pd.DataFrame, label: str) -> pd.DataFrame:
-    df = clean_columns(df)
-    df.rename(columns={
-        "Month ": "Month",
-        "Branch ": "Branch",
-        "Reporting group": "Reporting Group",
-        "Amount ": "Amount",
-        "Budget Amount": "Amount",
-        "Forecast Amount": "Amount",
-    }, inplace=True)
-
-    validate_required_columns(df, ["Month", "Branch", "Reporting Group", "Amount"], label)
-    df["Month"] = df["Month"].astype(str).str.strip()
-    df["Branch"] = df["Branch"].astype(str).str.strip()
+    validate_required_columns(df, ["Reporting Group", "Reporting Subgroup", "Report Value"], label)
     df["Reporting Group"] = df["Reporting Group"].astype(str).str.strip()
-    df["Amount"] = pd.to_numeric(df["Amount"], errors="coerce").fillna(0)
+    df["Reporting Subgroup"] = df["Reporting Subgroup"].astype(str).str.strip()
+    df["Report Value"] = pd.to_numeric(df["Report Value"], errors="coerce").fillna(0)
     return df
 
 
-def normalize_benchmark_df(df: pd.DataFrame) -> pd.DataFrame:
+def normalize_uploaded_bs(df: pd.DataFrame, label: str) -> pd.DataFrame:
     df = clean_columns(df)
     df.rename(columns={
-        "Metric ": "Metric",
-        "Benchmark": "Benchmark Value",
-        "Benchmark %": "Benchmark Value",
-        "Benchmark Value ": "Benchmark Value",
+        "Reporting group": "Reporting Group",
+        "Reporting subgroup": "Reporting Subgroup",
+        "Balance ": "Balance",
     }, inplace=True)
 
-    validate_required_columns(df, ["Metric", "Benchmark Value"], "Benchmark Data")
-    df["Metric"] = df["Metric"].astype(str).str.strip()
-    df["Benchmark Value"] = pd.to_numeric(df["Benchmark Value"], errors="coerce").fillna(0)
+    validate_required_columns(df, ["Reporting Group", "Reporting Subgroup", "Balance"], label)
+    df["Reporting Group"] = df["Reporting Group"].astype(str).str.strip()
+    df["Reporting Subgroup"] = df["Reporting Subgroup"].astype(str).str.strip()
+    df["Balance"] = pd.to_numeric(df["Balance"], errors="coerce").fillna(0)
     return df
 
 
-def normalize_ageing_df(df: pd.DataFrame, kind: str) -> pd.DataFrame:
-    df = clean_columns(df)
-    rename_map = {
-        "Customer": "Party Name",
-        "Customer Name": "Party Name",
-        "Supplier": "Party Name",
-        "Supplier Name": "Party Name",
-        "Vendor": "Party Name",
-        "Vendor Name": "Party Name",
-        "Invoice Number": "Document Number",
-        "Bill Number": "Document Number",
-        "Invoice No": "Document Number",
-        "Bill No": "Document Number",
-        "Outstanding": "Outstanding Amount",
-        "Outstanding Balance": "Outstanding Amount",
-        "Amount": "Outstanding Amount",
-        "Due Date ": "Due Date",
-        "Invoice Date ": "Document Date",
-        "Bill Date": "Document Date",
-        "Ageing Bucket": "Age Bucket",
-        "Aging Bucket": "Age Bucket",
-        "Age Bucket ": "Age Bucket",
-        "Branch ": "Branch",
-    }
-    df.rename(columns=rename_map, inplace=True)
+def compare_pnl_to_forecast(actual_pnl: pd.DataFrame, forecast_pnl: pd.DataFrame) -> pd.DataFrame:
+    if actual_pnl is None or actual_pnl.empty or forecast_pnl is None or forecast_pnl.empty:
+        return pd.DataFrame(columns=["Reporting Group", "Reporting Subgroup", "Actual", "Forecast", "Variance", "Variance %"])
 
-    validate_required_columns(df, ["Party Name", "Outstanding Amount"], f"{kind} Ageing")
+    actual = actual_pnl.copy().rename(columns={"Report Value": "Actual"})
+    forecast = forecast_pnl.copy().rename(columns={"Report Value": "Forecast"})
 
-    if "Branch" not in df.columns:
-        df["Branch"] = "Unassigned"
-    if "Document Number" not in df.columns:
-        df["Document Number"] = ""
-    if "Document Date" not in df.columns:
-        df["Document Date"] = pd.NaT
-    if "Due Date" not in df.columns:
-        df["Due Date"] = pd.NaT
-    if "Age Bucket" not in df.columns:
-        df["Age Bucket"] = None
-
-    df["Outstanding Amount"] = pd.to_numeric(df["Outstanding Amount"], errors="coerce").fillna(0)
-    df["Document Date"] = pd.to_datetime(df["Document Date"], errors="coerce")
-    df["Due Date"] = pd.to_datetime(df["Due Date"], errors="coerce")
-
-    today = pd.Timestamp.today().normalize()
-
-    def calc_bucket(row):
-        existing = row.get("Age Bucket")
-        if pd.notna(existing) and str(existing).strip():
-            return str(existing).strip()
-
-        due_date = row.get("Due Date")
-        if pd.isna(due_date):
-            return "Unknown"
-
-        days_overdue = (today - due_date.normalize()).days
-        if days_overdue <= 0:
-            return "Current"
-        elif days_overdue <= 30:
-            return "1-30"
-        elif days_overdue <= 60:
-            return "31-60"
-        elif days_overdue <= 90:
-            return "61-90"
-        else:
-            return "90+"
-
-    df["Age Bucket"] = df.apply(calc_bucket, axis=1)
-    df["Branch"] = df["Branch"].astype(str).str.strip()
-    return df
-
-
-# ----------------------------
-# Core finance helpers
-# ----------------------------
-def apply_sign_convention_to_gl(row) -> float:
-    net = row["Net"]
-    sign = str(row.get("Sign Convention", "")).strip().lower()
-
-    if pd.isna(net):
-        return 0.0
-
-    abs_net = abs(float(net))
-    if sign == "negative":
-        return -abs_net
-    return abs_net
-
-
-def build_pnl(report_df: pd.DataFrame) -> pd.DataFrame:
-    if report_df.empty:
-        return pd.DataFrame(columns=["Reporting Group", "Reporting Subgroup", "Report Value"])
-
-    return (
-        report_df.groupby(["Reporting Group", "Reporting Subgroup"], dropna=False)["Report Value"]
-        .sum()
-        .reset_index()
-        .sort_values(["Reporting Group", "Reporting Subgroup"])
-    )
-
-
-def build_balance_sheet_from_gl(bs_df: pd.DataFrame) -> pd.DataFrame:
-    if bs_df.empty:
-        return pd.DataFrame(columns=["Reporting Group", "Reporting Subgroup", "Balance"])
-
-    return (
-        bs_df.groupby(["Reporting Group", "Reporting Subgroup"], dropna=False)["Report Value"]
-        .sum()
-        .reset_index()
-        .rename(columns={"Report Value": "Balance"})
-        .sort_values(["Reporting Group", "Reporting Subgroup"])
-    )
-
-
-def combine_opening_and_current_bs(opening_bs: pd.DataFrame, current_bs: pd.DataFrame) -> pd.DataFrame:
-    if opening_bs is None or opening_bs.empty:
-        return current_bs.copy()
-
-    opening = opening_bs.copy()
-    current = current_bs.copy()
-
-    opening["Balance"] = pd.to_numeric(opening["Balance"], errors="coerce").fillna(0)
-    current["Balance"] = pd.to_numeric(current["Balance"], errors="coerce").fillna(0)
-
-    merged = opening.merge(
-        current,
+    merged = actual.merge(
+        forecast,
         on=["Reporting Group", "Reporting Subgroup"],
-        how="outer",
-        suffixes=("_opening", "_current"),
+        how="outer"
     ).fillna(0)
 
-    merged["Balance"] = merged["Balance_opening"] + merged["Balance_current"]
-    return merged[["Reporting Group", "Reporting Subgroup", "Balance"]].sort_values(
-        ["Reporting Group", "Reporting Subgroup"]
-    ).reset_index(drop=True)
-
-
-def build_kpis(report_df: pd.DataFrame, kpi_master: pd.DataFrame) -> pd.DataFrame:
-    group_values = report_df.groupby("Reporting Group")["Report Value"].sum().to_dict()
-    results = []
-    calculated = {}
-
-    kpi_master = kpi_master.sort_values("Display Order").copy()
-
-    for _, row in kpi_master.iterrows():
-        kpi_name = str(row["KPI Name"]).strip()
-        formula_type = str(row["Formula Type"]).strip().lower()
-        numerator = str(row["Numerator Group"]).strip() if pd.notna(row["Numerator Group"]) else ""
-        denominator = str(row["Denominator Group"]).strip() if pd.notna(row["Denominator Group"]) else ""
-        output_type = str(row["Output Type"]).strip().lower()
-
-        value = 0.0
-
-        if formula_type == "direct":
-            value = group_values.get(numerator, 0.0)
-        elif formula_type == "derived":
-            value = calculated.get(numerator, group_values.get(numerator, 0.0)) - \
-                    calculated.get(denominator, group_values.get(denominator, 0.0))
-        elif formula_type == "ratio":
-            num_val = calculated.get(numerator, group_values.get(numerator, 0.0))
-            den_val = calculated.get(denominator, group_values.get(denominator, 0.0))
-            value = (num_val / den_val * 100) if den_val != 0 else 0.0
-
-        calculated[kpi_name] = value
-        results.append({"KPI": kpi_name, "Value": value, "Output Type": output_type})
-
-    kpi_df = pd.DataFrame(results)
-    kpi_df["Display Value"] = kpi_df.apply(
-        lambda r: f"{r['Value']:.2f}%" if r["Output Type"] == "percent" else round(r["Value"], 2),
-        axis=1,
-    )
-    return kpi_df[["KPI", "Value", "Output Type", "Display Value"]]
-
-
-def kpi_map_from_df(kpi_df: pd.DataFrame | None) -> dict:
-    if kpi_df is None or kpi_df.empty:
-        return {}
-    return {row["KPI"]: row["Value"] for _, row in kpi_df.iterrows()}
-
-
-def build_actuals_by_branch_reporting_group(pnl_mapped: pd.DataFrame) -> pd.DataFrame:
-    if pnl_mapped is None or pnl_mapped.empty:
-        return pd.DataFrame(columns=["Branch", "Reporting Group", "Actual"])
-
-    return (
-        pnl_mapped.groupby(["Branch", "Reporting Group"], dropna=False)["Report Value"]
-        .sum()
-        .reset_index()
-        .rename(columns={"Report Value": "Actual"})
-    )
-
-
-def compare_plan_vs_actual(actuals_df: pd.DataFrame, plan_df: pd.DataFrame, label: str) -> pd.DataFrame:
-    if plan_df is None or plan_df.empty:
-        return pd.DataFrame(columns=["Branch", "Reporting Group", "Actual", label, "Variance", "Variance %"])
-
-    plan_agg = (
-        plan_df.groupby(["Branch", "Reporting Group"], dropna=False)["Amount"]
-        .sum()
-        .reset_index()
-        .rename(columns={"Amount": label})
-    )
-
-    merged = actuals_df.merge(plan_agg, on=["Branch", "Reporting Group"], how="outer").fillna(0)
-    merged["Variance"] = merged["Actual"] - merged[label]
+    merged["Variance"] = merged["Actual"] - merged["Forecast"]
     merged["Variance %"] = merged.apply(
-        lambda r: (r["Variance"] / r[label] * 100) if r[label] != 0 else 0.0,
+        lambda r: (r["Variance"] / r["Forecast"] * 100) if r["Forecast"] != 0 else 0.0,
         axis=1,
     )
-    return merged.sort_values(["Branch", "Reporting Group"]).reset_index(drop=True)
+    return merged.sort_values(["Reporting Group", "Reporting Subgroup"]).reset_index(drop=True)
 
 
-def summarize_plan_vs_actual(compare_df: pd.DataFrame, label: str) -> pd.DataFrame:
-    if compare_df is None or compare_df.empty:
-        return pd.DataFrame(columns=["Reporting Group", "Actual", label, "Variance", "Variance %"])
+def compare_pnl_to_previous_year(actual_pnl: pd.DataFrame, previous_pnl: pd.DataFrame) -> pd.DataFrame:
+    if actual_pnl is None or actual_pnl.empty or previous_pnl is None or previous_pnl.empty:
+        return pd.DataFrame(columns=["Reporting Group", "Reporting Subgroup", "Actual", "Previous Year", "Variance", "Variance %"])
 
-    out = (
-        compare_df.groupby("Reporting Group", dropna=False)[["Actual", label, "Variance"]]
-        .sum()
-        .reset_index()
-    )
-    out["Variance %"] = out.apply(
-        lambda r: (r["Variance"] / r[label] * 100) if r[label] != 0 else 0.0,
+    actual = actual_pnl.copy().rename(columns={"Report Value": "Actual"})
+    previous = previous_pnl.copy().rename(columns={"Report Value": "Previous Year"})
+
+    merged = actual.merge(
+        previous,
+        on=["Reporting Group", "Reporting Subgroup"],
+        how="outer"
+    ).fillna(0)
+
+    merged["Variance"] = merged["Actual"] - merged["Previous Year"]
+    merged["Variance %"] = merged.apply(
+        lambda r: (r["Variance"] / r["Previous Year"] * 100) if r["Previous Year"] != 0 else 0.0,
         axis=1,
     )
-    return out.sort_values("Reporting Group").reset_index(drop=True)
-
-
-def build_ageing_summary(df: pd.DataFrame | None, kind: str) -> dict:
-    if df is None or df.empty:
-        return {
-            "total": 0.0,
-            "overdue": 0.0,
-            "overdue_pct": 0.0,
-            "by_bucket": pd.DataFrame(columns=["Age Bucket", "Outstanding Amount"]),
-            "by_branch": pd.DataFrame(columns=["Branch", "Outstanding Amount"]),
-            "top_parties": pd.DataFrame(columns=["Party Name", "Outstanding Amount"]),
-            "kind": kind,
-        }
-
-    total = float(df["Outstanding Amount"].sum())
-    overdue_df = df[df["Age Bucket"].isin(["1-30", "31-60", "61-90", "90+"])]
-    overdue = float(overdue_df["Outstanding Amount"].sum())
-    overdue_pct = (overdue / total * 100) if total != 0 else 0.0
-
-    bucket_order = ["Current", "1-30", "31-60", "61-90", "90+", "Unknown"]
-
-    by_bucket = df.groupby("Age Bucket", dropna=False)["Outstanding Amount"].sum().reset_index()
-    by_bucket["Age Bucket"] = pd.Categorical(by_bucket["Age Bucket"], categories=bucket_order, ordered=True)
-    by_bucket = by_bucket.sort_values("Age Bucket")
-
-    by_branch = (
-        df.groupby("Branch", dropna=False)["Outstanding Amount"]
-        .sum()
-        .reset_index()
-        .sort_values("Outstanding Amount", ascending=False)
-    )
-
-    top_parties = (
-        df.groupby("Party Name", dropna=False)["Outstanding Amount"]
-        .sum()
-        .reset_index()
-        .sort_values("Outstanding Amount", ascending=False)
-        .head(10)
-    )
-
-    return {
-        "total": total,
-        "overdue": overdue,
-        "overdue_pct": overdue_pct,
-        "by_bucket": by_bucket,
-        "by_branch": by_branch,
-        "top_parties": top_parties,
-        "kind": kind,
-    }
+    return merged.sort_values(["Reporting Group", "Reporting Subgroup"]).reset_index(drop=True)
 
 
 # ----------------------------
-# Monthly trends / executive summary helpers
+# History helpers
 # ----------------------------
-def build_monthly_actuals(pnl_mapped: pd.DataFrame) -> pd.DataFrame:
-    if pnl_mapped is None or pnl_mapped.empty or "Date" not in pnl_mapped.columns:
-        return pd.DataFrame(columns=["Month", "Reporting Group", "Amount"])
+def save_run_to_history(company_profile, consolidated_pnl, consolidated_bs, consolidated_kpis, branch_summary):
+    company_name = company_profile.get("Company Name", "").strip()
+    if not company_name:
+        return
 
-    df = pnl_mapped.copy()
-    df["Date"] = pd.to_datetime(df["Date"], errors="coerce")
-    df = df[df["Date"].notna()].copy()
+    company_slug = slugify_company_name(company_name)
+    financial_year = company_profile.get("Financial Year", "unknown_year").strip().replace(" ", "_")
+    reporting_period = company_profile.get("Reporting Period", "unknown_period").strip().replace(" ", "_")
 
-    if df.empty:
-        return pd.DataFrame(columns=["Month", "Reporting Group", "Amount"])
+    company_folder = HISTORY_ROOT / company_slug
+    run_folder = company_folder / f"{financial_year}_{reporting_period}"
+    run_folder.mkdir(parents=True, exist_ok=True)
 
-    df["Month"] = df["Date"].dt.to_period("M").astype(str)
+    consolidated_pnl.to_excel(run_folder / "consolidated_pnl.xlsx", index=False)
 
-    out = (
-        df.groupby(["Month", "Reporting Group"], dropna=False)["Report Value"]
-        .sum()
-        .reset_index()
-        .rename(columns={"Report Value": "Amount"})
-        .sort_values(["Month", "Reporting Group"])
-    )
-    return out
+    if consolidated_bs is not None and not consolidated_bs.empty:
+        consolidated_bs.to_excel(run_folder / "consolidated_bs.xlsx", index=False)
 
+    if consolidated_kpis is not None:
+        consolidated_kpis.to_excel(run_folder / "consolidated_kpis.xlsx", index=False)
 
-def build_monthly_branch_actuals(pnl_mapped: pd.DataFrame) -> pd.DataFrame:
-    if pnl_mapped is None or pnl_mapped.empty or "Date" not in pnl_mapped.columns:
-        return pd.DataFrame(columns=["Month", "Branch", "Amount"])
-
-    df = pnl_mapped.copy()
-    df["Date"] = pd.to_datetime(df["Date"], errors="coerce")
-    df = df[df["Date"].notna()].copy()
-
-    if df.empty:
-        return pd.DataFrame(columns=["Month", "Branch", "Amount"])
-
-    df["Month"] = df["Date"].dt.to_period("M").astype(str)
-    revenue_df = df[df["Reporting Group"].astype(str).str.strip().str.lower() == "revenue"].copy()
-
-    out = (
-        revenue_df.groupby(["Month", "Branch"], dropna=False)["Report Value"]
-        .sum()
-        .reset_index()
-        .rename(columns={"Report Value": "Amount"})
-        .sort_values(["Month", "Branch"])
-    )
-    return out
+    if branch_summary is not None and not branch_summary.empty:
+        branch_summary.to_excel(run_folder / "branch_summary.xlsx", index=False)
 
 
-def build_py_comparison(current_kpis: pd.DataFrame | None, prior_kpis: pd.DataFrame | None) -> pd.DataFrame:
-    if current_kpis is None or current_kpis.empty or prior_kpis is None or prior_kpis.empty:
-        return pd.DataFrame(columns=["Metric", "Current", "Prior Year", "Variance", "Variance %"])
-
-    cur = current_kpis[["KPI", "Value"]].rename(columns={"KPI": "Metric", "Value": "Current"})
-    py = prior_kpis[["KPI", "Value"]].rename(columns={"KPI": "Metric", "Value": "Prior Year"})
-
-    merged = cur.merge(py, on="Metric", how="inner")
-    merged["Variance"] = merged["Current"] - merged["Prior Year"]
-    merged["Variance %"] = merged.apply(
-        lambda r: (r["Variance"] / r["Prior Year"] * 100) if r["Prior Year"] != 0 else 0.0,
-        axis=1,
-    )
-    return merged
+def list_saved_company_runs(company_name: str):
+    company_slug = slugify_company_name(company_name)
+    company_folder = HISTORY_ROOT / company_slug
+    if not company_folder.exists():
+        return []
+    return sorted([item.name for item in company_folder.iterdir() if item.is_dir()], reverse=True)
 
 
-def build_benchmark_comparison(current_kpis: pd.DataFrame | None, benchmark_df: pd.DataFrame | None,
-                               ar_summary=None, ap_summary=None) -> pd.DataFrame:
-    rows = []
+def restore_run_from_history(company_name: str, run_name: str):
+    company_slug = slugify_company_name(company_name)
+    run_folder = HISTORY_ROOT / company_slug / run_name
+    restored = {}
 
-    if current_kpis is not None and not current_kpis.empty:
-        for _, row in current_kpis.iterrows():
-            rows.append({"Metric": row["KPI"], "Current Value": row["Value"]})
+    if (run_folder / "consolidated_pnl.xlsx").exists():
+        restored["prior_pnl"] = pd.read_excel(run_folder / "consolidated_pnl.xlsx")
+    if (run_folder / "consolidated_bs.xlsx").exists():
+        restored["prior_bs"] = pd.read_excel(run_folder / "consolidated_bs.xlsx")
+    if (run_folder / "consolidated_kpis.xlsx").exists():
+        restored["prior_kpis"] = pd.read_excel(run_folder / "consolidated_kpis.xlsx")
+    if (run_folder / "branch_summary.xlsx").exists():
+        restored["prior_branch_summary"] = pd.read_excel(run_folder / "branch_summary.xlsx")
 
-    if ar_summary is not None:
-        rows.append({"Metric": "AR Overdue %", "Current Value": ar_summary["overdue_pct"]})
-    if ap_summary is not None:
-        rows.append({"Metric": "AP Overdue %", "Current Value": ap_summary["overdue_pct"]})
-
-    current_df = pd.DataFrame(rows)
-    if current_df.empty or benchmark_df is None or benchmark_df.empty:
-        return pd.DataFrame(columns=["Metric", "Current Value", "Benchmark Value", "Gap"])
-
-    merged = current_df.merge(benchmark_df, on="Metric", how="inner")
-    merged["Gap"] = merged["Current Value"] - merged["Benchmark Value"]
-    return merged.sort_values("Metric").reset_index(drop=True)
+    return restored
 
 
-def rag_status(metric_name: str, current_value: float, benchmark_value=None) -> str:
-    metric_name = str(metric_name).strip().lower()
+# ----------------------------
+# Session defaults
+# ----------------------------
+for key in [
+    "gl", "coa", "kpi_master", "latest_bs", "mapped", "pnl_mapped", "bs_mapped", "unmapped",
+    "consolidated_pnl", "consolidated_bs", "consolidated_kpis", "branch_outputs", "branch_summary",
+    "detected_branches", "validation_passed", "company_profile", "bs_disclaimer", "ai_commentary",
+    "prior_pnl", "prior_bs", "prior_kpis", "save_run_preference", "anomaly_flags",
+    "ar_df", "ap_df", "ar_summary", "ap_summary", "budget_df",
+    "budget_compare", "budget_summary",
+    "benchmark_df", "py_compare", "benchmark_compare", "monthly_actuals", "monthly_branch_actuals",
+    "executive_summary_df", "forecast_pnl", "forecast_bs", "previous_year_pnl",
+    "forecast_pnl_compare", "previous_year_pnl_compare"
+]:
+    if key not in st.session_state:
+        st.session_state[key] = None
 
-    if benchmark_value not in [None, ""]:
-        benchmark_value = safe_float(benchmark_value)
-        gap = current_value - benchmark_value
-        if "margin" in metric_name:
-            if gap >= 0:
-                return "Green"
-            elif gap >= -3:
-                return "Amber"
-            return "Red"
-        if "overdue" in metric_name:
-            if gap <= 0:
-                return "Green"
-            elif gap <= 5:
-                return "Amber"
-            return "Red"
-
-    if "gross margin" in metric_name:
-        if current_value >= 25:
-            return "Green"
-        elif current_value >= 18:
-            return "Amber"
-        return "Red"
-
-    if "operating margin" in metric_name:
-        if current_value >= 10:
-            return "Green"
-        elif current_value >= 5:
-            return "Amber"
-        return "Red"
-
-    if "opex" in metric_name:
-        if current_value <= 25:
-            return "Green"
-        elif current_value <= 35:
-            return "Amber"
-        return "Red"
-
-    if "overdue" in metric_name:
-        if current_value <= 20:
-            return "Green"
-        elif current_value <= 35:
-            return "Amber"
-        return "Red"
-
-    return "Amber"
+if st.session_state["company_profile"] is None:
+    st.session_state["company_profile"] = {}
+if st.session_state["save_run_preference"] is None:
+    st.session_state["save_run_preference"] = False
 
 
-def build_executive_summary(current_kpis, ar_summary=None, ap_summary=None, budget_summary=None, forecast_summary=None,
-                            benchmark_compare=None) -> pd.DataFrame:
+# ----------------------------
+# Processing helpers
+# ----------------------------
+def build_executive_summary(current_kpis, ar_summary=None, ap_summary=None, budget_summary=None,
+                            benchmark_compare=None, forecast_pnl_compare=None, previous_year_pnl_compare=None) -> pd.DataFrame:
     rows = []
     current_kpi_map = kpi_map_from_df(current_kpis)
 
@@ -769,6 +436,7 @@ def build_executive_summary(current_kpis, ar_summary=None, ap_summary=None, budg
             match = benchmark_compare[benchmark_compare["Metric"] == metric]
             if not match.empty:
                 benchmark_value = safe_float(match.iloc[0]["Benchmark Value"])
+
         rows.append({
             "Metric": metric,
             "Current Value": current_value,
@@ -801,139 +469,33 @@ def build_executive_summary(current_kpis, ar_summary=None, ap_summary=None, budg
             "Status": "Green" if total_variance_pct >= 0 else ("Amber" if total_variance_pct >= -10 else "Red"),
         })
 
-    if forecast_summary is not None and not forecast_summary.empty and forecast_summary["Forecast"].sum() != 0:
-        total_variance_pct = forecast_summary["Variance"].sum() / forecast_summary["Forecast"].sum() * 100
+    if forecast_pnl_compare is not None and not forecast_pnl_compare.empty:
+        forecast_total = forecast_pnl_compare["Forecast"].sum()
+        variance_total = forecast_pnl_compare["Variance"].sum()
+        forecast_var_pct = (variance_total / forecast_total * 100) if forecast_total != 0 else 0
         rows.append({
             "Metric": "Forecast Variance %",
-            "Current Value": total_variance_pct,
+            "Current Value": forecast_var_pct,
             "Benchmark Value": "",
-            "Status": "Green" if total_variance_pct >= 0 else ("Amber" if total_variance_pct >= -10 else "Red"),
+            "Status": "Green" if forecast_var_pct >= 0 else ("Amber" if forecast_var_pct >= -10 else "Red"),
+        })
+
+    if previous_year_pnl_compare is not None and not previous_year_pnl_compare.empty:
+        py_total = previous_year_pnl_compare["Previous Year"].sum()
+        variance_total = previous_year_pnl_compare["Variance"].sum()
+        py_var_pct = (variance_total / py_total * 100) if py_total != 0 else 0
+        rows.append({
+            "Metric": "Previous Year Variance %",
+            "Current Value": py_var_pct,
+            "Benchmark Value": "",
+            "Status": "Green" if py_var_pct >= 0 else ("Amber" if py_var_pct >= -10 else "Red"),
         })
 
     return pd.DataFrame(rows)
 
 
-# ----------------------------
-# Pack creation
-# ----------------------------
-def create_excel_pack(
-    consolidated_pnl,
-    consolidated_bs,
-    consolidated_kpis,
-    branch_summary,
-    branch_outputs,
-    unmapped,
-    executive_summary=None,
-    monthly_actuals=None,
-    monthly_branch_actuals=None,
-    ar_df=None,
-    ap_df=None,
-    budget_compare=None,
-    forecast_compare=None,
-    py_compare=None,
-    benchmark_compare=None,
-):
-    df_dict = {
-        "Executive Summary": executive_summary if executive_summary is not None else pd.DataFrame(),
-        "Consolidated P&L": consolidated_pnl,
-    }
-
-    if consolidated_bs is not None and not consolidated_bs.empty:
-        df_dict["Consolidated BS"] = consolidated_bs
-    if consolidated_kpis is not None:
-        df_dict["Consolidated KPIs"] = consolidated_kpis
-    if branch_summary is not None and not branch_summary.empty:
-        df_dict["Branch Summary KPIs"] = branch_summary
-    if monthly_actuals is not None and not monthly_actuals.empty:
-        df_dict["Monthly Trends"] = monthly_actuals
-    if monthly_branch_actuals is not None and not monthly_branch_actuals.empty:
-        df_dict["Branch Monthly Trends"] = monthly_branch_actuals
-
-    for branch, reports in branch_outputs.items():
-        df_dict[f"{branch} P&L"] = reports["pnl"]
-        if reports["kpis"] is not None:
-            df_dict[f"{branch} KPIs"] = reports["kpis"]
-
-    if not unmapped.empty:
-        df_dict["Unmapped Accounts"] = unmapped
-    if ar_df is not None and not ar_df.empty:
-        df_dict["AR Ageing"] = ar_df
-    if ap_df is not None and not ap_df.empty:
-        df_dict["AP Ageing"] = ap_df
-    if budget_compare is not None and not budget_compare.empty:
-        df_dict["Budget vs Actual"] = budget_compare
-    if forecast_compare is not None and not forecast_compare.empty:
-        df_dict["Forecast vs Actual"] = forecast_compare
-    if py_compare is not None and not py_compare.empty:
-        df_dict["Actual vs PY"] = py_compare
-    if benchmark_compare is not None and not benchmark_compare.empty:
-        df_dict["Benchmark Comparison"] = benchmark_compare
-
-    return dataframe_to_excel_bytes(df_dict)
-
-
-# ----------------------------
-# History helpers
-# ----------------------------
-def save_run_to_history(company_profile, consolidated_pnl, consolidated_bs, consolidated_kpis, branch_summary):
-    company_name = company_profile.get("Company Name", "").strip()
-    if not company_name:
-        return
-
-    company_slug = slugify_company_name(company_name)
-    financial_year = company_profile.get("Financial Year", "unknown_year").strip().replace(" ", "_")
-    reporting_period = company_profile.get("Reporting Period", "unknown_period").strip().replace(" ", "_")
-
-    company_folder = HISTORY_ROOT / company_slug
-    run_folder = company_folder / f"{financial_year}_{reporting_period}"
-    run_folder.mkdir(parents=True, exist_ok=True)
-
-    consolidated_pnl.to_excel(run_folder / "consolidated_pnl.xlsx", index=False)
-    if consolidated_bs is not None and not consolidated_bs.empty:
-        consolidated_bs.to_excel(run_folder / "consolidated_bs.xlsx", index=False)
-    if consolidated_kpis is not None:
-        consolidated_kpis.to_excel(run_folder / "consolidated_kpis.xlsx", index=False)
-    if branch_summary is not None and not branch_summary.empty:
-        branch_summary.to_excel(run_folder / "branch_summary.xlsx", index=False)
-
-
-def list_saved_company_runs(company_name: str):
-    company_slug = slugify_company_name(company_name)
-    company_folder = HISTORY_ROOT / company_slug
-    if not company_folder.exists():
-        return []
-    return sorted([item.name for item in company_folder.iterdir() if item.is_dir()], reverse=True)
-
-
-def restore_run_from_history(company_name: str, run_name: str):
-    company_slug = slugify_company_name(company_name)
-    run_folder = HISTORY_ROOT / company_slug / run_name
-    restored = {}
-
-    if (run_folder / "consolidated_pnl.xlsx").exists():
-        restored["prior_pnl"] = pd.read_excel(run_folder / "consolidated_pnl.xlsx")
-    if (run_folder / "consolidated_bs.xlsx").exists():
-        restored["prior_bs"] = pd.read_excel(run_folder / "consolidated_bs.xlsx")
-    if (run_folder / "consolidated_kpis.xlsx").exists():
-        restored["prior_kpis"] = pd.read_excel(run_folder / "consolidated_kpis.xlsx")
-    if (run_folder / "branch_summary.xlsx").exists():
-        restored["prior_branch_summary"] = pd.read_excel(run_folder / "branch_summary.xlsx")
-
-    return restored
-
-
-# ----------------------------
-# AI / anomalies
-# ----------------------------
-def detect_anomalies(
-    consolidated_kpis,
-    branch_outputs,
-    prior_kpis=None,
-    ar_summary=None,
-    ap_summary=None,
-    budget_summary=None,
-    forecast_summary=None,
-):
+def detect_anomalies(consolidated_kpis, prior_kpis=None, ar_summary=None, ap_summary=None,
+                     budget_summary=None, forecast_pnl_compare=None):
     flags = []
     current_kpi_map = kpi_map_from_df(consolidated_kpis)
 
@@ -969,10 +531,13 @@ def detect_anomalies(
         if total_variance_pct < -10:
             flags.append(f"Actual performance is {total_variance_pct:.2f}% below budget.")
 
-    if forecast_summary is not None and not forecast_summary.empty and forecast_summary["Forecast"].sum() != 0:
-        total_variance_pct = forecast_summary["Variance"].sum() / forecast_summary["Forecast"].sum() * 100
-        if total_variance_pct < -10:
-            flags.append(f"Actual performance is {total_variance_pct:.2f}% below forecast.")
+    if forecast_pnl_compare is not None and not forecast_pnl_compare.empty:
+        forecast_total = forecast_pnl_compare["Forecast"].sum()
+        variance_total = forecast_pnl_compare["Variance"].sum()
+        if forecast_total != 0:
+            total_variance_pct = variance_total / forecast_total * 100
+            if total_variance_pct < -10:
+                flags.append(f"Actual performance is {total_variance_pct:.2f}% below forecast.")
 
     return flags
 
@@ -986,7 +551,7 @@ def generate_ai_commentary(
     ar_summary=None,
     ap_summary=None,
     budget_summary=None,
-    forecast_summary=None,
+    forecast_pnl_compare=None,
 ):
     try:
         client = OpenAI()
@@ -1015,9 +580,9 @@ def generate_ai_commentary(
         if budget_summary is not None and not budget_summary.empty:
             budget_text = budget_summary.to_string(index=False)[:1500]
 
-        forecast_text = "No forecast data available."
-        if forecast_summary is not None and not forecast_summary.empty:
-            forecast_text = forecast_summary.to_string(index=False)[:1500]
+        forecast_text = "No forecast P&L data available."
+        if forecast_pnl_compare is not None and not forecast_pnl_compare.empty:
+            forecast_text = forecast_pnl_compare.to_string(index=False)[:1500]
 
         company_name = profile.get("Company Name", "Unknown Company")
         industry = profile.get("Industry", "Unknown Industry")
@@ -1146,67 +711,6 @@ def prepare_data(gl_file, mapping_file, kpi_file=None, latest_bs_file=None):
     return gl, coa, kpi_master, latest_bs, mapped, pnl_mapped, bs_mapped, unmapped
 
 
-def build_prior_period_from_gl(prior_gl_file, coa, kpi_master):
-    prior_gl = pd.read_excel(prior_gl_file)
-    prior_gl = clean_columns(prior_gl)
-    prior_gl.rename(columns={
-        "Account Code": "Account code",
-        "account code": "Account code",
-        "branch": "Branch",
-        "net": "Net",
-    }, inplace=True)
-
-    validate_required_columns(prior_gl, ["Account code", "Debit", "Credit", "Branch"], "Prior Period GL")
-
-    prior_gl["Account code"] = prior_gl["Account code"].astype(str).str.strip()
-    prior_gl["Debit"] = pd.to_numeric(prior_gl["Debit"], errors="coerce").fillna(0)
-    prior_gl["Credit"] = pd.to_numeric(prior_gl["Credit"], errors="coerce").fillna(0)
-
-    if "Net" not in prior_gl.columns:
-        prior_gl["Net"] = prior_gl["Debit"] - prior_gl["Credit"]
-    else:
-        prior_gl["Net"] = pd.to_numeric(prior_gl["Net"], errors="coerce").fillna(prior_gl["Debit"] - prior_gl["Credit"])
-
-    merged = prior_gl.merge(coa, on="Account code", how="left")
-    merged = merged[merged["Reporting Group"].notna()].copy()
-
-    if "Sign Convention" not in merged.columns:
-        merged["Sign Convention"] = "positive"
-
-    merged["Report Value"] = merged.apply(apply_sign_convention_to_gl, axis=1)
-
-    prior_pnl = build_pnl(merged[merged["Statement"].astype(str).str.strip().str.lower() == "income statement"].copy())
-    prior_bs = build_balance_sheet_from_gl(merged[merged["Statement"].astype(str).str.strip().str.lower() == "balance sheet"].copy())
-    prior_kpis = build_kpis(
-        merged[merged["Statement"].astype(str).str.strip().str.lower() == "income statement"].copy(),
-        kpi_master
-    ) if kpi_master is not None else None
-
-    return prior_pnl, prior_bs, prior_kpis
-
-
-# ----------------------------
-# Session defaults
-# ----------------------------
-for key in [
-    "gl", "coa", "kpi_master", "latest_bs", "mapped", "pnl_mapped", "bs_mapped", "unmapped",
-    "consolidated_pnl", "consolidated_bs", "consolidated_kpis", "branch_outputs", "branch_summary",
-    "detected_branches", "validation_passed", "company_profile", "bs_disclaimer", "ai_commentary",
-    "prior_pnl", "prior_bs", "prior_kpis", "save_run_preference", "anomaly_flags",
-    "ar_df", "ap_df", "ar_summary", "ap_summary", "budget_df", "forecast_df",
-    "budget_compare", "forecast_compare", "budget_summary", "forecast_summary",
-    "benchmark_df", "py_compare", "benchmark_compare", "monthly_actuals", "monthly_branch_actuals",
-    "executive_summary_df"
-]:
-    if key not in st.session_state:
-        st.session_state[key] = None
-
-if st.session_state["company_profile"] is None:
-    st.session_state["company_profile"] = {}
-if st.session_state["save_run_preference"] is None:
-    st.session_state["save_run_preference"] = False
-
-
 # ----------------------------
 # Header / top-level tabs
 # ----------------------------
@@ -1284,11 +788,14 @@ with tab_setup:
         with c2:
             kpi_file = st.file_uploader("KPI Master (Optional)", type=["xlsx"])
             latest_bs_file = st.file_uploader("Latest Previous Balance Sheet (Optional)", type=["xlsx"])
-            forecast_file = st.file_uploader("Forecast Data (Optional)", type=["xlsx"])
+            forecast_pnl_file = st.file_uploader("Forecast P&L (Optional)", type=["xlsx"])
         with c3:
+            forecast_bs_file = st.file_uploader("Forecast Balance Sheet (Optional)", type=["xlsx"])
             ar_file = st.file_uploader("AR Ageing (Optional)", type=["xlsx"])
             ap_file = st.file_uploader("AP Ageing (Optional)", type=["xlsx"])
             benchmark_file = st.file_uploader("Industry Benchmark File (Optional)", type=["xlsx"])
+
+        previous_year_pnl_file = st.file_uploader("Previous Year P&L (Optional)", type=["xlsx"])
 
         if st.button("Validate & Load Current Files", use_container_width=True):
             try:
@@ -1338,14 +845,18 @@ with tab_setup:
                     ap_summary = build_ageing_summary(ap_df, "AP") if ap_df is not None else None
 
                     budget_df = normalize_plan_df(pd.read_excel(budget_file), "Budget Data") if budget_file is not None else None
-                    forecast_df = normalize_plan_df(pd.read_excel(forecast_file), "Forecast Data") if forecast_file is not None else None
                     benchmark_df = normalize_benchmark_df(pd.read_excel(benchmark_file)) if benchmark_file is not None else None
+
+                    forecast_pnl = normalize_uploaded_pnl(pd.read_excel(forecast_pnl_file), "Forecast P&L") if forecast_pnl_file is not None else None
+                    forecast_bs = normalize_uploaded_bs(pd.read_excel(forecast_bs_file), "Forecast Balance Sheet") if forecast_bs_file is not None else None
+                    previous_year_pnl = normalize_uploaded_pnl(pd.read_excel(previous_year_pnl_file), "Previous Year P&L") if previous_year_pnl_file is not None else None
 
                     actuals_df = build_actuals_by_branch_reporting_group(pnl_mapped)
                     budget_compare = compare_plan_vs_actual(actuals_df, budget_df, "Budget") if budget_df is not None else None
-                    forecast_compare = compare_plan_vs_actual(actuals_df, forecast_df, "Forecast") if forecast_df is not None else None
                     budget_summary = summarize_plan_vs_actual(budget_compare, "Budget") if budget_compare is not None else None
-                    forecast_summary = summarize_plan_vs_actual(forecast_compare, "Forecast") if forecast_compare is not None else None
+
+                    forecast_pnl_compare = compare_pnl_to_forecast(consolidated_pnl, forecast_pnl) if forecast_pnl is not None else None
+                    previous_year_pnl_compare = compare_pnl_to_previous_year(consolidated_pnl, previous_year_pnl) if previous_year_pnl is not None else None
 
                     py_compare = build_py_comparison(consolidated_kpis, st.session_state.get("prior_kpis"))
                     benchmark_compare = build_benchmark_comparison(consolidated_kpis, benchmark_df, ar_summary, ap_summary)
@@ -1358,8 +869,9 @@ with tab_setup:
                         ar_summary=ar_summary,
                         ap_summary=ap_summary,
                         budget_summary=budget_summary,
-                        forecast_summary=forecast_summary,
                         benchmark_compare=benchmark_compare,
+                        forecast_pnl_compare=forecast_pnl_compare,
+                        previous_year_pnl_compare=previous_year_pnl_compare,
                     )
 
                     st.session_state["gl"] = gl
@@ -1384,17 +896,19 @@ with tab_setup:
                     st.session_state["ar_summary"] = ar_summary
                     st.session_state["ap_summary"] = ap_summary
                     st.session_state["budget_df"] = budget_df
-                    st.session_state["forecast_df"] = forecast_df
-                    st.session_state["benchmark_df"] = benchmark_df
                     st.session_state["budget_compare"] = budget_compare
-                    st.session_state["forecast_compare"] = forecast_compare
                     st.session_state["budget_summary"] = budget_summary
-                    st.session_state["forecast_summary"] = forecast_summary
+                    st.session_state["benchmark_df"] = benchmark_df
                     st.session_state["py_compare"] = py_compare
                     st.session_state["benchmark_compare"] = benchmark_compare
                     st.session_state["monthly_actuals"] = monthly_actuals
                     st.session_state["monthly_branch_actuals"] = monthly_branch_actuals
                     st.session_state["executive_summary_df"] = executive_summary_df
+                    st.session_state["forecast_pnl"] = forecast_pnl
+                    st.session_state["forecast_bs"] = forecast_bs
+                    st.session_state["previous_year_pnl"] = previous_year_pnl
+                    st.session_state["forecast_pnl_compare"] = forecast_pnl_compare
+                    st.session_state["previous_year_pnl_compare"] = previous_year_pnl_compare
 
                     if st.session_state["save_run_preference"]:
                         save_run_to_history(
@@ -1407,12 +921,11 @@ with tab_setup:
 
                     st.session_state["anomaly_flags"] = detect_anomalies(
                         consolidated_kpis,
-                        branch_outputs,
                         prior_kpis=st.session_state.get("prior_kpis"),
                         ar_summary=ar_summary,
                         ap_summary=ap_summary,
                         budget_summary=budget_summary,
-                        forecast_summary=forecast_summary,
+                        forecast_pnl_compare=forecast_pnl_compare,
                     ) if consolidated_kpis is not None else []
 
                     if unmapped.empty:
@@ -1452,25 +965,16 @@ with tab_setup:
 
         if st.button("Load Prior Period Inputs", use_container_width=True):
             try:
-                coa = st.session_state.get("coa")
-                kpi_master = st.session_state.get("kpi_master")
                 loaded_any = False
 
                 if prior_gl_file is not None:
-                    if coa is None:
-                        st.error("Load current files first so COA mapping is available.")
-                    else:
-                        prior_pnl, prior_bs, prior_kpis = build_prior_period_from_gl(prior_gl_file, coa, kpi_master)
-                        st.session_state["prior_pnl"] = prior_pnl
-                        st.session_state["prior_bs"] = prior_bs
-                        st.session_state["prior_kpis"] = prior_kpis
-                        loaded_any = True
+                    st.error("Prior Period GL parsing has been simplified out in this version. Use Prior Period P&L / BS / KPI Pack direct uploads.")
                 else:
                     if prior_pnl_file is not None:
-                        st.session_state["prior_pnl"] = clean_columns(pd.read_excel(prior_pnl_file))
+                        st.session_state["prior_pnl"] = normalize_uploaded_pnl(pd.read_excel(prior_pnl_file), "Prior Period P&L")
                         loaded_any = True
                     if prior_bs_file is not None:
-                        st.session_state["prior_bs"] = clean_columns(pd.read_excel(prior_bs_file))
+                        st.session_state["prior_bs"] = normalize_uploaded_bs(pd.read_excel(prior_bs_file), "Prior Period Balance Sheet")
                         loaded_any = True
                     if prior_kpi_file is not None:
                         pk = clean_columns(pd.read_excel(prior_kpi_file))
@@ -1513,14 +1017,15 @@ with tab_setup:
             show_required_columns("KPI Master", ["KPI Name", "Formula Type", "Numerator Group", "Denominator Group", "Output Type", "Display Order"], [])
             show_required_columns("Latest Previous Balance Sheet", ["Reporting Group", "Reporting Subgroup", "Balance"], [])
             show_required_columns("Budget Data", ["Month", "Branch", "Reporting Group", "Amount"], [])
+            show_required_columns("Forecast P&L", ["Reporting Group", "Reporting Subgroup", "Report Value"], [])
 
         with g2:
-            show_required_columns("Forecast Data", ["Month", "Branch", "Reporting Group", "Amount"], [])
+            show_required_columns("Forecast Balance Sheet", ["Reporting Group", "Reporting Subgroup", "Balance"], [])
+            show_required_columns("Previous Year P&L", ["Reporting Group", "Reporting Subgroup", "Report Value"], [])
             show_required_columns("AR Ageing", ["Party Name", "Outstanding Amount"], ["Document Number", "Document Date", "Due Date", "Branch", "Age Bucket"])
             show_required_columns("AP Ageing", ["Party Name", "Outstanding Amount"], ["Document Number", "Document Date", "Due Date", "Branch", "Age Bucket"])
             show_required_columns("Industry Benchmark File", ["Metric", "Benchmark Value"], [])
-            show_required_columns("Prior Period GL Report", ["Account code", "Debit", "Credit", "Branch"], ["Net", "Date", "Description"])
-            show_required_columns("Prior KPI Pack", ["KPI", "Value"], ["Display Value", "Output Type"])
+            show_required_columns("Prior Period KPI Pack", ["KPI", "Value"], ["Display Value", "Output Type"])
 
     with st.expander("Download Sample Templates"):
         st.info("Download a template, replace the sample rows with your own data, and upload the same file back into the app.")
@@ -1589,13 +1094,22 @@ with tab_dashboard:
             st.markdown("**Budget vs Actual**")
             st.bar_chart(st.session_state["budget_summary"].set_index("Reporting Group")[["Actual", "Budget"]])
 
-        if st.session_state["forecast_summary"] is not None and not st.session_state["forecast_summary"].empty:
-            st.markdown("**Forecast vs Actual**")
-            st.bar_chart(st.session_state["forecast_summary"].set_index("Reporting Group")[["Actual", "Forecast"]])
+        if st.session_state["forecast_pnl_compare"] is not None and not st.session_state["forecast_pnl_compare"].empty:
+            st.markdown("**Actual vs Forecast P&L**")
+            fc_chart = (
+                st.session_state["forecast_pnl_compare"]
+                .groupby("Reporting Group")[["Actual", "Forecast"]]
+                .sum()
+            )
+            st.bar_chart(fc_chart)
 
-        if st.session_state["py_compare"] is not None and not st.session_state["py_compare"].empty:
-            st.markdown("**Actual vs Prior Year**")
-            py_chart = st.session_state["py_compare"].copy().set_index("Metric")[["Current", "Prior Year"]]
+        if st.session_state["previous_year_pnl_compare"] is not None and not st.session_state["previous_year_pnl_compare"].empty:
+            st.markdown("**Actual vs Previous Year P&L**")
+            py_chart = (
+                st.session_state["previous_year_pnl_compare"]
+                .groupby("Reporting Group")[["Actual", "Previous Year"]]
+                .sum()
+            )
             st.bar_chart(py_chart)
 
         if st.session_state["benchmark_compare"] is not None and not st.session_state["benchmark_compare"].empty:
@@ -1647,6 +1161,14 @@ with tab_financials:
                     with st.expander(branch):
                         st.dataframe(style_dataframe(reports["pnl"]), use_container_width=True)
 
+            if st.session_state["forecast_pnl"] is not None:
+                st.markdown("### Forecast P&L")
+                st.dataframe(style_dataframe(st.session_state["forecast_pnl"]), use_container_width=True)
+
+            if st.session_state["previous_year_pnl"] is not None:
+                st.markdown("### Previous Year P&L")
+                st.dataframe(style_dataframe(st.session_state["previous_year_pnl"]), use_container_width=True)
+
     with sub_bs:
         if st.session_state["consolidated_bs"] is None or st.session_state["consolidated_bs"].empty:
             st.info("No Balance Sheet available yet.")
@@ -1654,6 +1176,10 @@ with tab_financials:
             if st.session_state["bs_disclaimer"]:
                 st.warning(st.session_state["bs_disclaimer"])
             st.dataframe(style_dataframe(st.session_state["consolidated_bs"]), use_container_width=True)
+
+        if st.session_state["forecast_bs"] is not None:
+            st.markdown("### Forecast Balance Sheet")
+            st.dataframe(style_dataframe(st.session_state["forecast_bs"]), use_container_width=True)
 
     with sub_kpi:
         if st.session_state["consolidated_kpis"] is None:
@@ -1705,16 +1231,17 @@ with tab_financials:
         else:
             st.info("No budget data uploaded.")
 
-        if st.session_state["forecast_compare"] is not None and not st.session_state["forecast_compare"].empty:
-            st.markdown("### Forecast vs Actual")
-            st.dataframe(style_dataframe(st.session_state["forecast_summary"]), use_container_width=True)
-            st.dataframe(style_dataframe(st.session_state["forecast_compare"]), use_container_width=True)
+        if st.session_state["forecast_pnl_compare"] is not None and not st.session_state["forecast_pnl_compare"].empty:
+            st.markdown("### Actual vs Forecast P&L")
+            st.dataframe(style_dataframe(st.session_state["forecast_pnl_compare"]), use_container_width=True)
         else:
-            st.info("No forecast data uploaded.")
+            st.info("No forecast P&L uploaded.")
 
-        if st.session_state["py_compare"] is not None and not st.session_state["py_compare"].empty:
-            st.markdown("### Actual vs Prior Year")
-            st.dataframe(style_dataframe(st.session_state["py_compare"]), use_container_width=True)
+        if st.session_state["previous_year_pnl_compare"] is not None and not st.session_state["previous_year_pnl_compare"].empty:
+            st.markdown("### Actual vs Previous Year P&L")
+            st.dataframe(style_dataframe(st.session_state["previous_year_pnl_compare"]), use_container_width=True)
+        else:
+            st.info("No previous year P&L uploaded.")
 
         if st.session_state["benchmark_compare"] is not None and not st.session_state["benchmark_compare"].empty:
             st.markdown("### Benchmark Comparison")
@@ -1791,7 +1318,7 @@ with tab_insights:
                         ar_summary=st.session_state.get("ar_summary"),
                         ap_summary=st.session_state.get("ap_summary"),
                         budget_summary=st.session_state.get("budget_summary"),
-                        forecast_summary=st.session_state.get("forecast_summary"),
+                        forecast_pnl_compare=st.session_state.get("forecast_pnl_compare"),
                     )
 
             if st.session_state["ai_commentary"]:
@@ -1822,8 +1349,8 @@ with tab_downloads:
             ar_df=st.session_state["ar_df"],
             ap_df=st.session_state["ap_df"],
             budget_compare=st.session_state["budget_compare"],
-            forecast_compare=st.session_state["forecast_compare"],
-            py_compare=st.session_state["py_compare"],
+            forecast_compare=st.session_state["forecast_pnl_compare"],
+            py_compare=st.session_state["previous_year_pnl_compare"],
             benchmark_compare=st.session_state["benchmark_compare"],
         )
 
