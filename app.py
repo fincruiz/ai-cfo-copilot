@@ -799,23 +799,24 @@ with tab_setup:
 
         previous_year_pnl_file = st.file_uploader("Previous Year P&L (Optional)", type=["xlsx"])
 
-        if st.button("Validate & Load Current Files", use_container_width=True):
+if st.button("Validate & Load Current Files", use_container_width=True):
+
+    st.markdown("## 🔍 Validation Summary")
 
     validation_errors = []
     validation_success = []
-    loaded_files = {}
 
-    def add_error(file_name, error, df=None):
+    def log_error(file, msg, df=None):
         validation_errors.append({
-            "File": file_name,
-            "Issue": str(error),
-            "Found Columns": ", ".join(list(df.columns)) if df is not None else "Could not read file"
+            "File": file,
+            "Issue": str(msg),
+            "Columns Found": ", ".join(df.columns) if df is not None else "Unreadable"
         })
 
-    def add_success(file_name):
+    def log_success(file):
         validation_success.append({
-            "File": file_name,
-            "Status": "Validated"
+            "File": file,
+            "Status": "✅ Valid"
         })
 
     def preview(file_name, df):
