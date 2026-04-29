@@ -77,7 +77,9 @@ def style_dataframe(df: pd.DataFrame):
 def validate_required_columns(df: pd.DataFrame, required_cols: list[str], file_label: str):
     missing = [c for c in required_cols if c not in df.columns]
     if missing:
-        raise ValueError(f"{file_label} is missing required columns: {', '.join(missing)}")
+        raise ValueError(
+            f"{file_label} → Missing columns: {missing} | Found: {list(df.columns)}"
+        )
 
 
 def safe_float(value, default=0.0):
@@ -798,143 +800,141 @@ with tab_setup:
         previous_year_pnl_file = st.file_uploader("Previous Year P&L (Optional)", type=["xlsx"])
 
         if st.button("Validate & Load Current Files", use_container_width=True):
-            try:
-                profile = st.session_state["company_profile"]
-                if not profile or not profile.get("Company Name", "").strip():
-                    st.error("Please save Company Profile first. Company Name is mandatory.")
-                elif not (gl_file and mapping_file):
-                    st.error("Please upload Current GL Report and COA Mapping.")
-                else:
-                    gl, coa, kpi_master, latest_bs, mapped, pnl_mapped, bs_mapped, unmapped = prepare_data(
-                        gl_file, mapping_file, kpi_file, latest_bs_file
-                    )
 
-                    consolidated_pnl = build_pnl(pnl_mapped)
-                    current_bs = build_balance_sheet_from_gl(bs_mapped)
+    validation_errors = []
+    validation_success = []
+    loaded_files = {}
 
-                    bs_disclaimer = None
-                    if latest_bs is not None:
-                        consolidated_bs = combine_opening_and_current_bs(latest_bs, current_bs)
-                    else:
-                        consolidated_bs = current_bs
-                        bs_disclaimer = "Balance Sheet may not fully match because opening balances were not provided."
+    def add_error(file_name, error, df=None):
+        validation_errors.append({
+            "File": file_name,
+            "Issue": str(error),
+            "Found Columns": ", ".join(list(df.columns)) if df is not None else "Could not read file"
+        })
 
-                    consolidated_kpis = build_kpis(pnl_mapped, kpi_master) if kpi_master is not None else None
+    def add_success(file_name):
+        validation_success.append({
+            "File": file_name,
+            "Status": "Validated"
+        })
 
-                    detected_branches = sorted(pnl_mapped["Branch"].dropna().unique().tolist())
+    def preview(file_name, df):
+        with st.expander(f"Preview: {file_name}"):
+            st.dataframe(df.head(5), use_container_width=True)
 
-                    branch_outputs = {}
-                    branch_summary_rows = []
-                    for branch in detected_branches:
-                        branch_df = pnl_mapped[pnl_mapped["Branch"] == branch].copy()
-                        branch_pnl = build_pnl(branch_df)
-                        branch_kpis = build_kpis(branch_df, kpi_master) if kpi_master is not None else None
-                        branch_outputs[branch] = {"pnl": branch_pnl, "kpis": branch_kpis}
+    # ----------------------------
+    # Profile Check
+    # ----------------------------
+    profile = st.session_state.get("company_profile", {})
+    if not profile or not profile.get("Company Name", "").strip():
+        st.error("Please save Company Profile first.")
+        st.stop()
 
-                        if branch_kpis is not None:
-                            row = {"Branch": branch}
-                            for _, r in branch_kpis.iterrows():
-                                row[r["KPI"]] = r["Display Value"]
-                            branch_summary_rows.append(row)
+    if gl_file is None or mapping_file is None:
+        st.error("GL and COA Mapping are mandatory.")
+        st.stop()
 
-                    branch_summary = pd.DataFrame(branch_summary_rows) if branch_summary_rows else pd.DataFrame()
+    # ----------------------------
+    # GL
+    # ----------------------------
+    try:
+        df = pd.read_excel(gl_file)
+        df = clean_columns(df)
+        validate_required_columns(df, ["Account code", "Debit", "Credit", "Branch"], "GL Report")
+        loaded_files["gl"] = df
+        add_success("GL Report")
+        preview("GL Report", df)
+    except Exception as e:
+        add_error("GL Report", e, df if "df" in locals() else None)
 
-                    ar_df = normalize_ageing_df(pd.read_excel(ar_file), "AR") if ar_file is not None else None
-                    ap_df = normalize_ageing_df(pd.read_excel(ap_file), "AP") if ap_file is not None else None
-                    ar_summary = build_ageing_summary(ar_df, "AR") if ar_df is not None else None
-                    ap_summary = build_ageing_summary(ap_df, "AP") if ap_df is not None else None
+    # ----------------------------
+    # COA
+    # ----------------------------
+    try:
+        df = pd.read_excel(mapping_file)
+        df = clean_columns(df)
+        validate_required_columns(df, ["Account code", "Reporting Group", "Reporting Subgroup", "Statement"], "COA Mapping")
+        loaded_files["coa"] = df
+        add_success("COA Mapping")
+        preview("COA Mapping", df)
+    except Exception as e:
+        add_error("COA Mapping", e, df if "df" in locals() else None)
 
-                    budget_df = normalize_plan_df(pd.read_excel(budget_file), "Budget Data") if budget_file is not None else None
-                    benchmark_df = normalize_benchmark_df(pd.read_excel(benchmark_file)) if benchmark_file is not None else None
+    # ----------------------------
+    # KPI
+    # ----------------------------
+    if kpi_file is not None:
+        try:
+            df = pd.read_excel(kpi_file)
+            df = clean_columns(df)
+            validate_required_columns(df,
+                ["KPI Name", "Formula Type", "Numerator Group", "Denominator Group", "Output Type", "Display Order"],
+                "KPI Master"
+            )
+            loaded_files["kpi"] = df
+            add_success("KPI Master")
+            preview("KPI Master", df)
+        except Exception as e:
+            add_error("KPI Master", e, df if "df" in locals() else None)
 
-                    forecast_pnl = normalize_uploaded_pnl(pd.read_excel(forecast_pnl_file), "Forecast P&L") if forecast_pnl_file is not None else None
-                    forecast_bs = normalize_uploaded_bs(pd.read_excel(forecast_bs_file), "Forecast Balance Sheet") if forecast_bs_file is not None else None
-                    previous_year_pnl = normalize_uploaded_pnl(pd.read_excel(previous_year_pnl_file), "Previous Year P&L") if previous_year_pnl_file is not None else None
+    # ----------------------------
+    # Forecast P&L
+    # ----------------------------
+    if forecast_pnl_file is not None:
+        try:
+            df = normalize_uploaded_pnl(pd.read_excel(forecast_pnl_file), "Forecast P&L")
+            loaded_files["forecast_pnl"] = df
+            add_success("Forecast P&L")
+            preview("Forecast P&L", df)
+        except Exception as e:
+            add_error("Forecast P&L", e)
 
-                    actuals_df = build_actuals_by_branch_reporting_group(pnl_mapped)
-                    budget_compare = compare_plan_vs_actual(actuals_df, budget_df, "Budget") if budget_df is not None else None
-                    budget_summary = summarize_plan_vs_actual(budget_compare, "Budget") if budget_compare is not None else None
+    # ----------------------------
+    # Previous Year
+    # ----------------------------
+    if previous_year_pnl_file is not None:
+        try:
+            df = normalize_uploaded_pnl(pd.read_excel(previous_year_pnl_file), "Previous Year P&L")
+            loaded_files["py"] = df
+            add_success("Previous Year P&L")
+            preview("Previous Year P&L", df)
+        except Exception as e:
+            add_error("Previous Year P&L", e)
 
-                    forecast_pnl_compare = compare_pnl_to_forecast(consolidated_pnl, forecast_pnl) if forecast_pnl is not None else None
-                    previous_year_pnl_compare = compare_pnl_to_previous_year(consolidated_pnl, previous_year_pnl) if previous_year_pnl is not None else None
+    # ----------------------------
+    # RESULT DISPLAY
+    # ----------------------------
+    if validation_success:
+        st.success("Validated Files")
+        st.dataframe(pd.DataFrame(validation_success), use_container_width=True)
 
-                    py_compare = build_py_comparison(consolidated_kpis, st.session_state.get("prior_kpis"))
-                    benchmark_compare = build_benchmark_comparison(consolidated_kpis, benchmark_df, ar_summary, ap_summary)
+    if validation_errors:
+        st.error("Validation Errors Found")
+        st.dataframe(pd.DataFrame(validation_errors), use_container_width=True)
+        st.stop()
 
-                    monthly_actuals = build_monthly_actuals(pnl_mapped)
-                    monthly_branch_actuals = build_monthly_branch_actuals(pnl_mapped)
+    # ----------------------------
+    # IF ALL GOOD → PROCESS
+    # ----------------------------
+    try:
+        gl, coa, kpi_master, latest_bs, mapped, pnl_mapped, bs_mapped, unmapped = prepare_data(
+            gl_file, mapping_file, kpi_file, latest_bs_file
+        )
 
-                    executive_summary_df = build_executive_summary(
-                        consolidated_kpis,
-                        ar_summary=ar_summary,
-                        ap_summary=ap_summary,
-                        budget_summary=budget_summary,
-                        benchmark_compare=benchmark_compare,
-                        forecast_pnl_compare=forecast_pnl_compare,
-                        previous_year_pnl_compare=previous_year_pnl_compare,
-                    )
+        st.success("All files loaded successfully.")
 
-                    st.session_state["gl"] = gl
-                    st.session_state["coa"] = coa
-                    st.session_state["kpi_master"] = kpi_master
-                    st.session_state["latest_bs"] = latest_bs
-                    st.session_state["mapped"] = mapped
-                    st.session_state["pnl_mapped"] = pnl_mapped
-                    st.session_state["bs_mapped"] = bs_mapped
-                    st.session_state["unmapped"] = unmapped
-                    st.session_state["consolidated_pnl"] = consolidated_pnl
-                    st.session_state["consolidated_bs"] = consolidated_bs
-                    st.session_state["consolidated_kpis"] = consolidated_kpis
-                    st.session_state["branch_outputs"] = branch_outputs
-                    st.session_state["branch_summary"] = branch_summary
-                    st.session_state["detected_branches"] = detected_branches
-                    st.session_state["validation_passed"] = unmapped.empty
-                    st.session_state["bs_disclaimer"] = bs_disclaimer
-                    st.session_state["ai_commentary"] = None
-                    st.session_state["ar_df"] = ar_df
-                    st.session_state["ap_df"] = ap_df
-                    st.session_state["ar_summary"] = ar_summary
-                    st.session_state["ap_summary"] = ap_summary
-                    st.session_state["budget_df"] = budget_df
-                    st.session_state["budget_compare"] = budget_compare
-                    st.session_state["budget_summary"] = budget_summary
-                    st.session_state["benchmark_df"] = benchmark_df
-                    st.session_state["py_compare"] = py_compare
-                    st.session_state["benchmark_compare"] = benchmark_compare
-                    st.session_state["monthly_actuals"] = monthly_actuals
-                    st.session_state["monthly_branch_actuals"] = monthly_branch_actuals
-                    st.session_state["executive_summary_df"] = executive_summary_df
-                    st.session_state["forecast_pnl"] = forecast_pnl
-                    st.session_state["forecast_bs"] = forecast_bs
-                    st.session_state["previous_year_pnl"] = previous_year_pnl
-                    st.session_state["forecast_pnl_compare"] = forecast_pnl_compare
-                    st.session_state["previous_year_pnl_compare"] = previous_year_pnl_compare
+        # (keep your existing session_state logic below as is)
 
-                    if st.session_state["save_run_preference"]:
-                        save_run_to_history(
-                            st.session_state["company_profile"],
-                            consolidated_pnl,
-                            consolidated_bs,
-                            consolidated_kpis,
-                            branch_summary,
-                        )
+        st.session_state["gl"] = gl
+        st.session_state["coa"] = coa
+        st.session_state["mapped"] = mapped
+        st.session_state["pnl_mapped"] = pnl_mapped
+        st.session_state["bs_mapped"] = bs_mapped
+        st.session_state["unmapped"] = unmapped
 
-                    st.session_state["anomaly_flags"] = detect_anomalies(
-                        consolidated_kpis,
-                        prior_kpis=st.session_state.get("prior_kpis"),
-                        ar_summary=ar_summary,
-                        ap_summary=ap_summary,
-                        budget_summary=budget_summary,
-                        forecast_pnl_compare=forecast_pnl_compare,
-                    ) if consolidated_kpis is not None else []
-
-                    if unmapped.empty:
-                        st.success("Files validated and loaded successfully.")
-                    else:
-                        st.warning("Files loaded, but unmapped GL rows were found.")
-
-            except Exception as e:
-                st.error(f"Error: {e}")
+    except Exception as e:
+        st.error("Processing failed after validation")
+        st.exception(e)
 
     with st.expander("Prior Period / Restore"):
         company_name_for_history = st.session_state["company_profile"].get("Company Name", "").strip()
