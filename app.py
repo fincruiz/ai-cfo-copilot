@@ -1,7 +1,10 @@
 import os
 import re
+import json
 from io import BytesIO
 from pathlib import Path
+from urllib.request import Request, urlopen
+from urllib.parse import urlencode
 
 import pandas as pd
 import streamlit as st
@@ -68,6 +71,108 @@ def safe_float(value, default=0.0):
     except Exception:
         return default
 
+
+
+# ----------------------------
+# External FX / benchmark helpers
+# ----------------------------
+def get_country_code(country: str) -> str:
+    mapping = {
+        "Australia": "AUS", "India": "IND", "United States": "USA", "United Kingdom": "GBR",
+        "Canada": "CAN", "New Zealand": "NZL",
+    }
+    return mapping.get(str(country).strip(), "")
+
+
+def currency_for_country(country: str) -> str:
+    mapping = {
+        "Australia": "AUD", "India": "INR", "United States": "USD", "United Kingdom": "GBP",
+        "Canada": "CAD", "New Zealand": "NZD",
+    }
+    return mapping.get(str(country).strip(), "USD")
+
+
+def fetch_json_url(url: str, timeout: int = 12):
+    req = Request(url, headers={"User-Agent": "AI-CFO-Copilot/1.0"})
+    with urlopen(req, timeout=timeout) as response:
+        return json.loads(response.read().decode("utf-8"))
+
+
+def fetch_fx_rate(base_currency: str, target_currency: str, date_value: str = "latest") -> dict:
+    base_currency = str(base_currency).upper().strip()
+    target_currency = str(target_currency).upper().strip()
+    date_value = str(date_value or "latest").strip()
+    if not base_currency or not target_currency:
+        raise ValueError("Base currency and target currency are required.")
+    if base_currency == target_currency:
+        return {"Base": base_currency, "Target": target_currency, "Rate": 1.0, "Date": date_value, "Source": "Same currency"}
+    path_date = "latest" if date_value.lower() in ["", "latest"] else date_value
+    url = f"https://api.frankfurter.app/{path_date}?{urlencode({'from': base_currency, 'to': target_currency})}"
+    data = fetch_json_url(url)
+    rate = data.get("rates", {}).get(target_currency)
+    if rate is None:
+        raise ValueError(f"FX rate not returned for {base_currency} to {target_currency}.")
+    return {"Base": base_currency, "Target": target_currency, "Rate": float(rate), "Date": data.get("date", date_value), "Source": "Frankfurter / ECB"}
+
+
+def fetch_world_bank_indicator(country_code: str, indicator_code: str, indicator_name: str) -> dict:
+    if not country_code:
+        raise ValueError("Country code is missing.")
+    url = f"https://api.worldbank.org/v2/country/{country_code}/indicator/{indicator_code}?format=json&per_page=8"
+    data = fetch_json_url(url)
+    rows = data[1] if isinstance(data, list) and len(data) > 1 else []
+    for row in rows:
+        value = row.get("value")
+        if value is not None:
+            return {"Indicator": indicator_name, "Code": indicator_code, "Year": row.get("date"), "Value": float(value), "Source": "World Bank"}
+    return {"Indicator": indicator_name, "Code": indicator_code, "Year": "N/A", "Value": None, "Source": "World Bank"}
+
+
+def fetch_country_indicators(country: str) -> pd.DataFrame:
+    country_code = get_country_code(country)
+    indicators = [
+        ("NY.GDP.MKTP.KD.ZG", "GDP growth %"),
+        ("FP.CPI.TOTL.ZG", "Inflation %"),
+        ("SL.UEM.TOTL.ZS", "Unemployment %"),
+        ("NE.EXP.GNFS.ZS", "Exports % of GDP"),
+        ("NE.IMP.GNFS.ZS", "Imports % of GDP"),
+        ("NV.IND.TOTL.ZS", "Industry value added % of GDP"),
+    ]
+    rows = [fetch_world_bank_indicator(country_code, code, name) for code, name in indicators]
+    return pd.DataFrame(rows)
+
+
+def get_builtin_industry_benchmarks(industry: str, country: str) -> pd.DataFrame:
+    """Starter benchmark set. Users can override with uploaded benchmarks.
+    These are broad placeholders for app testing, not official industry benchmarks.
+    """
+    base = {
+        "Manufacturing": {"Gross Margin %": 30, "Operating Margin %": 10, "Opex as % of Revenue": 20, "AR Overdue %": 25, "AP Overdue %": 25},
+        "Wholesale / Distribution": {"Gross Margin %": 22, "Operating Margin %": 6, "Opex as % of Revenue": 16, "AR Overdue %": 30, "AP Overdue %": 30},
+        "Retail": {"Gross Margin %": 35, "Operating Margin %": 8, "Opex as % of Revenue": 28, "AR Overdue %": 10, "AP Overdue %": 25},
+        "Professional Services": {"Gross Margin %": 55, "Operating Margin %": 18, "Opex as % of Revenue": 35, "AR Overdue %": 30, "AP Overdue %": 20},
+        "Construction": {"Gross Margin %": 20, "Operating Margin %": 6, "Opex as % of Revenue": 14, "AR Overdue %": 35, "AP Overdue %": 35},
+        "Logistics": {"Gross Margin %": 28, "Operating Margin %": 8, "Opex as % of Revenue": 22, "AR Overdue %": 30, "AP Overdue %": 25},
+        "Hospitality": {"Gross Margin %": 60, "Operating Margin %": 10, "Opex as % of Revenue": 45, "AR Overdue %": 10, "AP Overdue %": 20},
+        "Healthcare": {"Gross Margin %": 40, "Operating Margin %": 12, "Opex as % of Revenue": 30, "AR Overdue %": 25, "AP Overdue %": 20},
+        "Technology": {"Gross Margin %": 65, "Operating Margin %": 20, "Opex as % of Revenue": 42, "AR Overdue %": 25, "AP Overdue %": 15},
+        "Other": {"Gross Margin %": 30, "Operating Margin %": 10, "Opex as % of Revenue": 25, "AR Overdue %": 25, "AP Overdue %": 25},
+    }
+    values = base.get(industry, base["Other"])
+    return pd.DataFrame([{"Metric": k, "Benchmark Value": v, "Country": country, "Industry": industry, "Source": "Starter benchmark - user should verify/replace"} for k, v in values.items()])
+
+
+def merge_benchmark_sources(uploaded_df: pd.DataFrame | None, external_df: pd.DataFrame | None) -> pd.DataFrame | None:
+    frames = []
+    if uploaded_df is not None and not uploaded_df.empty:
+        frames.append(uploaded_df[["Metric", "Benchmark Value"]].copy())
+    if external_df is not None and not external_df.empty:
+        frames.append(external_df[["Metric", "Benchmark Value"]].copy())
+    if not frames:
+        return None
+    merged = pd.concat(frames, ignore_index=True)
+    merged = merged.drop_duplicates(subset=["Metric"], keep="first")
+    return merged
 
 def show_required_columns(title, required_cols, optional_cols=None):
     st.markdown(f"**{title}**")
@@ -584,7 +689,7 @@ def detect_anomalies(consolidated_kpis, prior_kpis=None, ar_summary=None, ap_sum
     return flags
 
 
-def create_excel_pack(consolidated_pnl, consolidated_bs, consolidated_kpis, branch_summary, branch_outputs, unmapped, executive_summary=None, monthly_actuals=None, monthly_branch_actuals=None, ar_df=None, ap_df=None, budget_compare=None, forecast_compare=None, py_compare=None, benchmark_compare=None, forecast_bs=None):
+def create_excel_pack(consolidated_pnl, consolidated_bs, consolidated_kpis, branch_summary, branch_outputs, unmapped, executive_summary=None, monthly_actuals=None, monthly_branch_actuals=None, ar_df=None, ap_df=None, budget_compare=None, forecast_compare=None, py_compare=None, benchmark_compare=None, forecast_bs=None, fx_rate_info=None, country_indicators=None, external_benchmark_df=None):
     df_dict = {"Executive Summary": executive_summary if executive_summary is not None else pd.DataFrame(), "Consolidated P&L": consolidated_pnl}
     if consolidated_bs is not None and not consolidated_bs.empty:
         df_dict["Consolidated BS"] = consolidated_bs
@@ -617,6 +722,12 @@ def create_excel_pack(consolidated_pnl, consolidated_bs, consolidated_kpis, bran
         df_dict["Actual vs PY"] = py_compare
     if benchmark_compare is not None and not benchmark_compare.empty:
         df_dict["Benchmark Comparison"] = benchmark_compare
+    if external_benchmark_df is not None and not external_benchmark_df.empty:
+        df_dict["Benchmark Source"] = external_benchmark_df
+    if country_indicators is not None and not country_indicators.empty:
+        df_dict["Country Indicators"] = country_indicators
+    if fx_rate_info is not None:
+        df_dict["FX Rate"] = pd.DataFrame([fx_rate_info])
     return dataframe_to_excel_bytes(df_dict)
 
 
@@ -724,7 +835,7 @@ def prepare_data(gl_file, mapping_file, kpi_file=None, latest_bs_file=None):
 # Session defaults
 # ----------------------------
 for key in [
-    "gl", "coa", "kpi_master", "latest_bs", "mapped", "pnl_mapped", "bs_mapped", "unmapped", "consolidated_pnl", "consolidated_bs", "consolidated_kpis", "branch_outputs", "branch_summary", "detected_branches", "validation_passed", "company_profile", "bs_disclaimer", "ai_commentary", "prior_pnl", "prior_bs", "prior_kpis", "save_run_preference", "anomaly_flags", "ar_df", "ap_df", "ar_summary", "ap_summary", "budget_df", "budget_compare", "budget_summary", "benchmark_df", "py_compare", "benchmark_compare", "monthly_actuals", "monthly_branch_actuals", "executive_summary_df", "forecast_pnl", "forecast_bs", "previous_year_pnl", "forecast_pnl_compare", "previous_year_pnl_compare"
+    "gl", "coa", "kpi_master", "latest_bs", "mapped", "pnl_mapped", "bs_mapped", "unmapped", "consolidated_pnl", "consolidated_bs", "consolidated_kpis", "branch_outputs", "branch_summary", "detected_branches", "validation_passed", "company_profile", "bs_disclaimer", "ai_commentary", "prior_pnl", "prior_bs", "prior_kpis", "save_run_preference", "anomaly_flags", "ar_df", "ap_df", "ar_summary", "ap_summary", "budget_df", "budget_compare", "budget_summary", "benchmark_df", "py_compare", "benchmark_compare", "monthly_actuals", "monthly_branch_actuals", "executive_summary_df", "forecast_pnl", "forecast_bs", "previous_year_pnl", "forecast_pnl_compare", "previous_year_pnl_compare", "fx_rate_info", "country_indicators", "external_benchmark_df"
 ]:
     if key not in st.session_state:
         st.session_state[key] = None
@@ -769,6 +880,55 @@ with tab_setup:
                 st.success("Company profile saved successfully.")
         if st.session_state["company_profile"]:
             st.dataframe(style_dataframe(pd.DataFrame(st.session_state["company_profile"].items(), columns=["Field", "Value"])), use_container_width=True)
+
+
+    with st.expander("External FX & Benchmark Data", expanded=False):
+        profile = st.session_state.get("company_profile", {})
+        selected_country = profile.get("Country", "Australia") if profile else "Australia"
+        selected_industry = profile.get("Industry", "Other") if profile else "Other"
+        selected_currency = profile.get("Currency", "AUD") if profile else "AUD"
+        default_target_currency = selected_currency if selected_currency and selected_currency != "Select Currency" else currency_for_country(selected_country)
+
+        st.info("Optional: fetch live FX rates and country indicators. Industry benchmarks here are starter defaults; upload your own benchmark file to override them.")
+        fx1, fx2, fx3 = st.columns(3)
+        with fx1:
+            fx_base = st.selectbox("FX Base Currency", ["AUD", "INR", "USD", "GBP", "CAD", "NZD", "EUR"], index=0)
+        with fx2:
+            currency_options = ["AUD", "INR", "USD", "GBP", "CAD", "NZD", "EUR"]
+            target_index = currency_options.index(default_target_currency) if default_target_currency in currency_options else 0
+            fx_target = st.selectbox("FX Target Currency", currency_options, index=target_index)
+        with fx3:
+            fx_date = st.text_input("FX Date", value="latest", help="Use latest or YYYY-MM-DD")
+
+        b1, b2, b3 = st.columns(3)
+        with b1:
+            if st.button("Fetch FX Rate", use_container_width=True):
+                try:
+                    st.session_state["fx_rate_info"] = fetch_fx_rate(fx_base, fx_target, fx_date)
+                    st.success("FX rate fetched.")
+                except Exception as e:
+                    st.error(f"FX fetch failed: {e}")
+        with b2:
+            if st.button("Fetch Country Indicators", use_container_width=True):
+                try:
+                    st.session_state["country_indicators"] = fetch_country_indicators(selected_country)
+                    st.success("Country indicators fetched.")
+                except Exception as e:
+                    st.error(f"Country indicator fetch failed: {e}")
+        with b3:
+            if st.button("Load Starter Industry Benchmarks", use_container_width=True):
+                st.session_state["external_benchmark_df"] = get_builtin_industry_benchmarks(selected_industry, selected_country)
+                st.success("Starter benchmark set loaded.")
+
+        if st.session_state.get("fx_rate_info"):
+            st.markdown("**FX Rate**")
+            st.dataframe(pd.DataFrame([st.session_state["fx_rate_info"]]), use_container_width=True, hide_index=True)
+        if st.session_state.get("country_indicators") is not None:
+            st.markdown("**Country Indicators**")
+            st.dataframe(st.session_state["country_indicators"], use_container_width=True, hide_index=True)
+        if st.session_state.get("external_benchmark_df") is not None:
+            st.markdown("**Loaded Benchmark Data**")
+            st.dataframe(st.session_state["external_benchmark_df"], use_container_width=True, hide_index=True)
 
     with st.expander("Current Period Uploads", expanded=True):
         c1, c2, c3 = st.columns(3)
@@ -871,7 +1031,8 @@ with tab_setup:
                 ar_summary = build_ageing_summary(ar_df, "AR") if ar_df is not None else None
                 ap_summary = build_ageing_summary(ap_df, "AP") if ap_df is not None else None
                 budget_df = loaded_files.get("budget")
-                benchmark_df = loaded_files.get("benchmark")
+                uploaded_benchmark_df = loaded_files.get("benchmark")
+                benchmark_df = merge_benchmark_sources(uploaded_benchmark_df, st.session_state.get("external_benchmark_df"))
                 forecast_pnl = loaded_files.get("forecast_pnl")
                 forecast_bs = loaded_files.get("forecast_bs")
                 previous_year_pnl = loaded_files.get("previous_year_pnl")
@@ -1027,6 +1188,13 @@ with tab_dashboard:
         if st.session_state["benchmark_compare"] is not None and not st.session_state["benchmark_compare"].empty:
             st.markdown("**Industry Benchmark Comparison**")
             st.bar_chart(st.session_state["benchmark_compare"].set_index("Metric")[["Current Value", "Benchmark Value"]])
+
+        if st.session_state.get("fx_rate_info"):
+            with st.expander("FX Rate Used"):
+                st.dataframe(pd.DataFrame([st.session_state["fx_rate_info"]]), use_container_width=True, hide_index=True)
+        if st.session_state.get("country_indicators") is not None:
+            with st.expander("Country Indicators"):
+                st.dataframe(st.session_state["country_indicators"], use_container_width=True, hide_index=True)
         branch_rows = []
         if st.session_state["branch_outputs"]:
             for branch, reports in st.session_state["branch_outputs"].items():
@@ -1179,7 +1347,7 @@ with tab_downloads:
     elif not st.session_state["validation_passed"]:
         st.error("Resolve unmapped GL rows before downloading reports.")
     else:
-        full_pack_bytes = create_excel_pack(consolidated_pnl=st.session_state["consolidated_pnl"], consolidated_bs=st.session_state["consolidated_bs"], consolidated_kpis=st.session_state["consolidated_kpis"], branch_summary=st.session_state["branch_summary"], branch_outputs=st.session_state["branch_outputs"], unmapped=st.session_state["unmapped"], executive_summary=st.session_state["executive_summary_df"], monthly_actuals=st.session_state["monthly_actuals"], monthly_branch_actuals=st.session_state["monthly_branch_actuals"], ar_df=st.session_state["ar_df"], ap_df=st.session_state["ap_df"], budget_compare=st.session_state["budget_compare"], forecast_compare=st.session_state["forecast_pnl_compare"], py_compare=st.session_state["previous_year_pnl_compare"], benchmark_compare=st.session_state["benchmark_compare"], forecast_bs=st.session_state["forecast_bs"])
+        full_pack_bytes = create_excel_pack(consolidated_pnl=st.session_state["consolidated_pnl"], consolidated_bs=st.session_state["consolidated_bs"], consolidated_kpis=st.session_state["consolidated_kpis"], branch_summary=st.session_state["branch_summary"], branch_outputs=st.session_state["branch_outputs"], unmapped=st.session_state["unmapped"], executive_summary=st.session_state["executive_summary_df"], monthly_actuals=st.session_state["monthly_actuals"], monthly_branch_actuals=st.session_state["monthly_branch_actuals"], ar_df=st.session_state["ar_df"], ap_df=st.session_state["ap_df"], budget_compare=st.session_state["budget_compare"], forecast_compare=st.session_state["forecast_pnl_compare"], py_compare=st.session_state["previous_year_pnl_compare"], benchmark_compare=st.session_state["benchmark_compare"], forecast_bs=st.session_state["forecast_bs"], fx_rate_info=st.session_state.get("fx_rate_info"), country_indicators=st.session_state.get("country_indicators"), external_benchmark_df=st.session_state.get("external_benchmark_df"))
         st.download_button(label="Download Full Management Pack", data=full_pack_bytes, file_name="full_management_pack.xlsx", mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", use_container_width=True)
         if st.session_state["unmapped"] is not None and not st.session_state["unmapped"].empty:
             st.download_button(label="Download Unmapped GL", data=st.session_state["unmapped"].to_csv(index=False).encode("utf-8"), file_name="unmapped_gl.csv", mime="text/csv", use_container_width=True)
