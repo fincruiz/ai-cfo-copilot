@@ -245,9 +245,9 @@ def get_sample_templates():
         {"Account code": "6100", "Debit": 3000, "Credit": 0, "Branch": "Melbourne", "Net": 3000, "Date": "2026-03-03", "Description": "Rent expense"},
     ])
     templates["COA Mapping"] = pd.DataFrame([
-        {"Account code": "4000", "Reporting Group": "Revenue", "Reporting Subgroup": "Sales", "Statement": "Income Statement", "Sign Convention": "positive"},
-        {"Account code": "5000", "Reporting Group": "Cost of Sales", "Reporting Subgroup": "Cost of Sales", "Statement": "Income Statement", "Sign Convention": "positive"},
-        {"Account code": "6100", "Reporting Group": "Operating Expense", "Reporting Subgroup": "Rent", "Statement": "Income Statement", "Sign Convention": "positive"},
+        {"Account code": "4000", "Reporting Group": "Revenue", "Reporting Subgroup": "Sales", "Statement": "Income Statement", "Sign Convention": "positive", "Display Order": 1},
+        {"Account code": "5000", "Reporting Group": "Cost of Sales", "Reporting Subgroup": "Cost of Sales", "Statement": "Income Statement", "Sign Convention": "positive", "Display Order": 2},
+        {"Account code": "6100", "Reporting Group": "Operating Expense", "Reporting Subgroup": "Rent", "Statement": "Income Statement", "Sign Convention": "positive", "Display Order": 4},
     ])
     templates["KPI Master"] = pd.DataFrame([
         {"KPI Name": "Revenue", "Formula Type": "direct", "Numerator Group": "Revenue", "Denominator Group": "", "Output Type": "value", "Display Order": 1},
@@ -329,6 +329,8 @@ def standardize_key_columns(gl, coa, kpi=None, latest_bs=None):
         "Reporting subgroup": "Reporting Subgroup", "reporting subgroup": "Reporting Subgroup",
         "Statement type": "Statement", "statement": "Statement",
         "Sign convention": "Sign Convention", "sign convention": "Sign Convention",
+        "Display order": "Display Order", "display order": "Display Order", "Report Order": "Display Order",
+        "report order": "Display Order", "Order": "Display Order", "order": "Display Order",
     }, inplace=True)
     if kpi is not None:
         kpi = clean_columns(kpi)
@@ -434,6 +436,62 @@ def normalize_ageing_df(df: pd.DataFrame, kind: str) -> pd.DataFrame:
 # ----------------------------
 # Finance calculations
 # ----------------------------
+REPORTING_GROUP_ORDER = {
+    "Revenue": 1,
+    "Sales": 1,
+    "Cost of Sales": 2,
+    "COGS": 2,
+    "Cost Of Goods Sold": 2,
+    "Gross Profit": 3,
+    "Operating Expense": 4,
+    "Operating Expenses": 4,
+    "Overheads": 4,
+    "Administrative Expenses": 4,
+    "Selling Expenses": 4,
+    "Operating Profit": 5,
+    "EBITDA": 5,
+    "EBIT": 5,
+    "Other Income": 6,
+    "Other Expenses": 7,
+    "Finance Costs": 8,
+    "Interest": 8,
+    "Tax": 9,
+    "Income Tax": 9,
+    "Net Profit": 10,
+    "Profit After Tax": 10,
+    "Assets": 20,
+    "Current Assets": 20,
+    "Non Current Assets": 21,
+    "Fixed Assets": 21,
+    "Liabilities": 30,
+    "Current Liabilities": 30,
+    "Non Current Liabilities": 31,
+    "Equity": 40,
+}
+
+def apply_reporting_order(df: pd.DataFrame) -> pd.DataFrame:
+    if df is None or df.empty:
+        return df
+    df = df.copy()
+
+    # Client-specific order from COA mapping always wins when present.
+    if "Display Order" in df.columns:
+        df["__Display Order"] = pd.to_numeric(df["Display Order"], errors="coerce").fillna(999)
+    else:
+        df["__Display Order"] = 999
+
+    if "Reporting Group" in df.columns:
+        df["__Group Order"] = df["Reporting Group"].astype(str).str.strip().map(REPORTING_GROUP_ORDER).fillna(999)
+    else:
+        df["__Group Order"] = 999
+
+    sort_cols = ["__Display Order", "__Group Order"]
+    for col in ["Reporting Group", "Reporting Subgroup", "Account code", "Description"]:
+        if col in df.columns:
+            sort_cols.append(col)
+
+    return df.sort_values(sort_cols).drop(columns=["__Display Order", "__Group Order"], errors="ignore").reset_index(drop=True)
+
 def apply_sign_convention_to_gl(row) -> float:
     net = row.get("Net", 0)
     sign = str(row.get("Sign Convention", "positive")).strip().lower()
@@ -446,13 +504,29 @@ def apply_sign_convention_to_gl(row) -> float:
 def build_pnl(report_df: pd.DataFrame) -> pd.DataFrame:
     if report_df is None or report_df.empty:
         return pd.DataFrame(columns=["Reporting Group", "Reporting Subgroup", "Report Value"])
-    return report_df.groupby(["Reporting Group", "Reporting Subgroup"], dropna=False)["Report Value"].sum().reset_index().sort_values(["Reporting Group", "Reporting Subgroup"])
+
+    group_cols = ["Reporting Group", "Reporting Subgroup"]
+    agg_dict = {"Report Value": "sum"}
+    if "Display Order" in report_df.columns:
+        agg_dict["Display Order"] = "min"
+
+    pnl = report_df.groupby(group_cols, dropna=False).agg(agg_dict).reset_index()
+    pnl = apply_reporting_order(pnl)
+    return pnl.drop(columns=["Display Order"], errors="ignore")
 
 
 def build_balance_sheet_from_gl(bs_df: pd.DataFrame) -> pd.DataFrame:
     if bs_df is None or bs_df.empty:
         return pd.DataFrame(columns=["Reporting Group", "Reporting Subgroup", "Balance"])
-    return bs_df.groupby(["Reporting Group", "Reporting Subgroup"], dropna=False)["Report Value"].sum().reset_index().rename(columns={"Report Value": "Balance"}).sort_values(["Reporting Group", "Reporting Subgroup"])
+
+    group_cols = ["Reporting Group", "Reporting Subgroup"]
+    agg_dict = {"Report Value": "sum"}
+    if "Display Order" in bs_df.columns:
+        agg_dict["Display Order"] = "min"
+
+    bs = bs_df.groupby(group_cols, dropna=False).agg(agg_dict).reset_index().rename(columns={"Report Value": "Balance"})
+    bs = apply_reporting_order(bs)
+    return bs.drop(columns=["Display Order"], errors="ignore")
 
 
 def combine_opening_and_current_bs(opening_bs: pd.DataFrame, current_bs: pd.DataFrame) -> pd.DataFrame:
@@ -464,7 +538,7 @@ def combine_opening_and_current_bs(opening_bs: pd.DataFrame, current_bs: pd.Data
     current["Balance"] = pd.to_numeric(current["Balance"], errors="coerce").fillna(0)
     merged = opening.merge(current, on=["Reporting Group", "Reporting Subgroup"], how="outer", suffixes=("_opening", "_current")).fillna(0)
     merged["Balance"] = merged["Balance_opening"] + merged["Balance_current"]
-    return merged[["Reporting Group", "Reporting Subgroup", "Balance"]].sort_values(["Reporting Group", "Reporting Subgroup"]).reset_index(drop=True)
+    return apply_reporting_order(merged[["Reporting Group", "Reporting Subgroup", "Balance"]])
 
 
 def build_kpis(report_df: pd.DataFrame, kpi_master: pd.DataFrame) -> pd.DataFrame:
@@ -523,7 +597,7 @@ def summarize_plan_vs_actual(compare_df: pd.DataFrame, label: str) -> pd.DataFra
         return pd.DataFrame(columns=["Reporting Group", "Actual", label, "Variance", "Variance %"])
     out = compare_df.groupby("Reporting Group", dropna=False)[["Actual", label, "Variance"]].sum().reset_index()
     out["Variance %"] = out.apply(lambda r: (r["Variance"] / r[label] * 100) if r[label] != 0 else 0.0, axis=1)
-    return out.sort_values("Reporting Group").reset_index(drop=True)
+    return apply_reporting_order(out)
 
 
 def compare_pnl_to_forecast(actual_pnl: pd.DataFrame, forecast_pnl: pd.DataFrame) -> pd.DataFrame:
@@ -534,7 +608,7 @@ def compare_pnl_to_forecast(actual_pnl: pd.DataFrame, forecast_pnl: pd.DataFrame
     merged = actual.merge(forecast, on=["Reporting Group", "Reporting Subgroup"], how="outer").fillna(0)
     merged["Variance"] = merged["Actual"] - merged["Forecast"]
     merged["Variance %"] = merged.apply(lambda r: (r["Variance"] / r["Forecast"] * 100) if r["Forecast"] != 0 else 0.0, axis=1)
-    return merged.sort_values(["Reporting Group", "Reporting Subgroup"]).reset_index(drop=True)
+    return apply_reporting_order(merged)
 
 
 def compare_pnl_to_previous_year(actual_pnl: pd.DataFrame, previous_pnl: pd.DataFrame) -> pd.DataFrame:
@@ -545,7 +619,7 @@ def compare_pnl_to_previous_year(actual_pnl: pd.DataFrame, previous_pnl: pd.Data
     merged = actual.merge(previous, on=["Reporting Group", "Reporting Subgroup"], how="outer").fillna(0)
     merged["Variance"] = merged["Actual"] - merged["Previous Year"]
     merged["Variance %"] = merged.apply(lambda r: (r["Variance"] / r["Previous Year"] * 100) if r["Previous Year"] != 0 else 0.0, axis=1)
-    return merged.sort_values(["Reporting Group", "Reporting Subgroup"]).reset_index(drop=True)
+    return apply_reporting_order(merged)
 
 
 def build_ageing_summary(df: pd.DataFrame | None, kind: str) -> dict:
@@ -1120,7 +1194,7 @@ with tab_setup:
         g1, g2 = st.columns(2)
         with g1:
             show_required_columns("Current GL Report", ["Account code", "Debit", "Credit", "Branch"], ["Net", "Date", "Description"])
-            show_required_columns("COA Mapping", ["Account code", "Reporting Group", "Reporting Subgroup", "Statement"], ["Sign Convention"])
+            show_required_columns("COA Mapping", ["Account code", "Reporting Group", "Reporting Subgroup", "Statement"], ["Sign Convention", "Display Order"])
             show_required_columns("KPI Master", ["KPI Name", "Formula Type", "Numerator Group", "Denominator Group", "Output Type", "Display Order"], [])
             show_required_columns("Latest Previous Balance Sheet", ["Reporting Group", "Reporting Subgroup", "Balance"], [])
             show_required_columns("Budget Data", ["Month", "Branch", "Reporting Group", "Amount"], [])
