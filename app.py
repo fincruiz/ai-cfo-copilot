@@ -568,6 +568,171 @@ def validate_coa_mapping_integrity(coa: pd.DataFrame, allow_duplicate_cleanup: b
         )
 
 
+
+# ----------------------------
+# COA mapping review helpers
+# ----------------------------
+CANONICAL_GROUPS = {
+    "revenue": "Revenue",
+    "sales": "Revenue",
+    "income": "Revenue",
+    "cost of sales": "COGS",
+    "cogs": "COGS",
+    "cost of goods sold": "COGS",
+    "direct costs": "COGS",
+    "gross profit": "Gross Profit",
+    "operating expenses": "Overheads",
+    "overheads": "Overheads",
+    "opex": "Overheads",
+    "expenses": "Overheads",
+    "other income": "Other Income",
+    "other expenses": "Other Expenses",
+    "interest": "Interest",
+    "finance costs": "Interest",
+    "tax": "Tax",
+    "net profit": "Net Profit",
+}
+
+KEYWORD_MAPPING_RULES = [
+    {"keyword": "sales", "suggested": ["Revenue"], "severity": "High"},
+    {"keyword": "revenue", "suggested": ["Revenue"], "severity": "High"},
+    {"keyword": "income", "suggested": ["Revenue", "Other Income"], "severity": "Medium"},
+    {"keyword": "cogs", "suggested": ["COGS"], "severity": "High"},
+    {"keyword": "cost of sales", "suggested": ["COGS"], "severity": "High"},
+    {"keyword": "cost of goods", "suggested": ["COGS"], "severity": "High"},
+    {"keyword": "purchases", "suggested": ["COGS"], "severity": "Medium"},
+    {"keyword": "raw material", "suggested": ["COGS"], "severity": "High"},
+    {"keyword": "materials", "suggested": ["COGS"], "severity": "Medium"},
+    {"keyword": "direct labour", "suggested": ["COGS"], "severity": "Medium"},
+    {"keyword": "direct labor", "suggested": ["COGS"], "severity": "Medium"},
+    {"keyword": "freight", "suggested": ["COGS", "Overheads"], "severity": "Medium"},
+    {"keyword": "shipping", "suggested": ["COGS", "Overheads"], "severity": "Medium"},
+    {"keyword": "delivery", "suggested": ["COGS", "Overheads"], "severity": "Medium"},
+    {"keyword": "cartage", "suggested": ["COGS", "Overheads"], "severity": "Medium"},
+    {"keyword": "rent", "suggested": ["Overheads"], "severity": "High"},
+    {"keyword": "salary", "suggested": ["Overheads"], "severity": "High"},
+    {"keyword": "wages", "suggested": ["Overheads", "COGS"], "severity": "Medium"},
+    {"keyword": "admin", "suggested": ["Overheads"], "severity": "High"},
+    {"keyword": "marketing", "suggested": ["Overheads"], "severity": "High"},
+    {"keyword": "advertising", "suggested": ["Overheads"], "severity": "High"},
+    {"keyword": "insurance", "suggested": ["Overheads"], "severity": "High"},
+    {"keyword": "utilities", "suggested": ["Overheads"], "severity": "High"},
+    {"keyword": "depreciation", "suggested": ["Overheads"], "severity": "Medium"},
+    {"keyword": "interest", "suggested": ["Interest"], "severity": "High"},
+    {"keyword": "finance charge", "suggested": ["Interest"], "severity": "High"},
+    {"keyword": "tax", "suggested": ["Tax"], "severity": "High"},
+]
+
+VALID_PNL_GROUPS = {
+    "Revenue", "COGS", "Gross Profit", "Overheads", "Operating Profit",
+    "Other Income", "Other Expenses", "Interest", "Tax", "Net Profit"
+}
+
+BS_GROUP_KEYWORDS = ["asset", "liabil", "equity", "cash", "bank", "receivable", "payable", "inventory", "stock", "loan", "debt", "capital", "retained"]
+
+def canonical_reporting_group(value: str) -> str:
+    text = str(value or "").strip()
+    key = text.lower()
+    return CANONICAL_GROUPS.get(key, text)
+
+
+def build_coa_mapping_review(coa: pd.DataFrame) -> pd.DataFrame:
+    """Flag suspicious COA mappings without changing user data.
+
+    This is advisory only. Finance classifications can vary by company, so the app
+    detects and explains potential problems but lets the user decide.
+    """
+    if coa is None or coa.empty:
+        return pd.DataFrame(columns=["Account code", "Account Name", "Current Mapping", "Suggested Mapping", "Severity", "Reason", "Status"])
+
+    df = coa.copy()
+    if "Account Name" not in df.columns:
+        df["Account Name"] = ""
+    if "Reporting Group" not in df.columns:
+        return pd.DataFrame(columns=["Account code", "Account Name", "Current Mapping", "Suggested Mapping", "Severity", "Reason", "Status"])
+
+    review_rows = []
+    for _, row in df.iterrows():
+        account_code = str(row.get("Account code", "")).strip()
+        account_name = str(row.get("Account Name", "")).strip()
+        subgroup = str(row.get("Reporting Subgroup", "")).strip()
+        current_raw = str(row.get("Reporting Group", "")).strip()
+        current = canonical_reporting_group(current_raw)
+        haystack = f"{account_name} {subgroup} {account_code}".lower()
+
+        # If no Account Name is provided, we cannot intelligently infer category.
+        if not account_name and not subgroup:
+            continue
+
+        for rule in KEYWORD_MAPPING_RULES:
+            keyword = rule["keyword"]
+            if keyword in haystack:
+                suggested = rule["suggested"]
+                if current not in suggested:
+                    review_rows.append({
+                        "Account code": account_code,
+                        "Account Name": account_name,
+                        "Current Mapping": current_raw,
+                        "Suggested Mapping": " / ".join(suggested),
+                        "Severity": rule["severity"],
+                        "Reason": f"Keyword '{keyword}' usually maps to {', '.join(suggested)}, but current group is '{current_raw}'.",
+                        "Status": "Review",
+                    })
+                break
+
+        # Flag likely BS items mapped into P&L groups.
+        if any(k in haystack for k in BS_GROUP_KEYWORDS) and current in VALID_PNL_GROUPS:
+            review_rows.append({
+                "Account code": account_code,
+                "Account Name": account_name,
+                "Current Mapping": current_raw,
+                "Suggested Mapping": "Balance Sheet group",
+                "Severity": "Medium",
+                "Reason": "Account name looks balance-sheet related but is mapped to a P&L group.",
+                "Status": "Review",
+            })
+
+    if not review_rows:
+        return pd.DataFrame(columns=["Account code", "Account Name", "Current Mapping", "Suggested Mapping", "Severity", "Reason", "Status"])
+
+    review = pd.DataFrame(review_rows).drop_duplicates()
+    sev_order = {"High": 1, "Medium": 2, "Low": 3}
+    review["__Severity Order"] = review["Severity"].map(sev_order).fillna(9)
+    return review.sort_values(["__Severity Order", "Account code"]).drop(columns="__Severity Order").reset_index(drop=True)
+
+
+def build_financial_logic_review(consolidated_pnl: pd.DataFrame) -> pd.DataFrame:
+    """Basic reasonableness checks after the P&L is generated."""
+    rows = []
+    if consolidated_pnl is None or consolidated_pnl.empty:
+        return pd.DataFrame(columns=["Check", "Status", "Details"])
+
+    data = consolidated_pnl.copy()
+    data["Canonical Group"] = data["Reporting Group"].apply(canonical_reporting_group)
+    values = data.groupby("Canonical Group")["Report Value"].sum().to_dict()
+
+    revenue = safe_float(values.get("Revenue", 0))
+    cogs = safe_float(values.get("COGS", values.get("Cost of Sales", 0)))
+    gross_profit = safe_float(values.get("Gross Profit", 0))
+    overheads = safe_float(values.get("Overheads", values.get("Operating Expenses", 0)))
+    operating_profit = safe_float(values.get("Operating Profit", 0))
+
+    def add(check, ok, details):
+        rows.append({"Check": check, "Status": "OK" if ok else "Review", "Details": details})
+
+    add("Revenue exists", revenue != 0, f"Revenue total is {revenue:,.2f}.")
+    if revenue != 0 and cogs != 0:
+        add("COGS compared with revenue", abs(cogs) <= abs(revenue) * 1.5, f"COGS total is {cogs:,.2f}; Revenue total is {revenue:,.2f}.")
+    if gross_profit != 0 and revenue != 0:
+        add("Gross profit compared with revenue", abs(gross_profit) <= abs(revenue) * 1.5, f"Gross Profit total is {gross_profit:,.2f}; Revenue total is {revenue:,.2f}.")
+    if operating_profit != 0 and gross_profit != 0:
+        add("Operating profit compared with gross profit", abs(operating_profit) <= abs(gross_profit) * 2, f"Operating Profit total is {operating_profit:,.2f}; Gross Profit total is {gross_profit:,.2f}.")
+    if overheads != 0 and revenue != 0:
+        ratio = abs(overheads) / abs(revenue) * 100
+        add("Overheads as % of revenue", ratio <= 80, f"Overheads are {ratio:.2f}% of revenue.")
+
+    return pd.DataFrame(rows)
+
 def build_pnl_detail(report_df: pd.DataFrame) -> pd.DataFrame:
     """Account-level P&L detail so similar GL accounts stay separate."""
     cols = ["Reporting Group", "Reporting Subgroup", "Account code"]
@@ -874,7 +1039,7 @@ def detect_anomalies(consolidated_kpis, prior_kpis=None, ar_summary=None, ap_sum
     return flags
 
 
-def create_excel_pack(consolidated_pnl, consolidated_bs, consolidated_kpis, branch_summary, branch_outputs, unmapped, executive_summary=None, monthly_actuals=None, monthly_branch_actuals=None, ar_df=None, ap_df=None, budget_compare=None, forecast_compare=None, py_compare=None, benchmark_compare=None, forecast_bs=None, fx_rate_info=None, country_indicators=None, external_benchmark_df=None, consolidated_pnl_detail=None, consolidated_bs_detail=None):
+def create_excel_pack(consolidated_pnl, consolidated_bs, consolidated_kpis, branch_summary, branch_outputs, unmapped, executive_summary=None, monthly_actuals=None, monthly_branch_actuals=None, ar_df=None, ap_df=None, budget_compare=None, forecast_compare=None, py_compare=None, benchmark_compare=None, forecast_bs=None, fx_rate_info=None, country_indicators=None, external_benchmark_df=None, consolidated_pnl_detail=None, consolidated_bs_detail=None, coa_mapping_review=None, financial_logic_review=None):
     df_dict = {"Executive Summary": executive_summary if executive_summary is not None else pd.DataFrame(), "Consolidated P&L": consolidated_pnl}
     if consolidated_pnl_detail is not None and not consolidated_pnl_detail.empty:
         df_dict["P&L Detail by GL"] = consolidated_pnl_detail
@@ -913,6 +1078,10 @@ def create_excel_pack(consolidated_pnl, consolidated_bs, consolidated_kpis, bran
         df_dict["Actual vs PY"] = py_compare
     if benchmark_compare is not None and not benchmark_compare.empty:
         df_dict["Benchmark Comparison"] = benchmark_compare
+    if coa_mapping_review is not None and not coa_mapping_review.empty:
+        df_dict["COA Mapping Review"] = coa_mapping_review
+    if financial_logic_review is not None and not financial_logic_review.empty:
+        df_dict["Financial Logic Review"] = financial_logic_review
     if external_benchmark_df is not None and not external_benchmark_df.empty:
         df_dict["Benchmark Source"] = external_benchmark_df
     if country_indicators is not None and not country_indicators.empty:
@@ -1029,7 +1198,7 @@ def prepare_data(gl_file, mapping_file, kpi_file=None, latest_bs_file=None, allo
 # Session defaults
 # ----------------------------
 for key in [
-    "gl", "coa", "kpi_master", "latest_bs", "mapped", "pnl_mapped", "bs_mapped", "unmapped", "consolidated_pnl", "consolidated_bs", "consolidated_kpis", "branch_outputs", "branch_summary", "detected_branches", "validation_passed", "company_profile", "bs_disclaimer", "ai_commentary", "prior_pnl", "prior_bs", "prior_kpis", "save_run_preference", "anomaly_flags", "ar_df", "ap_df", "ar_summary", "ap_summary", "budget_df", "budget_compare", "budget_summary", "benchmark_df", "py_compare", "benchmark_compare", "monthly_actuals", "monthly_branch_actuals", "executive_summary_df", "forecast_pnl", "forecast_bs", "previous_year_pnl", "forecast_pnl_compare", "previous_year_pnl_compare", "fx_rate_info", "country_indicators", "external_benchmark_df", "consolidated_pnl_detail", "consolidated_bs_detail", "coa_duplicate_rows"
+    "gl", "coa", "kpi_master", "latest_bs", "mapped", "pnl_mapped", "bs_mapped", "unmapped", "consolidated_pnl", "consolidated_bs", "consolidated_kpis", "branch_outputs", "branch_summary", "detected_branches", "validation_passed", "company_profile", "bs_disclaimer", "ai_commentary", "prior_pnl", "prior_bs", "prior_kpis", "save_run_preference", "anomaly_flags", "ar_df", "ap_df", "ar_summary", "ap_summary", "budget_df", "budget_compare", "budget_summary", "benchmark_df", "py_compare", "benchmark_compare", "monthly_actuals", "monthly_branch_actuals", "executive_summary_df", "forecast_pnl", "forecast_bs", "previous_year_pnl", "forecast_pnl_compare", "previous_year_pnl_compare", "fx_rate_info", "country_indicators", "external_benchmark_df", "consolidated_pnl_detail", "consolidated_bs_detail", "coa_duplicate_rows", "coa_mapping_review", "financial_logic_review"
 ]:
     if key not in st.session_state:
         st.session_state[key] = None
@@ -1206,6 +1375,20 @@ with tab_setup:
                             df = resolve_coa_duplicate_rows(df, keep="first")
                             st.info("Duplicate COA rows approved by user. The app will keep the first mapping row for each duplicate Account code for this run only.")
                         validate_coa_mapping_integrity(df, allow_duplicate_cleanup=True)
+                        mapping_review = build_coa_mapping_review(df)
+                        loaded_files["coa_mapping_review"] = mapping_review
+                        if not mapping_review.empty:
+                            st.warning("Potential COA mapping issues found. These are advisory only — the app will not change mappings automatically.")
+                            st.dataframe(mapping_review, use_container_width=True, hide_index=True)
+                            review_bytes = dataframe_to_excel_bytes({"COA Mapping Review": mapping_review})
+                            st.download_button(
+                                "Download COA Mapping Review File",
+                                data=review_bytes,
+                                file_name="coa_mapping_review.xlsx",
+                                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                                use_container_width=True,
+                                key="download_coa_mapping_review_validation",
+                            )
                     loaded_files[key] = df
                     log_success(file_label)
                     show_preview(file_label, df)
@@ -1235,6 +1418,8 @@ with tab_setup:
                 )
                 consolidated_pnl = build_pnl(pnl_mapped)
                 consolidated_pnl_detail = build_pnl_detail(pnl_mapped)
+                coa_mapping_review = build_coa_mapping_review(coa)
+                financial_logic_review = build_financial_logic_review(consolidated_pnl)
                 current_bs = build_balance_sheet_from_gl(bs_mapped)
                 consolidated_bs_detail = build_balance_sheet_detail(bs_mapped)
                 bs_disclaimer = None
@@ -1346,6 +1531,17 @@ with tab_setup:
             if unmapped is not None and not unmapped.empty:
                 cols_to_show = [c for c in ["Account code", "Description", "Branch", "Debit", "Credit", "Net"] if c in unmapped.columns]
                 st.dataframe(style_dataframe(unmapped[cols_to_show]), use_container_width=True)
+
+            mapping_review = st.session_state.get("coa_mapping_review")
+            if mapping_review is not None and not mapping_review.empty:
+                st.markdown("### COA Mapping Review")
+                st.warning("These are potential classification issues only. The app has not changed your mapping.")
+                st.dataframe(style_dataframe(mapping_review), use_container_width=True)
+
+            logic_review = st.session_state.get("financial_logic_review")
+            if logic_review is not None and not logic_review.empty:
+                st.markdown("### Financial Logic Review")
+                st.dataframe(style_dataframe(logic_review), use_container_width=True)
 
     with st.expander("Required Columns Guide"):
         g1, g2 = st.columns(2)
@@ -1562,7 +1758,7 @@ with tab_working_capital:
 
 with tab_insights:
     st.subheader("Insights")
-    insight_anom, insight_ai = st.tabs(["Anomalies", "AI Commentary"])
+    insight_anom, insight_mapping, insight_ai = st.tabs(["Anomalies", "Mapping Review", "AI Commentary"])
     with insight_anom:
         flags = st.session_state.get("anomaly_flags", [])
         if flags:
@@ -1570,6 +1766,17 @@ with tab_insights:
                 st.warning(flag)
         else:
             st.success("No major anomalies detected based on current rules.")
+    with insight_mapping:
+        mapping_review = st.session_state.get("coa_mapping_review")
+        logic_review = st.session_state.get("financial_logic_review")
+        if mapping_review is None or mapping_review.empty:
+            st.success("No obvious COA mapping issues detected by keyword rules.")
+        else:
+            st.warning("Review these mappings. The system only suggests; it does not reclassify automatically.")
+            st.dataframe(style_dataframe(mapping_review), use_container_width=True)
+        if logic_review is not None and not logic_review.empty:
+            st.markdown("### Financial Logic Review")
+            st.dataframe(style_dataframe(logic_review), use_container_width=True)
     with insight_ai:
         if st.session_state["mapped"] is None:
             st.warning("Please upload and validate data first.")
