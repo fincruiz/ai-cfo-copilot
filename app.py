@@ -241,13 +241,13 @@ def get_sample_templates():
     templates = {}
     templates["Current GL Report"] = pd.DataFrame([
         {"Account code": "4000", "Debit": 0, "Credit": 25000, "Branch": "Sydney", "Net": -25000, "Date": "2026-03-01", "Description": "Sales invoice"},
-        {"Account code": "5000", "Debit": 8000, "Credit": 0, "Branch": "Sydney", "Net": 8000, "Date": "2026-03-02", "Description": "Cost of sales"},
-        {"Account code": "6100", "Debit": 3000, "Credit": 0, "Branch": "Melbourne", "Net": 3000, "Date": "2026-03-03", "Description": "Rent expense"},
+        {"Account code": "5100", "Debit": 8000, "Credit": 0, "Branch": "Sydney", "Net": 8000, "Date": "2026-03-02", "Description": "Freight domestic cost"},
+        {"Account code": "5200", "Debit": 3000, "Credit": 0, "Branch": "Melbourne", "Net": 3000, "Date": "2026-03-03", "Description": "Freight international overhead"},
     ])
     templates["COA Mapping"] = pd.DataFrame([
-        {"Account code": "4000", "Reporting Group": "Revenue", "Reporting Subgroup": "Sales", "Statement": "Income Statement", "Sign Convention": "positive", "Display Order": 1},
-        {"Account code": "5000", "Reporting Group": "Cost of Sales", "Reporting Subgroup": "Cost of Sales", "Statement": "Income Statement", "Sign Convention": "positive", "Display Order": 2},
-        {"Account code": "6100", "Reporting Group": "Operating Expense", "Reporting Subgroup": "Rent", "Statement": "Income Statement", "Sign Convention": "positive", "Display Order": 4},
+        {"Account code": "4000", "Account Name": "Sales Revenue", "Reporting Group": "Revenue", "Reporting Subgroup": "Sales", "Statement": "Income Statement", "Sign Convention": "positive", "Display Order": 1},
+        {"Account code": "5100", "Account Name": "Freight Domestic", "Reporting Group": "Cost of Sales", "Reporting Subgroup": "Freight Domestic", "Statement": "Income Statement", "Sign Convention": "positive", "Display Order": 2},
+        {"Account code": "5200", "Account Name": "Freight International", "Reporting Group": "Operating Expense", "Reporting Subgroup": "Freight International", "Statement": "Income Statement", "Sign Convention": "positive", "Display Order": 4},
     ])
     templates["KPI Master"] = pd.DataFrame([
         {"KPI Name": "Revenue", "Formula Type": "direct", "Numerator Group": "Revenue", "Denominator Group": "", "Output Type": "value", "Display Order": 1},
@@ -321,6 +321,9 @@ def standardize_key_columns(gl, coa, kpi=None, latest_bs=None):
         "Debit ": "Debit", "debit": "Debit", "DEBIT": "Debit",
         "Credit ": "Credit", "credit": "Credit", "CREDIT": "Credit",
         "net": "Net", "NET": "Net", "Description ": "Description",
+        "Account Name": "Account Name", "account name": "Account Name", "ACCOUNT NAME": "Account Name",
+        "Account Description": "Account Name", "account description": "Account Name",
+        "GL Name": "Account Name", "gl name": "Account Name",
         "Posting Date": "Date", "Txn Date": "Date", "Date ": "Date",
     }, inplace=True)
     coa.rename(columns={
@@ -329,8 +332,12 @@ def standardize_key_columns(gl, coa, kpi=None, latest_bs=None):
         "Reporting subgroup": "Reporting Subgroup", "reporting subgroup": "Reporting Subgroup",
         "Statement type": "Statement", "statement": "Statement",
         "Sign convention": "Sign Convention", "sign convention": "Sign Convention",
-        "Display order": "Display Order", "display order": "Display Order", "Report Order": "Display Order",
-        "report order": "Display Order", "Order": "Display Order", "order": "Display Order",
+        "Display order": "Display Order", "display order": "Display Order", "DISPLAY ORDER": "Display Order",
+        "Report Order": "Display Order", "report order": "Display Order",
+        "Account Name": "Account Name", "account name": "Account Name", "ACCOUNT NAME": "Account Name",
+        "Account Description": "Account Name", "account description": "Account Name",
+        "GL Name": "Account Name", "gl name": "Account Name",
+        "GL Description": "Account Name", "gl description": "Account Name",
     }, inplace=True)
     if kpi is not None:
         kpi = clean_columns(kpi)
@@ -441,56 +448,159 @@ REPORTING_GROUP_ORDER = {
     "Sales": 1,
     "Cost of Sales": 2,
     "COGS": 2,
-    "Cost Of Goods Sold": 2,
+    "Cost of Goods Sold": 2,
     "Gross Profit": 3,
     "Operating Expense": 4,
     "Operating Expenses": 4,
     "Overheads": 4,
-    "Administrative Expenses": 4,
-    "Selling Expenses": 4,
+    "Opex": 4,
     "Operating Profit": 5,
-    "EBITDA": 5,
-    "EBIT": 5,
-    "Other Income": 6,
-    "Other Expenses": 7,
-    "Finance Costs": 8,
-    "Interest": 8,
-    "Tax": 9,
-    "Income Tax": 9,
-    "Net Profit": 10,
-    "Profit After Tax": 10,
+    "EBITDA": 6,
+    "Depreciation": 7,
+    "EBIT": 8,
+    "Other Income": 9,
+    "Other Expenses": 10,
+    "Finance Costs": 11,
+    "Interest": 11,
+    "Tax": 12,
+    "Net Profit": 13,
     "Assets": 20,
-    "Current Assets": 20,
-    "Non Current Assets": 21,
-    "Fixed Assets": 21,
+    "Current Assets": 21,
+    "Non Current Assets": 22,
     "Liabilities": 30,
-    "Current Liabilities": 30,
-    "Non Current Liabilities": 31,
+    "Current Liabilities": 31,
+    "Non Current Liabilities": 32,
     "Equity": 40,
 }
 
+
 def apply_reporting_order(df: pd.DataFrame) -> pd.DataFrame:
+    """Sort reports in finance statement order instead of alphabetical order.
+
+    If the COA Mapping has a Display Order column, that order is used first.
+    Otherwise, the default REPORTING_GROUP_ORDER is used.
+    """
     if df is None or df.empty:
         return df
-    df = df.copy()
 
-    # Client-specific order from COA mapping always wins when present.
-    if "Display Order" in df.columns:
-        df["__Display Order"] = pd.to_numeric(df["Display Order"], errors="coerce").fillna(999)
-    else:
-        df["__Display Order"] = 999
+    out = df.copy()
 
-    if "Reporting Group" in df.columns:
-        df["__Group Order"] = df["Reporting Group"].astype(str).str.strip().map(REPORTING_GROUP_ORDER).fillna(999)
+    if "Display Order" in out.columns:
+        out["__Display Order"] = pd.to_numeric(out["Display Order"], errors="coerce")
     else:
-        df["__Group Order"] = 999
+        out["__Display Order"] = pd.NA
+
+    if "Reporting Group" in out.columns:
+        out["__Group Order"] = out["Reporting Group"].map(REPORTING_GROUP_ORDER).fillna(999)
+    else:
+        out["__Group Order"] = 999
 
     sort_cols = ["__Display Order", "__Group Order"]
-    for col in ["Reporting Group", "Reporting Subgroup", "Account code", "Description"]:
-        if col in df.columns:
-            sort_cols.append(col)
+    if "Reporting Group" in out.columns:
+        sort_cols.append("Reporting Group")
+    if "Reporting Subgroup" in out.columns:
+        sort_cols.append("Reporting Subgroup")
+    if "Account code" in out.columns:
+        sort_cols.append("Account code")
 
-    return df.sort_values(sort_cols).drop(columns=["__Display Order", "__Group Order"], errors="ignore").reset_index(drop=True)
+    out = out.sort_values(sort_cols, na_position="last")
+    return out.drop(columns=["__Display Order", "__Group Order"], errors="ignore").reset_index(drop=True)
+
+
+def find_coa_duplicate_rows(coa: pd.DataFrame) -> pd.DataFrame:
+    """Return duplicate COA Account code rows for user review.
+
+    Duplicates are not removed silently. The app highlights them and asks the user
+    to confirm before keeping the first mapping row for each duplicate Account code.
+    """
+    if coa is None or coa.empty or "Account code" not in coa.columns:
+        return pd.DataFrame()
+
+    temp = coa.copy()
+    temp["Account code"] = temp["Account code"].astype(str).str.strip()
+    dupes = temp[temp.duplicated("Account code", keep=False)].copy()
+    if dupes.empty:
+        return dupes
+
+    dupes["Duplicate Review Note"] = "Duplicate Account code - review and decide which mapping should be kept"
+    sort_cols = ["Account code"]
+    if "Display Order" in dupes.columns:
+        sort_cols.append("Display Order")
+    return dupes.sort_values(sort_cols).reset_index(drop=True)
+
+
+def resolve_coa_duplicate_rows(coa: pd.DataFrame, keep: str = "first") -> pd.DataFrame:
+    """Resolve duplicate COA rows after user confirmation.
+
+    This does not change the user's source Excel file. It only creates a cleaned
+    copy for system processing.
+    """
+    if coa is None or coa.empty or "Account code" not in coa.columns:
+        return coa
+    cleaned = coa.copy()
+    cleaned["Account code"] = cleaned["Account code"].astype(str).str.strip()
+    return cleaned.drop_duplicates(subset=["Account code"], keep=keep).reset_index(drop=True)
+
+
+def validate_coa_mapping_integrity(coa: pd.DataFrame, allow_duplicate_cleanup: bool = False) -> None:
+    """Validate COA mapping integrity.
+
+    Blank Account codes are always blocked. Duplicate Account codes are blocked
+    unless the user has explicitly confirmed duplicate cleanup in the UI.
+    """
+    if coa is None or coa.empty or "Account code" not in coa.columns:
+        return
+
+    temp = coa.copy()
+    temp["Account code"] = temp["Account code"].astype(str).str.strip()
+
+    blank_codes = temp[temp["Account code"].isin(["", "nan", "None"])]
+    if not blank_codes.empty:
+        raise ValueError("COA Mapping has blank Account code rows. Remove or complete these rows.")
+
+    dupes = find_coa_duplicate_rows(temp)
+    if not dupes.empty and not allow_duplicate_cleanup:
+        duplicate_codes = sorted(dupes["Account code"].astype(str).unique().tolist())
+        raise ValueError(
+            "COA Mapping has duplicate Account code rows. Review the duplicate table shown below. "
+            "If you approve, tick the duplicate confirmation checkbox and the system will keep the first row for each duplicate Account code. "
+            f"Duplicate Account codes: {duplicate_codes[:20]}"
+        )
+
+
+def build_pnl_detail(report_df: pd.DataFrame) -> pd.DataFrame:
+    """Account-level P&L detail so similar GL accounts stay separate."""
+    cols = ["Reporting Group", "Reporting Subgroup", "Account code"]
+    if report_df is None or report_df.empty:
+        return pd.DataFrame(columns=cols + ["Report Value"])
+
+    detail = report_df.copy()
+    if "Account Name" not in detail.columns:
+        detail["Account Name"] = ""
+    if "Display Order" not in detail.columns:
+        detail["Display Order"] = pd.NA
+
+    group_cols = ["Reporting Group", "Reporting Subgroup", "Account code", "Account Name", "Display Order"]
+    out = detail.groupby(group_cols, dropna=False)["Report Value"].sum().reset_index()
+    return apply_reporting_order(out)
+
+
+def build_balance_sheet_detail(bs_df: pd.DataFrame) -> pd.DataFrame:
+    """Account-level balance sheet detail."""
+    cols = ["Reporting Group", "Reporting Subgroup", "Account code"]
+    if bs_df is None or bs_df.empty:
+        return pd.DataFrame(columns=cols + ["Balance"])
+
+    detail = bs_df.copy()
+    if "Account Name" not in detail.columns:
+        detail["Account Name"] = ""
+    if "Display Order" not in detail.columns:
+        detail["Display Order"] = pd.NA
+
+    group_cols = ["Reporting Group", "Reporting Subgroup", "Account code", "Account Name", "Display Order"]
+    out = detail.groupby(group_cols, dropna=False)["Report Value"].sum().reset_index().rename(columns={"Report Value": "Balance"})
+    return apply_reporting_order(out)
+
 
 def apply_sign_convention_to_gl(row) -> float:
     net = row.get("Net", 0)
@@ -506,13 +616,11 @@ def build_pnl(report_df: pd.DataFrame) -> pd.DataFrame:
         return pd.DataFrame(columns=["Reporting Group", "Reporting Subgroup", "Report Value"])
 
     group_cols = ["Reporting Group", "Reporting Subgroup"]
-    agg_dict = {"Report Value": "sum"}
     if "Display Order" in report_df.columns:
-        agg_dict["Display Order"] = "min"
+        group_cols.append("Display Order")
 
-    pnl = report_df.groupby(group_cols, dropna=False).agg(agg_dict).reset_index()
-    pnl = apply_reporting_order(pnl)
-    return pnl.drop(columns=["Display Order"], errors="ignore")
+    pnl = report_df.groupby(group_cols, dropna=False)["Report Value"].sum().reset_index()
+    return apply_reporting_order(pnl)
 
 
 def build_balance_sheet_from_gl(bs_df: pd.DataFrame) -> pd.DataFrame:
@@ -520,13 +628,16 @@ def build_balance_sheet_from_gl(bs_df: pd.DataFrame) -> pd.DataFrame:
         return pd.DataFrame(columns=["Reporting Group", "Reporting Subgroup", "Balance"])
 
     group_cols = ["Reporting Group", "Reporting Subgroup"]
-    agg_dict = {"Report Value": "sum"}
     if "Display Order" in bs_df.columns:
-        agg_dict["Display Order"] = "min"
+        group_cols.append("Display Order")
 
-    bs = bs_df.groupby(group_cols, dropna=False).agg(agg_dict).reset_index().rename(columns={"Report Value": "Balance"})
-    bs = apply_reporting_order(bs)
-    return bs.drop(columns=["Display Order"], errors="ignore")
+    bs = (
+        bs_df.groupby(group_cols, dropna=False)["Report Value"]
+        .sum()
+        .reset_index()
+        .rename(columns={"Report Value": "Balance"})
+    )
+    return apply_reporting_order(bs)
 
 
 def combine_opening_and_current_bs(opening_bs: pd.DataFrame, current_bs: pd.DataFrame) -> pd.DataFrame:
@@ -597,7 +708,7 @@ def summarize_plan_vs_actual(compare_df: pd.DataFrame, label: str) -> pd.DataFra
         return pd.DataFrame(columns=["Reporting Group", "Actual", label, "Variance", "Variance %"])
     out = compare_df.groupby("Reporting Group", dropna=False)[["Actual", label, "Variance"]].sum().reset_index()
     out["Variance %"] = out.apply(lambda r: (r["Variance"] / r[label] * 100) if r[label] != 0 else 0.0, axis=1)
-    return apply_reporting_order(out)
+    return out.sort_values("Reporting Group").reset_index(drop=True)
 
 
 def compare_pnl_to_forecast(actual_pnl: pd.DataFrame, forecast_pnl: pd.DataFrame) -> pd.DataFrame:
@@ -608,7 +719,7 @@ def compare_pnl_to_forecast(actual_pnl: pd.DataFrame, forecast_pnl: pd.DataFrame
     merged = actual.merge(forecast, on=["Reporting Group", "Reporting Subgroup"], how="outer").fillna(0)
     merged["Variance"] = merged["Actual"] - merged["Forecast"]
     merged["Variance %"] = merged.apply(lambda r: (r["Variance"] / r["Forecast"] * 100) if r["Forecast"] != 0 else 0.0, axis=1)
-    return apply_reporting_order(merged)
+    return merged.sort_values(["Reporting Group", "Reporting Subgroup"]).reset_index(drop=True)
 
 
 def compare_pnl_to_previous_year(actual_pnl: pd.DataFrame, previous_pnl: pd.DataFrame) -> pd.DataFrame:
@@ -619,7 +730,7 @@ def compare_pnl_to_previous_year(actual_pnl: pd.DataFrame, previous_pnl: pd.Data
     merged = actual.merge(previous, on=["Reporting Group", "Reporting Subgroup"], how="outer").fillna(0)
     merged["Variance"] = merged["Actual"] - merged["Previous Year"]
     merged["Variance %"] = merged.apply(lambda r: (r["Variance"] / r["Previous Year"] * 100) if r["Previous Year"] != 0 else 0.0, axis=1)
-    return apply_reporting_order(merged)
+    return merged.sort_values(["Reporting Group", "Reporting Subgroup"]).reset_index(drop=True)
 
 
 def build_ageing_summary(df: pd.DataFrame | None, kind: str) -> dict:
@@ -763,10 +874,14 @@ def detect_anomalies(consolidated_kpis, prior_kpis=None, ar_summary=None, ap_sum
     return flags
 
 
-def create_excel_pack(consolidated_pnl, consolidated_bs, consolidated_kpis, branch_summary, branch_outputs, unmapped, executive_summary=None, monthly_actuals=None, monthly_branch_actuals=None, ar_df=None, ap_df=None, budget_compare=None, forecast_compare=None, py_compare=None, benchmark_compare=None, forecast_bs=None, fx_rate_info=None, country_indicators=None, external_benchmark_df=None):
+def create_excel_pack(consolidated_pnl, consolidated_bs, consolidated_kpis, branch_summary, branch_outputs, unmapped, executive_summary=None, monthly_actuals=None, monthly_branch_actuals=None, ar_df=None, ap_df=None, budget_compare=None, forecast_compare=None, py_compare=None, benchmark_compare=None, forecast_bs=None, fx_rate_info=None, country_indicators=None, external_benchmark_df=None, consolidated_pnl_detail=None, consolidated_bs_detail=None):
     df_dict = {"Executive Summary": executive_summary if executive_summary is not None else pd.DataFrame(), "Consolidated P&L": consolidated_pnl}
+    if consolidated_pnl_detail is not None and not consolidated_pnl_detail.empty:
+        df_dict["P&L Detail by GL"] = consolidated_pnl_detail
     if consolidated_bs is not None and not consolidated_bs.empty:
         df_dict["Consolidated BS"] = consolidated_bs
+    if consolidated_bs_detail is not None and not consolidated_bs_detail.empty:
+        df_dict["BS Detail by GL"] = consolidated_bs_detail
     if forecast_bs is not None and not forecast_bs.empty:
         df_dict["Forecast BS"] = forecast_bs
     if consolidated_kpis is not None:
@@ -780,6 +895,8 @@ def create_excel_pack(consolidated_pnl, consolidated_bs, consolidated_kpis, bran
     if branch_outputs:
         for branch, reports in branch_outputs.items():
             df_dict[f"{str(branch)[:20]} P&L"] = reports.get("pnl", pd.DataFrame())
+            if reports.get("pnl_detail") is not None and not reports.get("pnl_detail").empty:
+                df_dict[f"{str(branch)[:18]} GL Detail"] = reports.get("pnl_detail")
             if reports.get("kpis") is not None:
                 df_dict[f"{str(branch)[:20]} KPIs"] = reports["kpis"]
     if unmapped is not None and not unmapped.empty:
@@ -873,7 +990,7 @@ Write: Executive Summary, Key Insights, Risks, Opportunities, Recommended Action
         return f"AI Commentary failed: {str(e)}"
 
 
-def prepare_data(gl_file, mapping_file, kpi_file=None, latest_bs_file=None):
+def prepare_data(gl_file, mapping_file, kpi_file=None, latest_bs_file=None, allow_duplicate_coa_cleanup: bool = False):
     gl = pd.read_excel(gl_file)
     coa = pd.read_excel(mapping_file)
     kpi_master = pd.read_excel(kpi_file) if kpi_file is not None else None
@@ -885,6 +1002,9 @@ def prepare_data(gl_file, mapping_file, kpi_file=None, latest_bs_file=None):
         validate_required_columns(kpi_master, ["KPI Name", "Formula Type", "Numerator Group", "Denominator Group", "Output Type", "Display Order"], "KPI Master")
     gl["Account code"] = gl["Account code"].astype(str).str.strip()
     coa["Account code"] = coa["Account code"].astype(str).str.strip()
+    validate_coa_mapping_integrity(coa, allow_duplicate_cleanup=allow_duplicate_coa_cleanup)
+    if allow_duplicate_coa_cleanup:
+        coa = resolve_coa_duplicate_rows(coa, keep="first")
     gl["Branch"] = gl["Branch"].astype(str).str.strip()
     gl["Debit"] = pd.to_numeric(gl["Debit"], errors="coerce").fillna(0)
     gl["Credit"] = pd.to_numeric(gl["Credit"], errors="coerce").fillna(0)
@@ -894,7 +1014,7 @@ def prepare_data(gl_file, mapping_file, kpi_file=None, latest_bs_file=None):
         gl["Net"] = pd.to_numeric(gl["Net"], errors="coerce").fillna(gl["Debit"] - gl["Credit"])
     if "Date" in gl.columns:
         gl["Date"] = pd.to_datetime(gl["Date"], errors="coerce")
-    data = gl.merge(coa, on="Account code", how="left")
+    data = gl.merge(coa, on="Account code", how="left", validate="many_to_one")
     unmapped = data[data["Reporting Group"].isna()].copy()
     mapped = data[data["Reporting Group"].notna()].copy()
     if "Sign Convention" not in mapped.columns:
@@ -909,7 +1029,7 @@ def prepare_data(gl_file, mapping_file, kpi_file=None, latest_bs_file=None):
 # Session defaults
 # ----------------------------
 for key in [
-    "gl", "coa", "kpi_master", "latest_bs", "mapped", "pnl_mapped", "bs_mapped", "unmapped", "consolidated_pnl", "consolidated_bs", "consolidated_kpis", "branch_outputs", "branch_summary", "detected_branches", "validation_passed", "company_profile", "bs_disclaimer", "ai_commentary", "prior_pnl", "prior_bs", "prior_kpis", "save_run_preference", "anomaly_flags", "ar_df", "ap_df", "ar_summary", "ap_summary", "budget_df", "budget_compare", "budget_summary", "benchmark_df", "py_compare", "benchmark_compare", "monthly_actuals", "monthly_branch_actuals", "executive_summary_df", "forecast_pnl", "forecast_bs", "previous_year_pnl", "forecast_pnl_compare", "previous_year_pnl_compare", "fx_rate_info", "country_indicators", "external_benchmark_df"
+    "gl", "coa", "kpi_master", "latest_bs", "mapped", "pnl_mapped", "bs_mapped", "unmapped", "consolidated_pnl", "consolidated_bs", "consolidated_kpis", "branch_outputs", "branch_summary", "detected_branches", "validation_passed", "company_profile", "bs_disclaimer", "ai_commentary", "prior_pnl", "prior_bs", "prior_kpis", "save_run_preference", "anomaly_flags", "ar_df", "ap_df", "ar_summary", "ap_summary", "budget_df", "budget_compare", "budget_summary", "benchmark_df", "py_compare", "benchmark_compare", "monthly_actuals", "monthly_branch_actuals", "executive_summary_df", "forecast_pnl", "forecast_bs", "previous_year_pnl", "forecast_pnl_compare", "previous_year_pnl_compare", "fx_rate_info", "country_indicators", "external_benchmark_df", "consolidated_pnl_detail", "consolidated_bs_detail", "coa_duplicate_rows"
 ]:
     if key not in st.session_state:
         st.session_state[key] = None
@@ -1021,6 +1141,12 @@ with tab_setup:
             benchmark_file = st.file_uploader("Industry Benchmark File (Optional)", type=["xlsx"])
         previous_year_pnl_file = st.file_uploader("Previous Year P&L (Optional)", type=["xlsx"])
 
+        duplicate_resolution_confirmed = st.checkbox(
+            "If duplicate COA Account codes are found, I have reviewed them and approve keeping the first row for each duplicate Account code",
+            value=False,
+            help="The original Excel file is not changed. This only cleans a processing copy after you approve."
+        )
+
         if st.button("Validate & Load Current Files", use_container_width=True):
             validation_errors, validation_success, loaded_files = [], [], {}
             def log_error(file, msg, df=None):
@@ -1058,6 +1184,28 @@ with tab_setup:
                 try:
                     df = reader(file_obj)
                     validate_required_columns(df, required, file_label)
+                    if file_label == "COA Mapping":
+                        duplicate_rows = find_coa_duplicate_rows(df)
+                        if not duplicate_rows.empty:
+                            st.session_state["coa_duplicate_rows"] = duplicate_rows
+                            st.warning("Duplicate COA Account codes found. These are highlighted below for review.")
+                            st.dataframe(duplicate_rows, use_container_width=True, hide_index=True)
+                            duplicate_bytes = dataframe_to_excel_bytes({"Duplicate COA Review": duplicate_rows})
+                            st.download_button(
+                                "Download Duplicate COA Review File",
+                                data=duplicate_bytes,
+                                file_name="duplicate_coa_review.xlsx",
+                                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                                use_container_width=True,
+                                key="download_duplicate_coa_review_validation",
+                            )
+                            if not duplicate_resolution_confirmed:
+                                raise ValueError(
+                                    "Duplicate Account code rows found in COA Mapping. Review the highlighted duplicates, fix the COA file or tick the duplicate confirmation checkbox to keep the first row for each duplicate Account code."
+                                )
+                            df = resolve_coa_duplicate_rows(df, keep="first")
+                            st.info("Duplicate COA rows approved by user. The app will keep the first mapping row for each duplicate Account code for this run only.")
+                        validate_coa_mapping_integrity(df, allow_duplicate_cleanup=True)
                     loaded_files[key] = df
                     log_success(file_label)
                     show_preview(file_label, df)
@@ -1078,9 +1226,17 @@ with tab_setup:
                 st.stop()
 
             try:
-                gl, coa, kpi_master, latest_bs, mapped, pnl_mapped, bs_mapped, unmapped = prepare_data(gl_file, mapping_file, kpi_file, latest_bs_file)
+                gl, coa, kpi_master, latest_bs, mapped, pnl_mapped, bs_mapped, unmapped = prepare_data(
+                    gl_file,
+                    mapping_file,
+                    kpi_file,
+                    latest_bs_file,
+                    allow_duplicate_coa_cleanup=duplicate_resolution_confirmed,
+                )
                 consolidated_pnl = build_pnl(pnl_mapped)
+                consolidated_pnl_detail = build_pnl_detail(pnl_mapped)
                 current_bs = build_balance_sheet_from_gl(bs_mapped)
+                consolidated_bs_detail = build_balance_sheet_detail(bs_mapped)
                 bs_disclaimer = None
                 if latest_bs is not None:
                     consolidated_bs = combine_opening_and_current_bs(latest_bs, current_bs)
@@ -1093,8 +1249,9 @@ with tab_setup:
                 for branch in detected_branches:
                     branch_df = pnl_mapped[pnl_mapped["Branch"] == branch].copy()
                     branch_pnl = build_pnl(branch_df)
+                    branch_pnl_detail = build_pnl_detail(branch_df)
                     branch_kpis = build_kpis(branch_df, kpi_master) if kpi_master is not None else None
-                    branch_outputs[branch] = {"pnl": branch_pnl, "kpis": branch_kpis}
+                    branch_outputs[branch] = {"pnl": branch_pnl, "pnl_detail": branch_pnl_detail, "kpis": branch_kpis}
                     if branch_kpis is not None:
                         row = {"Branch": branch}
                         for _, r in branch_kpis.iterrows():
@@ -1122,7 +1279,7 @@ with tab_setup:
                 executive_summary_df = build_executive_summary(consolidated_kpis, ar_summary=ar_summary, ap_summary=ap_summary, budget_summary=budget_summary, benchmark_compare=benchmark_compare, forecast_pnl_compare=forecast_pnl_compare, previous_year_pnl_compare=previous_year_pnl_compare)
 
                 for k, v in {
-                    "gl": gl, "coa": coa, "kpi_master": kpi_master, "latest_bs": latest_bs, "mapped": mapped, "pnl_mapped": pnl_mapped, "bs_mapped": bs_mapped, "unmapped": unmapped, "consolidated_pnl": consolidated_pnl, "consolidated_bs": consolidated_bs, "consolidated_kpis": consolidated_kpis, "branch_outputs": branch_outputs, "branch_summary": branch_summary, "detected_branches": detected_branches, "validation_passed": unmapped.empty, "bs_disclaimer": bs_disclaimer, "ai_commentary": None, "ar_df": ar_df, "ap_df": ap_df, "ar_summary": ar_summary, "ap_summary": ap_summary, "budget_df": budget_df, "budget_compare": budget_compare, "budget_summary": budget_summary, "benchmark_df": benchmark_df, "benchmark_compare": benchmark_compare, "py_compare": py_compare, "monthly_actuals": monthly_actuals, "monthly_branch_actuals": monthly_branch_actuals, "executive_summary_df": executive_summary_df, "forecast_pnl": forecast_pnl, "forecast_bs": forecast_bs, "previous_year_pnl": previous_year_pnl, "forecast_pnl_compare": forecast_pnl_compare, "previous_year_pnl_compare": previous_year_pnl_compare, "anomaly_flags": detect_anomalies(consolidated_kpis, prior_kpis=st.session_state.get("prior_kpis"), ar_summary=ar_summary, ap_summary=ap_summary, budget_summary=budget_summary, forecast_pnl_compare=forecast_pnl_compare) if consolidated_kpis is not None else []
+                    "gl": gl, "coa": coa, "kpi_master": kpi_master, "latest_bs": latest_bs, "mapped": mapped, "pnl_mapped": pnl_mapped, "bs_mapped": bs_mapped, "unmapped": unmapped, "consolidated_pnl": consolidated_pnl, "consolidated_pnl_detail": consolidated_pnl_detail, "consolidated_bs": consolidated_bs, "consolidated_bs_detail": consolidated_bs_detail, "consolidated_kpis": consolidated_kpis, "branch_outputs": branch_outputs, "branch_summary": branch_summary, "detected_branches": detected_branches, "validation_passed": unmapped.empty, "bs_disclaimer": bs_disclaimer, "ai_commentary": None, "ar_df": ar_df, "ap_df": ap_df, "ar_summary": ar_summary, "ap_summary": ap_summary, "budget_df": budget_df, "budget_compare": budget_compare, "budget_summary": budget_summary, "benchmark_df": benchmark_df, "benchmark_compare": benchmark_compare, "py_compare": py_compare, "monthly_actuals": monthly_actuals, "monthly_branch_actuals": monthly_branch_actuals, "executive_summary_df": executive_summary_df, "forecast_pnl": forecast_pnl, "forecast_bs": forecast_bs, "previous_year_pnl": previous_year_pnl, "forecast_pnl_compare": forecast_pnl_compare, "previous_year_pnl_compare": previous_year_pnl_compare, "anomaly_flags": detect_anomalies(consolidated_kpis, prior_kpis=st.session_state.get("prior_kpis"), ar_summary=ar_summary, ap_summary=ap_summary, budget_summary=budget_summary, forecast_pnl_compare=forecast_pnl_compare) if consolidated_kpis is not None else []
                 }.items():
                     st.session_state[k] = v
                 if st.session_state["save_run_preference"]:
@@ -1193,8 +1350,8 @@ with tab_setup:
     with st.expander("Required Columns Guide"):
         g1, g2 = st.columns(2)
         with g1:
-            show_required_columns("Current GL Report", ["Account code", "Debit", "Credit", "Branch"], ["Net", "Date", "Description"])
-            show_required_columns("COA Mapping", ["Account code", "Reporting Group", "Reporting Subgroup", "Statement"], ["Sign Convention", "Display Order"])
+            show_required_columns("Current GL Report", ["Account code", "Debit", "Credit", "Branch"], ["Net", "Date", "Description", "Account Name"])
+            show_required_columns("COA Mapping", ["Account code", "Reporting Group", "Reporting Subgroup", "Statement"], ["Account Name", "Sign Convention", "Display Order"])
             show_required_columns("KPI Master", ["KPI Name", "Formula Type", "Numerator Group", "Denominator Group", "Output Type", "Display Order"], [])
             show_required_columns("Latest Previous Balance Sheet", ["Reporting Group", "Reporting Subgroup", "Balance"], [])
             show_required_columns("Budget Data", ["Month", "Branch", "Reporting Group", "Amount"], [])
@@ -1291,13 +1448,21 @@ with tab_financials:
         if st.session_state["consolidated_pnl"] is None:
             st.info("No P&L available yet.")
         else:
-            st.markdown("### Consolidated P&L")
+            st.markdown("### Consolidated P&L Summary")
             st.dataframe(style_dataframe(st.session_state["consolidated_pnl"]), use_container_width=True)
+            if st.session_state.get("consolidated_pnl_detail") is not None and not st.session_state["consolidated_pnl_detail"].empty:
+                st.markdown("### P&L Detail by GL Account")
+                st.info("This view maps by exact Account code, so similar accounts such as Freight Domestic and Freight International remain separate.")
+                st.dataframe(style_dataframe(st.session_state["consolidated_pnl_detail"]), use_container_width=True)
             if st.session_state["branch_outputs"]:
                 st.markdown("### Branch P&L")
                 for branch, reports in st.session_state["branch_outputs"].items():
                     with st.expander(str(branch)):
+                        st.markdown("**Summary**")
                         st.dataframe(style_dataframe(reports["pnl"]), use_container_width=True)
+                        if reports.get("pnl_detail") is not None and not reports["pnl_detail"].empty:
+                            st.markdown("**Detail by GL Account**")
+                            st.dataframe(style_dataframe(reports["pnl_detail"]), use_container_width=True)
             if st.session_state["forecast_pnl"] is not None:
                 st.markdown("### Forecast P&L")
                 st.dataframe(style_dataframe(st.session_state["forecast_pnl"]), use_container_width=True)
@@ -1311,6 +1476,9 @@ with tab_financials:
             if st.session_state["bs_disclaimer"]:
                 st.warning(st.session_state["bs_disclaimer"])
             st.dataframe(style_dataframe(st.session_state["consolidated_bs"]), use_container_width=True)
+            if st.session_state.get("consolidated_bs_detail") is not None and not st.session_state["consolidated_bs_detail"].empty:
+                st.markdown("### Balance Sheet Detail by GL Account")
+                st.dataframe(style_dataframe(st.session_state["consolidated_bs_detail"]), use_container_width=True)
         if st.session_state["forecast_bs"] is not None:
             st.markdown("### Forecast Balance Sheet")
             st.dataframe(style_dataframe(st.session_state["forecast_bs"]), use_container_width=True)
