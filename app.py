@@ -185,6 +185,90 @@ def show_required_columns(title, required_cols, optional_cols=None):
     st.dataframe(display_df, use_container_width=True, hide_index=True)
 
 
+def calculate_validation_score(critical_count: int, warning_count: int, recommendation_count: int) -> int:
+    score = 100 - (critical_count * 35) - (warning_count * 8) - (recommendation_count * 3)
+    return max(0, min(100, score))
+
+
+def render_validation_centre(critical_items=None, warning_items=None, recommendation_items=None, info_items=None, previews=None, block_processing=False):
+    """Show upload validation results in a popup-style Validation Centre."""
+    critical_items = critical_items or []
+    warning_items = warning_items or []
+    recommendation_items = recommendation_items or []
+    info_items = info_items or []
+    previews = previews or {}
+
+    score = calculate_validation_score(len(critical_items), len(warning_items), len(recommendation_items))
+
+    def _content():
+        st.markdown("### Data Validation Centre")
+        s1, s2, s3, s4 = st.columns(4)
+        s1.metric("Readiness Score", f"{score}/100")
+        s2.metric("Critical Errors", len(critical_items))
+        s3.metric("Warnings", len(warning_items))
+        s4.metric("Recommendations", len(recommendation_items))
+
+        if not critical_items and not warning_items and not recommendation_items:
+            st.success("No validation errors and no recommendations. Data is ready to generate reports.")
+        elif critical_items:
+            st.error("Critical errors found. Please fix these before reports can be generated.")
+        else:
+            st.warning("Data can be processed, but review the warnings/recommendations below.")
+
+        if critical_items:
+            st.markdown("#### Critical Errors")
+            st.dataframe(pd.DataFrame(critical_items), use_container_width=True, hide_index=True)
+        if warning_items:
+            st.markdown("#### Warnings")
+            st.dataframe(pd.DataFrame(warning_items), use_container_width=True, hide_index=True)
+        if recommendation_items:
+            st.markdown("#### Recommendations")
+            st.dataframe(pd.DataFrame(recommendation_items), use_container_width=True, hide_index=True)
+        if info_items:
+            st.markdown("#### Information")
+            st.dataframe(pd.DataFrame(info_items), use_container_width=True, hide_index=True)
+
+        issue_frames = []
+        if critical_items:
+            issue_frames.append(pd.DataFrame(critical_items).assign(Severity="Critical"))
+        if warning_items:
+            issue_frames.append(pd.DataFrame(warning_items).assign(Severity="Warning"))
+        if recommendation_items:
+            issue_frames.append(pd.DataFrame(recommendation_items).assign(Severity="Recommendation"))
+        if info_items:
+            issue_frames.append(pd.DataFrame(info_items).assign(Severity="Info"))
+        if issue_frames:
+            issue_df = pd.concat(issue_frames, ignore_index=True)
+            st.download_button(
+                "Download Validation Review",
+                data=dataframe_to_excel_bytes({"Validation Review": issue_df}),
+                file_name="validation_review.xlsx",
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                use_container_width=True,
+                key="download_validation_review_popup",
+            )
+
+        if previews:
+            st.markdown("#### File Previews")
+            for name, df in previews.items():
+                with st.expander(f"Preview: {name}"):
+                    st.dataframe(df.head(5), use_container_width=True)
+
+        if block_processing:
+            st.caption("Reports are blocked until critical errors are fixed.")
+        else:
+            st.caption("You can proceed. Recommendations do not change your mapping automatically.")
+
+    if hasattr(st, "dialog"):
+        @st.dialog("Validation Centre")
+        def _dialog():
+            _content()
+        _dialog()
+    else:
+        with st.expander("Validation Centre", expanded=True):
+            _content()
+
+
 # ----------------------------
 # Excel / template helpers
 # ----------------------------
@@ -375,9 +459,11 @@ def normalize_uploaded_bs(df: pd.DataFrame, label: str) -> pd.DataFrame:
 def normalize_plan_df(df: pd.DataFrame, label: str) -> pd.DataFrame:
     df = clean_columns(df)
     df.rename(columns={"Month ": "Month", "Branch ": "Branch", "Reporting group": "Reporting Group", "Amount ": "Amount", "Budget Amount": "Amount"}, inplace=True)
-    validate_required_columns(df, ["Month", "Branch", "Reporting Group", "Amount"], label)
+    validate_required_columns(df, ["Month", "Reporting Group", "Amount"], label)
+    if "Branch" not in df.columns:
+        df["Branch"] = "Consolidated"
     df["Month"] = df["Month"].astype(str).str.strip()
-    df["Branch"] = df["Branch"].astype(str).str.strip()
+    df["Branch"] = df["Branch"].astype(str).str.strip().replace({"": "Consolidated", "nan": "Consolidated"})
     df["Reporting Group"] = df["Reporting Group"].astype(str).str.strip()
     df["Amount"] = pd.to_numeric(df["Amount"], errors="coerce").fillna(0)
     return df
@@ -1159,22 +1245,26 @@ Write: Executive Summary, Key Insights, Risks, Opportunities, Recommended Action
         return f"AI Commentary failed: {str(e)}"
 
 
-def prepare_data(gl_file, mapping_file, kpi_file=None, latest_bs_file=None, allow_duplicate_coa_cleanup: bool = False):
+def prepare_data(gl_file, mapping_file, kpi_file=None, latest_bs_file=None, allow_duplicate_coa_cleanup: bool = False, reporting_structure: str = "Consolidated Only"):
     gl = pd.read_excel(gl_file)
     coa = pd.read_excel(mapping_file)
     kpi_master = pd.read_excel(kpi_file) if kpi_file is not None else None
     latest_bs = pd.read_excel(latest_bs_file) if latest_bs_file is not None else None
     gl, coa, kpi_master, latest_bs = standardize_key_columns(gl, coa, kpi_master, latest_bs)
-    validate_required_columns(gl, ["Account code", "Debit", "Credit", "Branch"], "Current GL Report")
+    branch_required = reporting_structure == "Branch / Business Unit Reporting"
+    gl_required_cols = ["Account code", "Debit", "Credit"] + (["Branch"] if branch_required else [])
+    validate_required_columns(gl, gl_required_cols, "Current GL Report")
     validate_required_columns(coa, ["Account code", "Reporting Group", "Reporting Subgroup", "Statement"], "COA Mapping")
     if kpi_master is not None:
         validate_required_columns(kpi_master, ["KPI Name", "Formula Type", "Numerator Group", "Denominator Group", "Output Type", "Display Order"], "KPI Master")
+    if "Branch" not in gl.columns:
+        gl["Branch"] = "Consolidated"
     gl["Account code"] = gl["Account code"].astype(str).str.strip()
     coa["Account code"] = coa["Account code"].astype(str).str.strip()
     validate_coa_mapping_integrity(coa, allow_duplicate_cleanup=allow_duplicate_coa_cleanup)
     if allow_duplicate_coa_cleanup:
         coa = resolve_coa_duplicate_rows(coa, keep="first")
-    gl["Branch"] = gl["Branch"].astype(str).str.strip()
+    gl["Branch"] = gl["Branch"].astype(str).str.strip().replace({"": "Consolidated", "nan": "Consolidated"})
     gl["Debit"] = pd.to_numeric(gl["Debit"], errors="coerce").fillna(0)
     gl["Credit"] = pd.to_numeric(gl["Credit"], errors="coerce").fillna(0)
     if "Net" not in gl.columns:
@@ -1198,7 +1288,7 @@ def prepare_data(gl_file, mapping_file, kpi_file=None, latest_bs_file=None, allo
 # Session defaults
 # ----------------------------
 for key in [
-    "gl", "coa", "kpi_master", "latest_bs", "mapped", "pnl_mapped", "bs_mapped", "unmapped", "consolidated_pnl", "consolidated_bs", "consolidated_kpis", "branch_outputs", "branch_summary", "detected_branches", "validation_passed", "company_profile", "bs_disclaimer", "ai_commentary", "prior_pnl", "prior_bs", "prior_kpis", "save_run_preference", "anomaly_flags", "ar_df", "ap_df", "ar_summary", "ap_summary", "budget_df", "budget_compare", "budget_summary", "benchmark_df", "py_compare", "benchmark_compare", "monthly_actuals", "monthly_branch_actuals", "executive_summary_df", "forecast_pnl", "forecast_bs", "previous_year_pnl", "forecast_pnl_compare", "previous_year_pnl_compare", "fx_rate_info", "country_indicators", "external_benchmark_df", "consolidated_pnl_detail", "consolidated_bs_detail", "coa_duplicate_rows", "coa_mapping_review", "financial_logic_review"
+    "gl", "coa", "kpi_master", "latest_bs", "mapped", "pnl_mapped", "bs_mapped", "unmapped", "consolidated_pnl", "consolidated_bs", "consolidated_kpis", "branch_outputs", "branch_summary", "detected_branches", "validation_passed", "company_profile", "bs_disclaimer", "ai_commentary", "prior_pnl", "prior_bs", "prior_kpis", "save_run_preference", "anomaly_flags", "ar_df", "ap_df", "ar_summary", "ap_summary", "budget_df", "budget_compare", "budget_summary", "benchmark_df", "py_compare", "benchmark_compare", "monthly_actuals", "monthly_branch_actuals", "executive_summary_df", "forecast_pnl", "forecast_bs", "previous_year_pnl", "forecast_pnl_compare", "previous_year_pnl_compare", "fx_rate_info", "country_indicators", "external_benchmark_df", "consolidated_pnl_detail", "consolidated_bs_detail", "coa_duplicate_rows", "coa_mapping_review", "financial_logic_review", "last_validation_report", "reporting_structure"
 ]:
     if key not in st.session_state:
         st.session_state[key] = None
@@ -1229,6 +1319,12 @@ with tab_setup:
             currency = st.selectbox("Currency", ["Select Currency", "AUD", "INR", "USD", "GBP", "CAD", "NZD", "Other"])
             tax_identifier = st.text_input("Tax Identifier / ABN / GSTIN (Optional)")
             reporting_period = st.selectbox("Reporting Period", ["Monthly", "Quarterly", "Annual"])
+            reporting_structure = st.radio(
+                "Reporting Structure",
+                ["Consolidated Only", "Branch / Business Unit Reporting"],
+                index=0,
+                help="If Consolidated Only is selected, Branch is optional in GL and the app uses a default Consolidated unit."
+            )
             benchmark_group = st.text_input("Benchmark Group (Optional)")
         business_notes = st.text_area("Business Notes (Optional)")
         save_run_preference = st.checkbox("Save this run for future comparison", value=st.session_state["save_run_preference"])
@@ -1238,7 +1334,8 @@ with tab_setup:
             elif industry == "Select Industry" or country == "Select Country":
                 st.error("Please select at least Industry and Country.")
             else:
-                st.session_state["company_profile"] = {"Company Name": company_name.strip(), "Industry": industry, "Country": country, "State / Region": state_region, "Financial Year": financial_year, "Currency": currency if currency != "Select Currency" else "", "Tax Identifier": tax_identifier, "Reporting Period": reporting_period, "Benchmark Group": benchmark_group, "Business Notes": business_notes}
+                st.session_state["company_profile"] = {"Company Name": company_name.strip(), "Industry": industry, "Country": country, "State / Region": state_region, "Financial Year": financial_year, "Currency": currency if currency != "Select Currency" else "", "Tax Identifier": tax_identifier, "Reporting Period": reporting_period, "Reporting Structure": reporting_structure, "Benchmark Group": benchmark_group, "Business Notes": business_notes}
+                st.session_state["reporting_structure"] = reporting_structure
                 st.session_state["save_run_preference"] = save_run_preference
                 st.success("Company profile saved successfully.")
         if st.session_state["company_profile"]:
@@ -1310,36 +1407,51 @@ with tab_setup:
             benchmark_file = st.file_uploader("Industry Benchmark File (Optional)", type=["xlsx"])
         previous_year_pnl_file = st.file_uploader("Previous Year P&L (Optional)", type=["xlsx"])
 
+        current_reporting_structure = st.session_state.get("company_profile", {}).get("Reporting Structure", "Consolidated Only")
+        if current_reporting_structure == "Consolidated Only":
+            st.info("Branch / Business Unit is optional for this company. If missing in GL, the app will use Consolidated automatically.")
+        else:
+            st.info("Branch / Business Unit Reporting is enabled. Branch column is mandatory in GL.")
+
         duplicate_resolution_confirmed = st.checkbox(
             "If duplicate COA Account codes are found, I have reviewed them and approve keeping the first row for each duplicate Account code",
             value=False,
             help="The original Excel file is not changed. This only cleans a processing copy after you approve."
         )
 
-        if st.button("Validate & Load Current Files", use_container_width=True):
-            validation_errors, validation_success, loaded_files = [], [], {}
-            def log_error(file, msg, df=None):
-                validation_errors.append({"File": file, "Issue": str(msg), "Columns Found": ", ".join(list(df.columns)) if df is not None else "Unreadable"})
-            def log_success(file):
-                validation_success.append({"File": file, "Status": "Valid"})
-            def show_preview(file_name, df):
-                with st.expander(f"Preview: {file_name}"):
-                    st.dataframe(df.head(5), use_container_width=True)
+        if st.button("Validate & Upload Files", use_container_width=True):
+            critical_items, warning_items, recommendation_items, info_items = [], [], [], []
+            validation_success, loaded_files, previews = [], {}, {}
 
             profile = st.session_state.get("company_profile", {})
+            reporting_structure = profile.get("Reporting Structure", "Consolidated Only")
+            branch_required = reporting_structure == "Branch / Business Unit Reporting"
+
+            def add_item(bucket, area, issue, recommendation=""):
+                bucket.append({"Area": area, "Issue": str(issue), "Recommendation": recommendation})
+
+            def log_success(file):
+                validation_success.append({"File": file, "Status": "Valid"})
+
             if not profile or not profile.get("Company Name", "").strip():
-                log_error("Company Profile", "Please save Company Profile first. Company Name is mandatory.")
+                add_item(critical_items, "Company Profile", "Company profile is not saved.", "Save Company Profile before uploading files.")
             if gl_file is None:
-                log_error("Current GL Report", "Mandatory file missing.")
+                add_item(critical_items, "Current GL Report", "Mandatory file missing.", "Upload the Current GL Report template/file.")
             if mapping_file is None:
-                log_error("COA Mapping", "Mandatory file missing.")
+                add_item(critical_items, "COA Mapping", "Mandatory file missing.", "Upload the COA Mapping template/file.")
+
+            gl_required_cols = ["Account code", "Debit", "Credit"] + (["Branch"] if branch_required else [])
+            if not branch_required:
+                add_item(info_items, "Reporting Structure", "Consolidated Only selected.", "Branch column is optional. Missing/blank Branch values will be treated as Consolidated.")
+            else:
+                add_item(info_items, "Reporting Structure", "Branch / Business Unit Reporting selected.", "Branch column is mandatory in the GL.")
 
             file_checks = [
-                ("Current GL Report", gl_file, lambda f: standardize_key_columns(pd.read_excel(f), pd.DataFrame())[0], ["Account code", "Debit", "Credit", "Branch"], "gl"),
+                ("Current GL Report", gl_file, lambda f: standardize_key_columns(pd.read_excel(f), pd.DataFrame())[0], gl_required_cols, "gl"),
                 ("COA Mapping", mapping_file, lambda f: standardize_key_columns(pd.DataFrame(), pd.read_excel(f))[1], ["Account code", "Reporting Group", "Reporting Subgroup", "Statement"], "coa"),
                 ("KPI Master", kpi_file, lambda f: standardize_key_columns(pd.DataFrame(), pd.DataFrame(), pd.read_excel(f))[2], ["KPI Name", "Formula Type", "Numerator Group", "Denominator Group", "Output Type", "Display Order"], "kpi"),
                 ("Latest Previous Balance Sheet", latest_bs_file, lambda f: normalize_uploaded_bs(pd.read_excel(f), "Latest Previous Balance Sheet"), ["Reporting Group", "Reporting Subgroup", "Balance"], "latest_bs"),
-                ("Budget Data", budget_file, lambda f: normalize_plan_df(pd.read_excel(f), "Budget Data"), ["Month", "Branch", "Reporting Group", "Amount"], "budget"),
+                ("Budget Data", budget_file, lambda f: normalize_plan_df(pd.read_excel(f), "Budget Data"), ["Month", "Reporting Group", "Amount"], "budget"),
                 ("Forecast P&L", forecast_pnl_file, lambda f: normalize_uploaded_pnl(pd.read_excel(f), "Forecast P&L"), ["Reporting Group", "Reporting Subgroup", "Report Value"], "forecast_pnl"),
                 ("Forecast Balance Sheet", forecast_bs_file, lambda f: normalize_uploaded_bs(pd.read_excel(f), "Forecast Balance Sheet"), ["Reporting Group", "Reporting Subgroup", "Balance"], "forecast_bs"),
                 ("Previous Year P&L", previous_year_pnl_file, lambda f: normalize_uploaded_pnl(pd.read_excel(f), "Previous Year P&L"), ["Reporting Group", "Reporting Subgroup", "Report Value"], "previous_year_pnl"),
@@ -1347,65 +1459,43 @@ with tab_setup:
                 ("AP Ageing", ap_file, lambda f: normalize_ageing_df(pd.read_excel(f), "AP"), ["Party Name", "Outstanding Amount"], "ap"),
                 ("Industry Benchmark File", benchmark_file, lambda f: normalize_benchmark_df(pd.read_excel(f)), ["Metric", "Benchmark Value"], "benchmark"),
             ]
-            for file_label, file_obj, reader, required, key in file_checks:
+
+            for file_label, file_obj, loader, required, key in file_checks:
                 if file_obj is None:
+                    if key in ["kpi", "latest_bs", "budget", "forecast_pnl", "forecast_bs", "previous_year_pnl", "ar", "ap", "benchmark"]:
+                        add_item(info_items, file_label, "Optional file not uploaded.", "Upload this file if you want this analysis included.")
                     continue
                 try:
-                    df = reader(file_obj)
+                    df = loader(file_obj)
                     validate_required_columns(df, required, file_label)
-                    if file_label == "COA Mapping":
-                        duplicate_rows = find_coa_duplicate_rows(df)
+                    if key == "gl" and not branch_required and "Branch" not in df.columns:
+                        df["Branch"] = "Consolidated"
+                    if key == "coa":
+                        duplicate_rows = find_duplicate_coa_rows(df)
+                        st.session_state["coa_duplicate_rows"] = duplicate_rows
                         if not duplicate_rows.empty:
-                            st.session_state["coa_duplicate_rows"] = duplicate_rows
-                            st.warning("Duplicate COA Account codes found. These are highlighted below for review.")
-                            st.dataframe(duplicate_rows, use_container_width=True, hide_index=True)
-                            duplicate_bytes = dataframe_to_excel_bytes({"Duplicate COA Review": duplicate_rows})
-                            st.download_button(
-                                "Download Duplicate COA Review File",
-                                data=duplicate_bytes,
-                                file_name="duplicate_coa_review.xlsx",
-                                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                                use_container_width=True,
-                                key="download_duplicate_coa_review_validation",
-                            )
+                            add_item(warning_items, "COA Mapping", f"Duplicate Account code rows found: {duplicate_rows['Account code'].nunique()} duplicated code(s).", "Review duplicate mapping rows. Tick the duplicate confirmation box to keep the first row for each duplicate for this run.")
                             if not duplicate_resolution_confirmed:
-                                raise ValueError(
-                                    "Duplicate Account code rows found in COA Mapping. Review the highlighted duplicates, fix the COA file or tick the duplicate confirmation checkbox to keep the first row for each duplicate Account code."
-                                )
-                            df = resolve_coa_duplicate_rows(df, keep="first")
-                            st.info("Duplicate COA rows approved by user. The app will keep the first mapping row for each duplicate Account code for this run only.")
-                        validate_coa_mapping_integrity(df, allow_duplicate_cleanup=True)
-                        mapping_review = build_coa_mapping_review(df)
+                                add_item(critical_items, "COA Mapping", "Duplicate Account code rows require user confirmation before processing.", "Fix the COA file or tick the duplicate confirmation checkbox after reviewing duplicates.")
+                        mapping_review = build_coa_mapping_review(resolve_coa_duplicate_rows(df, keep="first") if not duplicate_rows.empty else df)
                         loaded_files["coa_mapping_review"] = mapping_review
-                        if not mapping_review.empty:
-                            st.warning("Potential COA mapping issues found. These are advisory only — the app will not change mappings automatically.")
-                            st.dataframe(mapping_review, use_container_width=True, hide_index=True)
-                            review_bytes = dataframe_to_excel_bytes({"COA Mapping Review": mapping_review})
-                            st.download_button(
-                                "Download COA Mapping Review File",
-                                data=review_bytes,
-                                file_name="coa_mapping_review.xlsx",
-                                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                                use_container_width=True,
-                                key="download_coa_mapping_review_validation",
-                            )
+                        if mapping_review is not None and not mapping_review.empty:
+                            for _, r in mapping_review.head(10).iterrows():
+                                add_item(recommendation_items, "COA Mapping Review", f"{r.get('Account code', '')} {r.get('Account Name', '')}: mapped to {r.get('Current Mapping', '')}", f"Suggested review: {r.get('Suggested Mapping', '')}. {r.get('Reason', '')}")
                     loaded_files[key] = df
+                    previews[file_label] = df
                     log_success(file_label)
-                    show_preview(file_label, df)
                 except Exception as e:
                     raw_df = None
                     try:
                         raw_df = clean_columns(pd.read_excel(file_obj))
                     except Exception:
                         pass
-                    log_error(file_label, e, raw_df)
+                    found_cols = f" Found columns: {list(raw_df.columns)}" if raw_df is not None else ""
+                    add_item(critical_items, file_label, f"{e}.{found_cols}", "Correct the file using the sample template and upload again.")
 
-            if validation_success:
-                st.success("Validated files")
-                st.dataframe(pd.DataFrame(validation_success), use_container_width=True, hide_index=True)
-            if validation_errors:
-                st.error("Validation errors found. Fix these and upload again.")
-                st.dataframe(pd.DataFrame(validation_errors), use_container_width=True, hide_index=True)
+            if critical_items:
+                render_validation_centre(critical_items, warning_items, recommendation_items, info_items, previews, block_processing=True)
                 st.stop()
 
             try:
@@ -1415,11 +1505,18 @@ with tab_setup:
                     kpi_file,
                     latest_bs_file,
                     allow_duplicate_coa_cleanup=duplicate_resolution_confirmed,
+                    reporting_structure=reporting_structure,
                 )
                 consolidated_pnl = build_pnl(pnl_mapped)
                 consolidated_pnl_detail = build_pnl_detail(pnl_mapped)
                 coa_mapping_review = build_coa_mapping_review(coa)
                 financial_logic_review = build_financial_logic_review(consolidated_pnl)
+                if financial_logic_review is not None and not financial_logic_review.empty:
+                    for _, r in financial_logic_review.head(10).iterrows():
+                        add_item(recommendation_items, "Financial Logic Review", r.get("Issue", "Financial logic item"), r.get("Recommendation", "Review financial classification and source data."))
+                if unmapped is not None and not unmapped.empty:
+                    add_item(warning_items, "GL Mapping", f"{len(unmapped)} GL row(s) are unmapped.", "Review unmapped account codes and update COA Mapping.")
+
                 current_bs = build_balance_sheet_from_gl(bs_mapped)
                 consolidated_bs_detail = build_balance_sheet_detail(bs_mapped)
                 bs_disclaimer = None
@@ -1428,6 +1525,7 @@ with tab_setup:
                 else:
                     consolidated_bs = current_bs
                     bs_disclaimer = "Balance Sheet may not fully match because opening balances were not provided."
+                    add_item(info_items, "Balance Sheet", "Latest previous Balance Sheet not uploaded.", "Upload opening/latest BS if you want stronger balance-sheet continuity.")
                 consolidated_kpis = build_kpis(pnl_mapped, kpi_master) if kpi_master is not None else None
                 detected_branches = sorted(pnl_mapped["Branch"].dropna().unique().tolist()) if not pnl_mapped.empty else []
                 branch_outputs, branch_summary_rows = {}, []
@@ -1462,19 +1560,33 @@ with tab_setup:
                 monthly_actuals = build_monthly_actuals(pnl_mapped)
                 monthly_branch_actuals = build_monthly_branch_actuals(pnl_mapped)
                 executive_summary_df = build_executive_summary(consolidated_kpis, ar_summary=ar_summary, ap_summary=ap_summary, budget_summary=budget_summary, benchmark_compare=benchmark_compare, forecast_pnl_compare=forecast_pnl_compare, previous_year_pnl_compare=previous_year_pnl_compare)
+                anomaly_flags = detect_anomalies(consolidated_kpis, prior_kpis=st.session_state.get("prior_kpis"), ar_summary=ar_summary, ap_summary=ap_summary, budget_summary=budget_summary, forecast_pnl_compare=forecast_pnl_compare) if consolidated_kpis is not None else []
+                for flag in anomaly_flags:
+                    add_item(recommendation_items, "Anomaly Review", flag, "Review source data and mapping before relying on final reports.")
+
+                last_validation_report = {
+                    "critical": critical_items,
+                    "warnings": warning_items,
+                    "recommendations": recommendation_items,
+                    "info": info_items,
+                    "score": calculate_validation_score(len(critical_items), len(warning_items), len(recommendation_items)),
+                }
 
                 for k, v in {
-                    "gl": gl, "coa": coa, "kpi_master": kpi_master, "latest_bs": latest_bs, "mapped": mapped, "pnl_mapped": pnl_mapped, "bs_mapped": bs_mapped, "unmapped": unmapped, "consolidated_pnl": consolidated_pnl, "consolidated_pnl_detail": consolidated_pnl_detail, "consolidated_bs": consolidated_bs, "consolidated_bs_detail": consolidated_bs_detail, "consolidated_kpis": consolidated_kpis, "branch_outputs": branch_outputs, "branch_summary": branch_summary, "detected_branches": detected_branches, "validation_passed": unmapped.empty, "bs_disclaimer": bs_disclaimer, "ai_commentary": None, "ar_df": ar_df, "ap_df": ap_df, "ar_summary": ar_summary, "ap_summary": ap_summary, "budget_df": budget_df, "budget_compare": budget_compare, "budget_summary": budget_summary, "benchmark_df": benchmark_df, "benchmark_compare": benchmark_compare, "py_compare": py_compare, "monthly_actuals": monthly_actuals, "monthly_branch_actuals": monthly_branch_actuals, "executive_summary_df": executive_summary_df, "forecast_pnl": forecast_pnl, "forecast_bs": forecast_bs, "previous_year_pnl": previous_year_pnl, "forecast_pnl_compare": forecast_pnl_compare, "previous_year_pnl_compare": previous_year_pnl_compare, "anomaly_flags": detect_anomalies(consolidated_kpis, prior_kpis=st.session_state.get("prior_kpis"), ar_summary=ar_summary, ap_summary=ap_summary, budget_summary=budget_summary, forecast_pnl_compare=forecast_pnl_compare) if consolidated_kpis is not None else []
+                    "gl": gl, "coa": coa, "kpi_master": kpi_master, "latest_bs": latest_bs, "mapped": mapped, "pnl_mapped": pnl_mapped, "bs_mapped": bs_mapped, "unmapped": unmapped, "consolidated_pnl": consolidated_pnl, "consolidated_pnl_detail": consolidated_pnl_detail, "consolidated_bs": consolidated_bs, "consolidated_bs_detail": consolidated_bs_detail, "consolidated_kpis": consolidated_kpis, "branch_outputs": branch_outputs, "branch_summary": branch_summary, "detected_branches": detected_branches, "validation_passed": unmapped.empty, "bs_disclaimer": bs_disclaimer, "ai_commentary": None, "ar_df": ar_df, "ap_df": ap_df, "ar_summary": ar_summary, "ap_summary": ap_summary, "budget_df": budget_df, "budget_compare": budget_compare, "budget_summary": budget_summary, "benchmark_df": benchmark_df, "benchmark_compare": benchmark_compare, "py_compare": py_compare, "monthly_actuals": monthly_actuals, "monthly_branch_actuals": monthly_branch_actuals, "executive_summary_df": executive_summary_df, "forecast_pnl": forecast_pnl, "forecast_bs": forecast_bs, "previous_year_pnl": previous_year_pnl, "forecast_pnl_compare": forecast_pnl_compare, "previous_year_pnl_compare": previous_year_pnl_compare, "anomaly_flags": anomaly_flags, "coa_mapping_review": coa_mapping_review, "financial_logic_review": financial_logic_review, "last_validation_report": last_validation_report, "reporting_structure": reporting_structure,
                 }.items():
                     st.session_state[k] = v
                 if st.session_state["save_run_preference"]:
                     save_run_to_history(st.session_state["company_profile"], consolidated_pnl, consolidated_bs, consolidated_kpis, branch_summary)
+
+                render_validation_centre(critical_items, warning_items, recommendation_items, info_items, previews, block_processing=False)
                 if unmapped.empty:
-                    st.success("All files loaded successfully. No unmapped GL rows found.")
+                    st.success("Files loaded successfully. Validation Centre has been opened.")
                 else:
-                    st.warning("Files loaded, but unmapped GL rows were found. See Validation Summary.")
+                    st.warning("Files loaded, but unmapped GL rows were found. Review the Validation Centre.")
             except Exception as e:
-                st.error("Files passed validation, but processing failed.")
+                add_item(critical_items, "Processing", f"Files passed upload validation, but processing failed: {e}", "Review the error details, mapping file, and source files.")
+                render_validation_centre(critical_items, warning_items, recommendation_items, info_items, previews, block_processing=True)
                 st.exception(e)
 
     with st.expander("Prior Period / Restore"):
@@ -1518,39 +1630,35 @@ with tab_setup:
             except Exception as e:
                 st.error(f"Error loading prior period data: {e}")
 
-    with st.expander("Validation Summary"):
-        if st.session_state["gl"] is None:
-            st.info("No validated files loaded yet.")
-        else:
+    if st.session_state.get("gl") is not None:
+        with st.expander("Validation Summary"):
+            report = st.session_state.get("last_validation_report") or {}
+            if report:
+                c1, c2, c3, c4 = st.columns(4)
+                c1.metric("Readiness Score", f"{report.get('score', 100)}/100")
+                c2.metric("Critical", len(report.get("critical", [])))
+                c3.metric("Warnings", len(report.get("warnings", [])))
+                c4.metric("Recommendations", len(report.get("recommendations", [])))
+                if st.button("Open Validation Centre Again", use_container_width=True):
+                    render_validation_centre(report.get("critical", []), report.get("warnings", []), report.get("recommendations", []), report.get("info", []), {}, block_processing=False)
             m1, m2, m3, m4 = st.columns(4)
             m1.metric("GL Rows", len(st.session_state["gl"]))
             m2.metric("Mapped Rows", len(st.session_state["mapped"]))
             m3.metric("Unmapped Rows", len(st.session_state["unmapped"]))
-            m4.metric("Branches Found", len(st.session_state["detected_branches"] or []))
-            unmapped = st.session_state["unmapped"]
+            m4.metric("Reporting Units", len(st.session_state["detected_branches"] or []))
+            unmapped = st.session_state.get("unmapped")
             if unmapped is not None and not unmapped.empty:
-                cols_to_show = [c for c in ["Account code", "Description", "Branch", "Debit", "Credit", "Net"] if c in unmapped.columns]
+                cols_to_show = [c for c in ["Account code", "Account Name", "Description", "Branch", "Debit", "Credit", "Net"] if c in unmapped.columns]
                 st.dataframe(style_dataframe(unmapped[cols_to_show]), use_container_width=True)
-
-            mapping_review = st.session_state.get("coa_mapping_review")
-            if mapping_review is not None and not mapping_review.empty:
-                st.markdown("### COA Mapping Review")
-                st.warning("These are potential classification issues only. The app has not changed your mapping.")
-                st.dataframe(style_dataframe(mapping_review), use_container_width=True)
-
-            logic_review = st.session_state.get("financial_logic_review")
-            if logic_review is not None and not logic_review.empty:
-                st.markdown("### Financial Logic Review")
-                st.dataframe(style_dataframe(logic_review), use_container_width=True)
 
     with st.expander("Required Columns Guide"):
         g1, g2 = st.columns(2)
         with g1:
-            show_required_columns("Current GL Report", ["Account code", "Debit", "Credit", "Branch"], ["Net", "Date", "Description", "Account Name"])
+            show_required_columns("Current GL Report", ["Account code", "Debit", "Credit"], ["Branch / Business Unit", "Net", "Date", "Description", "Account Name"])
             show_required_columns("COA Mapping", ["Account code", "Reporting Group", "Reporting Subgroup", "Statement"], ["Account Name", "Sign Convention", "Display Order"])
             show_required_columns("KPI Master", ["KPI Name", "Formula Type", "Numerator Group", "Denominator Group", "Output Type", "Display Order"], [])
             show_required_columns("Latest Previous Balance Sheet", ["Reporting Group", "Reporting Subgroup", "Balance"], [])
-            show_required_columns("Budget Data", ["Month", "Branch", "Reporting Group", "Amount"], [])
+            show_required_columns("Budget Data", ["Month", "Reporting Group", "Amount"], ["Branch / Business Unit"])
             show_required_columns("Forecast P&L", ["Reporting Group", "Reporting Subgroup", "Report Value"], [])
         with g2:
             show_required_columns("Forecast Balance Sheet", ["Reporting Group", "Reporting Subgroup", "Balance"], [])
