@@ -1627,17 +1627,20 @@ st.markdown("""
 .setup-panel {border-radius:24px;padding:1.25rem;border:1px solid rgba(37,99,235,0.14);background:linear-gradient(180deg,rgba(239,246,255,0.82),rgba(255,255,255,0.96));box-shadow:0 12px 34px rgba(37,99,235,0.08);}
 .section-title-row {display:flex;align-items:center;gap:0.65rem;margin:1.1rem 0 0.7rem 0;}
 .section-title-icon {width:34px;height:34px;border-radius:12px;display:flex;align-items:center;justify-content:center;background:#eff6ff;color:#2563eb;font-size:1.08rem;}
-.section-title-text {font-size:1.22rem;font-weight:800;color:var(--ink);}
+.section-title-text {font-size:1.22rem;font-weight:800;color:#f8fafc;text-shadow:0 1px 1px rgba(0,0,0,0.25);}
 .workflow-step {padding:0.8rem 1rem;border-radius:16px;background:#111827;border:1px solid rgba(148,163,184,0.30);text-align:center;font-weight:800;color:#f8fafc;box-shadow:0 6px 18px rgba(0,0,0,0.18);}
 .workflow-step-done {background:#064e3b;border-color:#34d399;color:#d1fae5;}
 .workflow-step-active {background:#1e3a8a;border-color:#60a5fa;color:#eff6ff;}
 .small-muted {color:#6b7280;font-size:0.9rem;}
-.alert-card {padding:0.9rem 1rem;border-radius:14px;background:#fff7ed;border:1px solid #fed7aa;margin-bottom:0.55rem;box-shadow:0 4px 14px rgba(251,146,60,0.08);}
+.alert-card {padding:0.9rem 1rem;border-radius:14px;background:#3f3f0f;border:1px solid #a3a329;margin-bottom:0.55rem;box-shadow:0 4px 14px rgba(251,146,60,0.08);color:#fef9c3;}
+.alert-card b {color:#ffffff;}
 .status-strip {display:grid;grid-template-columns:repeat(4,1fr);gap:0.8rem;margin-bottom:1rem;}
 .status-mini {background:#ffffff;border:1px solid #e5e7eb;border-radius:16px;padding:0.85rem 1rem;box-shadow:0 7px 22px rgba(15,23,42,0.04);}
 .status-mini b {font-size:0.82rem;color:#6b7280;display:block;margin-bottom:0.25rem;}
 .status-mini span {font-weight:800;color:#111827;}
-.upload-intro {padding:1rem 1.1rem;border-radius:18px;background:#f8fafc;border:1px solid #e5e7eb;margin-bottom:1rem;}
+.upload-intro {padding:1rem 1.1rem;border-radius:18px;background:#111827;border:1px solid rgba(148,163,184,0.35);margin-bottom:1rem;color:#f8fafc;}
+.upload-intro b {color:#ffffff;}
+.upload-intro .small-muted {color:#cbd5e1;}
 @media (max-width:900px) {.hero-title{font-size:2rem;}.hero-card{padding:1.4rem;min-height:auto;}.status-strip{grid-template-columns:repeat(2,1fr);}}
 </style>
 """, unsafe_allow_html=True)
@@ -1955,47 +1958,14 @@ if selected_page == "🏠 Home":
 
     st.markdown('</div>', unsafe_allow_html=True)
 
-    profile = st.session_state.get("company_profile", {}) or {}
-    if profile:
-        st.markdown('<div class="section-title-row"><div class="section-title-icon">📋</div><div class="section-title-text">Current Company Profile</div></div>', unsafe_allow_html=True)
-        st.dataframe(pd.DataFrame(profile.items(), columns=["Field", "Value"]), use_container_width=True, hide_index=True)
-
-    if critical or warnings or recommendations:
-        st.markdown('<div class="section-title-row"><div class="section-title-icon">⚠️</div><div class="section-title-text">Items Needing Attention</div></div>', unsafe_allow_html=True)
-        for item in (critical + warnings + recommendations)[:8]:
-            st.markdown(f'<div class="alert-card"><b>{item.get("Area", "Review")}</b><br>{item.get("Issue", "")}</div>', unsafe_allow_html=True)
-    elif st.session_state.get("mapped") is not None:
-        st.success("No validation errors and no recommendations found in the last validation run.")
-    else:
-        st.info("Save company profile, then upload data to activate the Validation Centre.")
-
-elif selected_page == "📁 Data Upload":
-    st.markdown('<div class="section-title-row"><div class="section-title-icon">📁</div><div class="section-title-text">Data Upload</div></div>', unsafe_allow_html=True)
-    profile = st.session_state.get("company_profile", {}) or {}
-    if not profile or not profile.get("Company Name"):
-        st.warning("Please complete Company Setup on the Home page before uploading files.")
-        if st.button("Go to Home Setup", use_container_width=True, key="upload_go_home_setup"):
-            st.query_params["page"] = "home"
-            st.rerun()
-    else:
-        st.markdown(f"""
-        <div class="upload-intro">
-            <b>Uploading for:</b> {profile.get("Company Name", "")} &nbsp; | &nbsp;
-            <b>Industry:</b> {profile.get("Industry", "")} &nbsp; | &nbsp;
-            <b>Country:</b> {profile.get("Country", "")} &nbsp; | &nbsp;
-            <b>Reporting:</b> {profile.get("Reporting Structure", "Consolidated Only")}
-            <br><span class="small-muted">Company details are managed on the Home page. This section is only for files, templates, FX, benchmarks and validation.</span>
-        </div>
-        """, unsafe_allow_html=True)
-
-    with st.expander("External FX & Benchmark Data", expanded=False):
+    with st.expander("External Data & Benchmarks (Optional)", expanded=False):
         profile = st.session_state.get("company_profile", {})
         selected_country = profile.get("Country", "Australia") if profile else "Australia"
         selected_industry = profile.get("Industry", "Other") if profile else "Other"
         selected_currency = profile.get("Currency", "AUD") if profile else "AUD"
         default_target_currency = selected_currency if selected_currency and selected_currency != "Select Currency" else currency_for_country(selected_country)
 
-        st.info("Optional: fetch live FX rates and country indicators. Industry benchmarks here are starter defaults; upload your own benchmark file to override them.")
+        st.info("Optional setup for FX, country indicators and starter industry benchmarks. Uploaded benchmark files are still added from Data Upload, but external benchmark setup belongs here with the company profile.")
         fx1, fx2, fx3 = st.columns(3)
         with fx1:
             fx_base = st.selectbox("FX Base Currency", ["AUD", "INR", "USD", "GBP", "CAD", "NZD", "EUR"], index=0)
@@ -2035,6 +2005,41 @@ elif selected_page == "📁 Data Upload":
         if st.session_state.get("external_benchmark_df") is not None:
             st.markdown("**Loaded Benchmark Data**")
             st.dataframe(st.session_state["external_benchmark_df"], use_container_width=True, hide_index=True)
+
+
+
+    profile = st.session_state.get("company_profile", {}) or {}
+    if profile:
+        st.markdown('<div class="section-title-row"><div class="section-title-icon">📋</div><div class="section-title-text">Current Company Profile</div></div>', unsafe_allow_html=True)
+        st.dataframe(pd.DataFrame(profile.items(), columns=["Field", "Value"]), use_container_width=True, hide_index=True)
+
+    if critical or warnings or recommendations:
+        st.markdown('<div class="section-title-row"><div class="section-title-icon">⚠️</div><div class="section-title-text">Items Needing Attention</div></div>', unsafe_allow_html=True)
+        for item in (critical + warnings + recommendations)[:8]:
+            st.markdown(f'<div class="alert-card"><b>{item.get("Area", "Review")}</b><br>{item.get("Issue", "")}</div>', unsafe_allow_html=True)
+    elif st.session_state.get("mapped") is not None:
+        st.success("No validation errors and no recommendations found in the last validation run.")
+    else:
+        st.info("Save company profile, then upload data to activate the Validation Centre.")
+
+elif selected_page == "📁 Data Upload":
+    st.markdown('<div class="section-title-row"><div class="section-title-icon">📁</div><div class="section-title-text">Data Upload</div></div>', unsafe_allow_html=True)
+    profile = st.session_state.get("company_profile", {}) or {}
+    if not profile or not profile.get("Company Name"):
+        st.warning("Please complete Company Setup on the Home page before uploading files.")
+        if st.button("Go to Home Setup", use_container_width=True, key="upload_go_home_setup"):
+            st.query_params["page"] = "home"
+            st.rerun()
+    else:
+        st.markdown(f"""
+        <div class="upload-intro">
+            <b>Uploading for:</b> {profile.get("Company Name", "")} &nbsp; | &nbsp;
+            <b>Industry:</b> {profile.get("Industry", "")} &nbsp; | &nbsp;
+            <b>Country:</b> {profile.get("Country", "")} &nbsp; | &nbsp;
+            <b>Reporting:</b> {profile.get("Reporting Structure", "Consolidated Only")}
+            <br><span class="small-muted">Company details are managed on the Home page. This section is only for files, templates, FX, benchmarks and validation.</span>
+        </div>
+        """, unsafe_allow_html=True)
 
     with st.expander("Current Period Uploads", expanded=True):
         c1, c2, c3 = st.columns(3)
