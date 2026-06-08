@@ -30,6 +30,84 @@ button {font-family: Arial, sans-serif !important; font-size: 14px !important; f
 </style>
 """, unsafe_allow_html=True)
 
+# Floating animated AI CFO launcher
+st.markdown("""
+<style>
+.floating-ai-cfo-wrap {
+    position: fixed;
+    right: 26px;
+    bottom: 28px;
+    z-index: 999999;
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 8px;
+}
+.floating-ai-cfo-label {
+    background: rgba(17, 24, 39, 0.92);
+    color: #ffffff;
+    padding: 8px 12px;
+    border-radius: 999px;
+    font-size: 13px;
+    box-shadow: 0 12px 30px rgba(0,0,0,0.18);
+    animation: aiLabelFloat 3.2s ease-in-out infinite;
+}
+.floating-ai-cfo-button {
+    width: 72px;
+    height: 72px;
+    border-radius: 50%;
+    background: linear-gradient(135deg, #0f766e, #2563eb, #7c3aed);
+    color: #fff !important;
+    text-decoration: none !important;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 34px;
+    box-shadow: 0 18px 45px rgba(37, 99, 235, 0.38);
+    animation: aiFloat 2.8s ease-in-out infinite, aiPulse 1.8s ease-in-out infinite;
+    border: 2px solid rgba(255,255,255,0.9);
+}
+.floating-ai-cfo-button:hover {
+    transform: scale(1.08);
+    box-shadow: 0 20px 55px rgba(124, 58, 237, 0.45);
+}
+.floating-ai-cfo-dot {
+    position: absolute;
+    right: 8px;
+    bottom: 8px;
+    width: 16px;
+    height: 16px;
+    background: #22c55e;
+    border-radius: 50%;
+    border: 2px solid white;
+    animation: aiDot 1.4s ease-in-out infinite;
+}
+@keyframes aiFloat {
+    0%, 100% { transform: translateY(0px) rotate(0deg); }
+    50% { transform: translateY(-12px) rotate(2deg); }
+}
+@keyframes aiPulse {
+    0% { box-shadow: 0 0 0 0 rgba(37,99,235,0.45), 0 18px 45px rgba(37,99,235,0.38); }
+    70% { box-shadow: 0 0 0 18px rgba(37,99,235,0), 0 18px 45px rgba(37,99,235,0.38); }
+    100% { box-shadow: 0 0 0 0 rgba(37,99,235,0), 0 18px 45px rgba(37,99,235,0.38); }
+}
+@keyframes aiLabelFloat {
+    0%, 100% { transform: translateY(0px); opacity: 0.95; }
+    50% { transform: translateY(-6px); opacity: 1; }
+}
+@keyframes aiDot {
+    0%, 100% { transform: scale(1); opacity: 1; }
+    50% { transform: scale(1.35); opacity: 0.75; }
+}
+@media (max-width: 768px) {
+    .floating-ai-cfo-wrap { right: 16px; bottom: 18px; }
+    .floating-ai-cfo-label { display: none; }
+    .floating-ai-cfo-button { width: 62px; height: 62px; font-size: 29px; }
+}
+</style>
+""", unsafe_allow_html=True)
+
+
 HISTORY_ROOT = Path("history")
 HISTORY_ROOT.mkdir(exist_ok=True)
 
@@ -1531,31 +1609,46 @@ if st.session_state["ai_cfo_chat_messages"] is None:
 # ----------------------------
 st.markdown("""
 <style>
-.main-card {
-    padding: 1.1rem 1.25rem;
-    border: 1px solid #e6e8eb;
-    border-radius: 14px;
-    background: #ffffff;
-    box-shadow: 0 1px 3px rgba(0,0,0,0.04);
-    margin-bottom: 1rem;
-}
-.workflow-step {
-    padding: 0.75rem 1rem;
-    border-radius: 12px;
-    background: #f7f9fb;
-    border: 1px solid #e6e8eb;
-    text-align: center;
-    font-weight: 600;
-}
-.workflow-step-done {background:#eefaf1;border-color:#bfe8c8;}
-.workflow-step-active {background:#eef5ff;border-color:#b8d6ff;}
+:root {--brand-1:#0f766e;--brand-2:#2563eb;--brand-3:#7c3aed;--ink:#111827;--muted:#6b7280;--line:#e5e7eb;--soft:#f8fafc;}
+.block-container {max-width:1320px; padding-top:1.2rem;}
+.main-card {padding:1.15rem 1.25rem;border:1px solid rgba(226,232,240,0.9);border-radius:18px;background:rgba(255,255,255,0.94);box-shadow:0 10px 30px rgba(15,23,42,0.06);margin-bottom:1rem;}
+.hero-card {position:relative;overflow:hidden;min-height:295px;padding:2.1rem;border-radius:28px;color:white;background:linear-gradient(90deg, rgba(15,23,42,0.94) 0%, rgba(15,118,110,0.86) 48%, rgba(37,99,235,0.68) 100%),url('https://images.unsplash.com/photo-1554224155-6726b3ff858f?auto=format&fit=crop&w=1400&q=80');background-size:cover;background-position:center;box-shadow:0 22px 70px rgba(15,23,42,0.24);margin-bottom:1.25rem;}
+.hero-kicker {display:inline-flex;align-items:center;gap:0.45rem;padding:0.42rem 0.72rem;background:rgba(255,255,255,0.14);border:1px solid rgba(255,255,255,0.24);border-radius:999px;font-weight:700;font-size:0.86rem;margin-bottom:0.9rem;}
+.hero-title {font-size:2.65rem;line-height:1.05;font-weight:800;letter-spacing:-0.045em;max-width:780px;margin:0 0 0.8rem 0;}
+.hero-subtitle {font-size:1.04rem;color:rgba(255,255,255,0.88);max-width:720px;margin-bottom:1.2rem;}
+.hero-pill-row {display:flex;flex-wrap:wrap;gap:0.55rem;margin-top:1rem;}
+.hero-pill {padding:0.52rem 0.78rem;border-radius:999px;background:rgba(255,255,255,0.14);border:1px solid rgba(255,255,255,0.2);color:white;font-weight:700;font-size:0.86rem;}
+.feature-card {padding:1.1rem;border-radius:18px;border:1px solid rgba(226,232,240,0.95);background:linear-gradient(180deg,#ffffff 0%,#f8fafc 100%);box-shadow:0 8px 26px rgba(15,23,42,0.05);height:100%;}
+.feature-icon {width:42px;height:42px;border-radius:14px;display:flex;align-items:center;justify-content:center;background:linear-gradient(135deg,rgba(15,118,110,0.12),rgba(37,99,235,0.12));color:#0f766e;font-size:1.35rem;margin-bottom:0.72rem;}
+.feature-title {font-weight:800;color:var(--ink);margin-bottom:0.25rem;}
+.feature-text {color:var(--muted);font-size:0.91rem;line-height:1.45;}
+.setup-panel {border-radius:24px;padding:1.25rem;border:1px solid rgba(37,99,235,0.14);background:linear-gradient(180deg,rgba(239,246,255,0.82),rgba(255,255,255,0.96));box-shadow:0 12px 34px rgba(37,99,235,0.08);}
+.section-title-row {display:flex;align-items:center;gap:0.65rem;margin:1.1rem 0 0.7rem 0;}
+.section-title-icon {width:34px;height:34px;border-radius:12px;display:flex;align-items:center;justify-content:center;background:#eff6ff;color:#2563eb;font-size:1.08rem;}
+.section-title-text {font-size:1.22rem;font-weight:800;color:var(--ink);}
+.workflow-step {padding:0.8rem 1rem;border-radius:16px;background:#f8fafc;border:1px solid #e5e7eb;text-align:center;font-weight:800;color:#374151;box-shadow:0 6px 16px rgba(15,23,42,0.035);}
+.workflow-step-done {background:#ecfdf5;border-color:#bbf7d0;color:#047857;}
+.workflow-step-active {background:#eff6ff;border-color:#bfdbfe;color:#1d4ed8;}
 .small-muted {color:#6b7280;font-size:0.9rem;}
-.alert-card {padding:0.8rem 1rem;border-radius:12px;background:#fff7ed;border:1px solid #fed7aa;margin-bottom:0.5rem;}
+.alert-card {padding:0.9rem 1rem;border-radius:14px;background:#fff7ed;border:1px solid #fed7aa;margin-bottom:0.55rem;box-shadow:0 4px 14px rgba(251,146,60,0.08);}
+.status-strip {display:grid;grid-template-columns:repeat(4,1fr);gap:0.8rem;margin-bottom:1rem;}
+.status-mini {background:#ffffff;border:1px solid #e5e7eb;border-radius:16px;padding:0.85rem 1rem;box-shadow:0 7px 22px rgba(15,23,42,0.04);}
+.status-mini b {font-size:0.82rem;color:#6b7280;display:block;margin-bottom:0.25rem;}
+.status-mini span {font-weight:800;color:#111827;}
+.upload-intro {padding:1rem 1.1rem;border-radius:18px;background:#f8fafc;border:1px solid #e5e7eb;margin-bottom:1rem;}
+@media (max-width:900px) {.hero-title{font-size:2rem;}.hero-card{padding:1.4rem;min-height:auto;}.status-strip{grid-template-columns:repeat(2,1fr);}}
 </style>
 """, unsafe_allow_html=True)
 
-st.title("AI CFO Copilot")
-st.caption("A guided CFO workflow for upload validation, dashboards, reports, forecasting, working capital, AI insights and downloads")
+st.markdown("""
+<div style="display:flex;align-items:center;gap:0.65rem;margin-bottom:0.2rem;">
+  <div style="width:40px;height:40px;border-radius:14px;background:linear-gradient(135deg,#0f766e,#2563eb);display:flex;align-items:center;justify-content:center;color:white;font-size:1.35rem;font-weight:800;">▣</div>
+  <div>
+    <div style="font-size:2rem;font-weight:850;letter-spacing:-0.04em;color:#111827;line-height:1;">AI CFO Copilot</div>
+    <div style="color:#6b7280;font-size:0.95rem;margin-top:0.2rem;">Finance reporting, validation, forecasting, benchmarking and AI analysis in one guided workspace</div>
+  </div>
+</div>
+""", unsafe_allow_html=True)
 
 pages = [
     "🏠 Home",
@@ -1563,28 +1656,74 @@ pages = [
     "📊 Dashboard",
     "📈 Reports",
     "💰 Working Capital",
-    "🔍 Validation Centre",
     "🧠 Insights",
     "💬 Ask AI CFO",
     "📤 Downloads",
 ]
 
-with st.sidebar:
-    st.markdown("### AI CFO Copilot")
-    selected_page = st.radio("Navigation", pages, label_visibility="collapsed")
-    st.markdown("---")
-    profile = st.session_state.get("company_profile", {}) or {}
-    st.markdown(f"**Company:** {profile.get('Company Name', 'Not set')}")
-    st.markdown(f"**Industry:** {profile.get('Industry', 'Not set')}")
-    st.markdown(f"**Period:** {profile.get('Financial Year', 'Not set')}")
-    st.markdown("---")
-    report = st.session_state.get("last_validation_report") or {}
-    score = report.get("score", 0 if not st.session_state.get("mapped") else 100)
-    st.metric("Readiness", f"{score}/100")
-    if st.session_state.get("mapped") is not None:
-        st.success("Data loaded")
-    else:
-        st.info("Upload pending")
+page_query = st.query_params.get("page", "")
+page_key_map = {
+    "home": "🏠 Home",
+    "upload": "📁 Data Upload",
+    "dashboard": "📊 Dashboard",
+    "reports": "📈 Reports",
+    "working_capital": "💰 Working Capital",
+    "insights": "🧠 Insights",
+    "ask_ai_cfo": "💬 Ask AI CFO",
+    "downloads": "📤 Downloads",
+}
+page_slug_map = {v: k for k, v in page_key_map.items()}
+selected_page = page_key_map.get(page_query, "🏠 Home")
+
+# Hide Streamlit's default sidebar completely. Navigation is handled by top action buttons.
+st.markdown("""
+<style>
+[data-testid="stSidebar"] {display: none !important;}
+[data-testid="collapsedControl"] {display: none !important;}
+.block-container {padding-top: 2rem;}
+.top-nav-row {
+    padding: 0.75rem 0 0.35rem 0;
+    border-bottom: 1px solid #eef0f3;
+    margin-bottom: 1rem;
+}
+.nav-hint {
+    color: #6b7280;
+    font-size: 0.9rem;
+    margin-bottom: 0.4rem;
+}
+div[data-testid="stButton"] > button {
+    border-radius: 14px !important;
+    border: 1px solid #e5e7eb !important;
+    background: #ffffff !important;
+    box-shadow: 0 6px 18px rgba(15,23,42,0.04) !important;
+    min-height: 2.55rem !important;
+}
+div[data-testid="stButton"] > button:hover {
+    border-color: #93c5fd !important;
+    box-shadow: 0 8px 24px rgba(37,99,235,0.10) !important;
+}
+</style>
+""", unsafe_allow_html=True)
+
+st.markdown('<div class="top-nav-row">', unsafe_allow_html=True)
+st.markdown('<div class="nav-hint">CFO Workflow</div>', unsafe_allow_html=True)
+nav_cols = st.columns(len(pages))
+for nav_page, nav_col in zip(pages, nav_cols):
+    is_current = selected_page == nav_page
+    button_label = ("✓ " if is_current else "") + nav_page
+    if nav_col.button(button_label, key=f"nav_{page_slug_map[nav_page]}", use_container_width=True):
+        st.query_params["page"] = page_slug_map[nav_page]
+        st.rerun()
+st.markdown('</div>', unsafe_allow_html=True)
+
+profile = st.session_state.get("company_profile", {}) or {}
+report = st.session_state.get("last_validation_report") or {}
+score = report.get("score", 0 if not st.session_state.get("mapped") else 100)
+meta_cols = st.columns(4)
+meta_cols[0].caption(f"Company: {profile.get('Company Name', 'Not set')}")
+meta_cols[1].caption(f"Industry: {profile.get('Industry', 'Not set')}")
+meta_cols[2].caption(f"Period: {profile.get('Financial Year', 'Not set')}")
+meta_cols[3].caption(f"Readiness: {score}/100")
 
 # Workflow status shown on every page
 profile_done = bool((st.session_state.get("company_profile") or {}).get("Company Name"))
@@ -1605,8 +1744,16 @@ for idx, ((label, done), col) in enumerate(zip(steps, step_cols)):
     cls = "workflow-step-done" if done else ("workflow-step-active" if (idx == 0 and not profile_done) or (idx == 1 and profile_done and not data_loaded) or (idx == 2 and data_loaded and not validation_ok) else "")
     col.markdown(f'<div class="workflow-step {cls}">{"✓ " if done else ""}{label}</div>', unsafe_allow_html=True)
 
+st.markdown("""
+<div class="floating-ai-cfo-wrap">
+    <a class="floating-ai-cfo-button" href="?page=ask_ai_cfo" title="Open AI CFO Chatbot" aria-label="Open AI CFO Chatbot">
+        🤖
+        <span class="floating-ai-cfo-dot"></span>
+    </a>
+</div>
+""", unsafe_allow_html=True)
+
 if selected_page == "🏠 Home":
-    st.subheader("Home")
     profile = st.session_state.get("company_profile", {}) or {}
     report = st.session_state.get("last_validation_report") or {}
     critical = report.get("critical", [])
@@ -1614,61 +1761,74 @@ if selected_page == "🏠 Home":
     recommendations = report.get("recommendations", [])
     score = report.get("score", 0 if not st.session_state.get("mapped") else 100)
 
-    c1, c2, c3, c4 = st.columns(4)
-    c1.metric("Data Readiness", f"{score}/100")
-    c2.metric("Critical Errors", len(critical))
-    c3.metric("Warnings", len(warnings))
-    c4.metric("Recommendations", len(recommendations))
+    st.markdown("""
+    <div class="hero-card">
+        <div class="hero-kicker">✨ AI-powered finance workspace</div>
+        <div class="hero-title">Turn messy finance data into board-ready decisions.</div>
+        <div class="hero-subtitle">
+            Upload GL, COA, budgets, forecast packs and AR/AP ageing. The app validates your data, flags mapping risks,
+            builds P&L, balance sheet, KPI packs, dashboards and lets users ask an AI CFO questions.
+        </div>
+        <div class="hero-pill-row">
+            <span class="hero-pill">📊 Management dashboards</span>
+            <span class="hero-pill">✅ Data validation centre</span>
+            <span class="hero-pill">🧠 AI CFO chatbot</span>
+            <span class="hero-pill">🌍 FX & benchmarks</span>
+        </div>
+    </div>
+    """, unsafe_allow_html=True)
 
-    st.markdown('<div class="main-card">', unsafe_allow_html=True)
-    st.markdown("### Quick Start")
-    st.write("Use the left navigation to move through the workflow. Start with Data Upload, then validate files, review dashboard and export reports.")
-    q1, q2, q3, q4 = st.columns(4)
-    q1.info("1. Save company profile")
-    q2.info("2. Upload GL + COA")
-    q3.info("3. Validate & Upload Files")
-    q4.info("4. Review dashboard")
-    st.markdown('</div>', unsafe_allow_html=True)
+    st.markdown(f"""
+    <div class="status-strip">
+        <div class="status-mini"><b>Data Readiness</b><span>{score}/100</span></div>
+        <div class="status-mini"><b>Critical Errors</b><span>{len(critical)}</span></div>
+        <div class="status-mini"><b>Warnings</b><span>{len(warnings)}</span></div>
+        <div class="status-mini"><b>Recommendations</b><span>{len(recommendations)}</span></div>
+    </div>
+    """, unsafe_allow_html=True)
 
-    st.markdown("### Current Company")
-    if profile:
-        st.dataframe(pd.DataFrame(profile.items(), columns=["Field", "Value"]), use_container_width=True, hide_index=True)
-    else:
-        st.warning("Company profile has not been configured yet.")
+    f1, f2, f3, f4 = st.columns(4)
+    with f1:
+        st.markdown('<div class="feature-card"><div class="feature-icon">🏢</div><div class="feature-title">1. Company Setup</div><div class="feature-text">Capture company, country, industry, period and reporting structure before any upload.</div></div>', unsafe_allow_html=True)
+    with f2:
+        st.markdown('<div class="feature-card"><div class="feature-icon">📁</div><div class="feature-title">2. Validate Uploads</div><div class="feature-text">Upload GL and COA. The Validation Centre checks missing columns, duplicates and mapping risks.</div></div>', unsafe_allow_html=True)
+    with f3:
+        st.markdown('<div class="feature-card"><div class="feature-icon">📈</div><div class="feature-title">3. Generate Reports</div><div class="feature-text">Create P&L, balance sheet, branch packs, KPI summary, variance and working capital views.</div></div>', unsafe_allow_html=True)
+    with f4:
+        st.markdown('<div class="feature-card"><div class="feature-icon">🤖</div><div class="feature-title">4. Ask AI CFO</div><div class="feature-text">Ask generic upload questions before data, then data-specific CFO questions after upload.</div></div>', unsafe_allow_html=True)
 
-    if critical or warnings or recommendations:
-        st.markdown("### Items Needing Attention")
-        for item in (critical + warnings + recommendations)[:8]:
-            st.markdown(f'<div class="alert-card"><b>{item.get("Area", "Review")}</b><br>{item.get("Issue", "")}</div>', unsafe_allow_html=True)
-    elif st.session_state.get("mapped") is not None:
-        st.success("No validation errors and no recommendations found in the last validation run.")
-    else:
-        st.info("Upload data to activate the Validation Centre.")
+    st.markdown('<div class="section-title-row"><div class="section-title-icon">🏢</div><div class="section-title-text">Company Setup</div></div>', unsafe_allow_html=True)
+    st.markdown('<div class="setup-panel">', unsafe_allow_html=True)
 
-elif selected_page == "📁 Data Upload":
-    st.subheader("Data Upload")
-    with st.expander("Company Profile", expanded=True):
-        c1, c2 = st.columns(2)
-        with c1:
-            company_name = st.text_input("Company Name *")
-            industry = st.selectbox("Industry", ["Select Industry", "Manufacturing", "Wholesale / Distribution", "Retail", "Professional Services", "Construction", "Logistics", "Hospitality", "Healthcare", "Technology", "Other"])
-            country = st.selectbox("Country", ["Select Country", "Australia", "India", "United States", "United Kingdom", "Canada", "New Zealand", "Other"])
-            state_region = st.text_input("State / Region")
-            financial_year = st.text_input("Financial Year", placeholder="Example: FY2025 or 2024-25")
-        with c2:
-            currency = st.selectbox("Currency", ["Select Currency", "AUD", "INR", "USD", "GBP", "CAD", "NZD", "Other"])
-            tax_identifier = st.text_input("Tax Identifier / ABN / GSTIN (Optional)")
-            reporting_period = st.selectbox("Reporting Period", ["Monthly", "Quarterly", "Annual"])
-            reporting_structure = st.radio(
-                "Reporting Structure",
-                ["Consolidated Only", "Branch / Business Unit Reporting"],
-                index=0,
-                help="If Consolidated Only is selected, Branch is optional in GL and the app uses a default Consolidated unit."
-            )
-            benchmark_group = st.text_input("Benchmark Group (Optional)")
-        business_notes = st.text_area("Business Notes (Optional)")
-        save_run_preference = st.checkbox("Save this run for future comparison", value=st.session_state["save_run_preference"])
-        if st.button("Save Company Profile", use_container_width=True):
+    industry_options = ["Select Industry", "Manufacturing", "Wholesale / Distribution", "Retail", "Professional Services", "Construction", "Logistics", "Hospitality", "Healthcare", "Technology", "Other"]
+    country_options = ["Select Country", "Australia", "India", "United States", "United Kingdom", "Canada", "New Zealand", "Other"]
+    currency_options = ["Select Currency", "AUD", "INR", "USD", "GBP", "CAD", "NZD", "Other"]
+    period_options = ["Monthly", "Quarterly", "Annual"]
+    structure_options = ["Consolidated Only", "Branch / Business Unit Reporting"]
+
+    def option_index(options, value, default=0):
+        return options.index(value) if value in options else default
+
+    c1, c2 = st.columns(2)
+    with c1:
+        company_name = st.text_input("Company Name *", value=profile.get("Company Name", ""), key="home_company_name")
+        industry = st.selectbox("Industry", industry_options, index=option_index(industry_options, profile.get("Industry", "Select Industry")), key="home_industry")
+        country = st.selectbox("Country", country_options, index=option_index(country_options, profile.get("Country", "Select Country")), key="home_country")
+        state_region = st.text_input("State / Region", value=profile.get("State / Region", ""), key="home_state_region")
+        financial_year = st.text_input("Financial Year", value=profile.get("Financial Year", ""), placeholder="Example: FY2026 or 2025-26", key="home_financial_year")
+    with c2:
+        currency = st.selectbox("Currency", currency_options, index=option_index(currency_options, profile.get("Currency", "Select Currency")), key="home_currency")
+        tax_identifier = st.text_input("Tax Identifier / ABN / GSTIN (Optional)", value=profile.get("Tax Identifier", ""), key="home_tax_identifier")
+        reporting_period = st.selectbox("Reporting Period", period_options, index=option_index(period_options, profile.get("Reporting Period", "Monthly")), key="home_reporting_period")
+        reporting_structure = st.radio("Reporting Structure", structure_options, index=option_index(structure_options, profile.get("Reporting Structure", "Consolidated Only")), key="home_reporting_structure", help="If Consolidated Only is selected, Branch is optional in GL and the app uses a default Consolidated unit.")
+        benchmark_group = st.text_input("Benchmark Group (Optional)", value=profile.get("Benchmark Group", ""), key="home_benchmark_group")
+
+    business_notes = st.text_area("Business Notes (Optional)", value=profile.get("Business Notes", ""), key="home_business_notes")
+    save_run_preference = st.checkbox("Save this run for future comparison", value=st.session_state["save_run_preference"], key="home_save_run")
+
+    h1, h2, h3 = st.columns([1.2, 1, 1])
+    with h1:
+        if st.button("Save Company Profile", use_container_width=True, key="home_save_company_profile"):
             if not company_name.strip():
                 st.error("Company Name is mandatory.")
             elif industry == "Select Industry" or country == "Select Country":
@@ -1677,10 +1837,50 @@ elif selected_page == "📁 Data Upload":
                 st.session_state["company_profile"] = {"Company Name": company_name.strip(), "Industry": industry, "Country": country, "State / Region": state_region, "Financial Year": financial_year, "Currency": currency if currency != "Select Currency" else "", "Tax Identifier": tax_identifier, "Reporting Period": reporting_period, "Reporting Structure": reporting_structure, "Benchmark Group": benchmark_group, "Business Notes": business_notes}
                 st.session_state["reporting_structure"] = reporting_structure
                 st.session_state["save_run_preference"] = save_run_preference
-                st.success("Company profile saved successfully.")
-        if st.session_state["company_profile"]:
-            st.dataframe(style_dataframe(pd.DataFrame(st.session_state["company_profile"].items(), columns=["Field", "Value"])), use_container_width=True)
+                st.success("Company profile saved. You can now go to Data Upload.")
+    with h2:
+        if st.button("Go to Data Upload", use_container_width=True, key="home_go_upload"):
+            st.query_params["page"] = "upload"
+            st.rerun()
+    with h3:
+        if st.button("Ask AI CFO", use_container_width=True, key="home_go_ai"):
+            st.query_params["page"] = "ask_ai_cfo"
+            st.rerun()
 
+    st.markdown('</div>', unsafe_allow_html=True)
+
+    profile = st.session_state.get("company_profile", {}) or {}
+    if profile:
+        st.markdown('<div class="section-title-row"><div class="section-title-icon">📋</div><div class="section-title-text">Current Company Profile</div></div>', unsafe_allow_html=True)
+        st.dataframe(pd.DataFrame(profile.items(), columns=["Field", "Value"]), use_container_width=True, hide_index=True)
+
+    if critical or warnings or recommendations:
+        st.markdown('<div class="section-title-row"><div class="section-title-icon">⚠️</div><div class="section-title-text">Items Needing Attention</div></div>', unsafe_allow_html=True)
+        for item in (critical + warnings + recommendations)[:8]:
+            st.markdown(f'<div class="alert-card"><b>{item.get("Area", "Review")}</b><br>{item.get("Issue", "")}</div>', unsafe_allow_html=True)
+    elif st.session_state.get("mapped") is not None:
+        st.success("No validation errors and no recommendations found in the last validation run.")
+    else:
+        st.info("Save company profile, then upload data to activate the Validation Centre.")
+
+elif selected_page == "📁 Data Upload":
+    st.markdown('<div class="section-title-row"><div class="section-title-icon">📁</div><div class="section-title-text">Data Upload</div></div>', unsafe_allow_html=True)
+    profile = st.session_state.get("company_profile", {}) or {}
+    if not profile or not profile.get("Company Name"):
+        st.warning("Please complete Company Setup on the Home page before uploading files.")
+        if st.button("Go to Home Setup", use_container_width=True, key="upload_go_home_setup"):
+            st.query_params["page"] = "home"
+            st.rerun()
+    else:
+        st.markdown(f"""
+        <div class="upload-intro">
+            <b>Uploading for:</b> {profile.get("Company Name", "")} &nbsp; | &nbsp;
+            <b>Industry:</b> {profile.get("Industry", "")} &nbsp; | &nbsp;
+            <b>Country:</b> {profile.get("Country", "")} &nbsp; | &nbsp;
+            <b>Reporting:</b> {profile.get("Reporting Structure", "Consolidated Only")}
+            <br><span class="small-muted">Company details are managed on the Home page. This section is only for files, templates, FX, benchmarks and validation.</span>
+        </div>
+        """, unsafe_allow_html=True)
 
     with st.expander("External FX & Benchmark Data", expanded=False):
         profile = st.session_state.get("company_profile", {})
