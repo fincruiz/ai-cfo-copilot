@@ -1603,6 +1603,8 @@ if st.session_state["save_run_preference"] is None:
     st.session_state["save_run_preference"] = False
 if st.session_state["ai_cfo_chat_messages"] is None:
     st.session_state["ai_cfo_chat_messages"] = []
+if "ai_cfo_panel_open" not in st.session_state or st.session_state["ai_cfo_panel_open"] is None:
+    st.session_state["ai_cfo_panel_open"] = False
 
 # ----------------------------
 # UI - Product-style navigation
@@ -1748,49 +1750,74 @@ for idx, ((label, done), col) in enumerate(zip(steps, step_cols)):
     cls = "workflow-step-done" if done else ("workflow-step-active" if (idx == 0 and not profile_done) or (idx == 1 and profile_done and not data_loaded) or (idx == 2 and data_loaded and not validation_ok) else "")
     col.markdown(f'<div class="workflow-step {cls}">{"✓ " if done else ""}{label}</div>', unsafe_allow_html=True)
 
-st.markdown(f"""
-<div class="floating-ai-cfo-wrap">
-    <a class="floating-ai-cfo-button" href="?page={page_slug_map.get(selected_page, 'home')}&chat=open" title="Open AI CFO Chatbot" aria-label="Open AI CFO Chatbot">
-        🤖
-        <span class="floating-ai-cfo-dot"></span>
-    </a>
-</div>
+st.markdown("""
+<style>
+/* Native Streamlit floating AI CFO button. This does not use a link, so it does not open a new page/window. */
+.st-key-open_ai_cfo_global button {
+    position: fixed !important;
+    right: 26px !important;
+    bottom: 28px !important;
+    z-index: 999999 !important;
+    width: 72px !important;
+    height: 72px !important;
+    min-height: 72px !important;
+    border-radius: 50% !important;
+    background: linear-gradient(135deg, #0f766e, #2563eb, #7c3aed) !important;
+    color: #ffffff !important;
+    font-size: 30px !important;
+    border: 2px solid rgba(255,255,255,0.9) !important;
+    box-shadow: 0 18px 45px rgba(37,99,235,0.38) !important;
+    animation: aiFloat 2.8s ease-in-out infinite, aiPulse 1.8s ease-in-out infinite;
+}
+.st-key-open_ai_cfo_global button p { color: #ffffff !important; font-size: 30px !important; }
+.st-key-open_ai_cfo_global button:hover {
+    transform: scale(1.08) !important;
+    box-shadow: 0 20px 55px rgba(124,58,237,0.45) !important;
+}
+.ai-side-shell {
+    border:1px solid rgba(96,165,250,0.35);
+    background:linear-gradient(180deg, rgba(15,23,42,0.98), rgba(17,24,39,0.95));
+    border-radius:24px;
+    padding:1rem;
+    box-shadow:0 18px 55px rgba(0,0,0,0.32);
+    margin:1rem 0 1.2rem 0;
+}
+.ai-side-title {font-size:1.2rem;font-weight:850;color:#f8fafc;margin-bottom:0.25rem;}
+.ai-side-sub {color:#cbd5e1;font-size:0.92rem;margin-bottom:0.75rem;}
+.ai-side-note {color:#93c5fd;font-size:0.86rem;margin-top:0.5rem;}
+@media (max-width: 768px) {
+    .st-key-open_ai_cfo_global button { right: 16px !important; bottom: 18px !important; width: 62px !important; height: 62px !important; min-height: 62px !important; }
+}
+</style>
 """, unsafe_allow_html=True)
 
-# Inline AI CFO side panel. It opens on the current page instead of navigating away.
-chat_open = st.query_params.get("chat", "") == "open"
-if chat_open:
-    st.markdown("""
-    <style>
-    .ai-panel-card {
-        border:1px solid rgba(96,165,250,0.35);
-        background:linear-gradient(180deg, rgba(15,23,42,0.96), rgba(17,24,39,0.92));
-        border-radius:22px;
-        padding:1rem;
-        box-shadow:0 18px 55px rgba(0,0,0,0.32);
-        margin:1rem 0;
-    }
-    .ai-panel-title {font-size:1.15rem;font-weight:850;color:#f8fafc;margin-bottom:0.25rem;}
-    .ai-panel-sub {color:#cbd5e1;font-size:0.92rem;margin-bottom:0.75rem;}
-    </style>
-    """, unsafe_allow_html=True)
-    panel_left, panel_right = st.columns([0.62, 0.38])
-    with panel_right:
-        st.markdown('<div class="ai-panel-card"><div class="ai-panel-title">🤖 AI CFO Assistant</div><div class="ai-panel-sub">Ask upload questions, mapping questions, benchmark questions or data-specific CFO questions without leaving this page.</div></div>', unsafe_allow_html=True)
+if st.button("🤖", key="open_ai_cfo_global", help="Open AI CFO Assistant"):
+    st.session_state["ai_cfo_panel_open"] = True
+    st.rerun()
+
+# Global AI CFO side panel. It is available on every page and opens in-place, without navigation or a new window.
+if st.session_state.get("ai_cfo_panel_open"):
+    page_col, ai_col = st.columns([0.64, 0.36])
+    with ai_col:
+        st.markdown('<div class="ai-side-shell"><div class="ai-side-title">🤖 AI CFO Assistant</div><div class="ai-side-sub">Ask upload questions before data, or ask CFO-style questions after upload. I stay on this page while you work.</div>', unsafe_allow_html=True)
         close_col, clear_col = st.columns(2)
-        if close_col.button("Close AI CFO", use_container_width=True, key="close_inline_ai_cfo"):
-            st.query_params.pop("chat", None)
+        if close_col.button("Close", use_container_width=True, key="close_ai_cfo_panel"):
+            st.session_state["ai_cfo_panel_open"] = False
             st.rerun()
-        if clear_col.button("Clear Chat", use_container_width=True, key="clear_inline_ai_cfo"):
+        if clear_col.button("Clear", use_container_width=True, key="clear_ai_cfo_panel"):
             st.session_state["ai_cfo_chat_messages"] = []
             st.rerun()
-        chat_mode_inline = st.selectbox("Mode", ["Auto", "General Help", "Data-specific CFO Analysis", "Internet & Benchmark Research"], key="inline_ai_cfo_mode")
+        chat_mode_inline = st.selectbox(
+            "Mode",
+            ["Auto", "General Help", "Data-specific CFO Analysis", "Internet & Benchmark Research"],
+            key="global_ai_cfo_mode"
+        )
         if not st.session_state.get("ai_cfo_chat_messages"):
-            st.info("Hi, I’m your AI CFO. Ask me about uploads, validation, mapping, benchmarks, forecast, or uploaded financial data.")
-        for msg in st.session_state.get("ai_cfo_chat_messages", [])[-8:]:
+            st.info("Hi, I’m your AI CFO. Ask me about uploads, mapping, validation, benchmarks, forecasts, or your uploaded financial data.")
+        for msg in st.session_state.get("ai_cfo_chat_messages", [])[-10:]:
             with st.chat_message(msg.get("role", "assistant")):
                 st.markdown(msg.get("content", ""))
-        inline_prompt = st.chat_input("Ask AI CFO here...")
+        inline_prompt = st.chat_input("Ask AI CFO here...", key="global_ai_cfo_chat_input")
         if inline_prompt:
             st.session_state["ai_cfo_chat_messages"].append({"role": "user", "content": inline_prompt})
             with st.chat_message("user"):
@@ -1800,8 +1827,9 @@ if chat_open:
                     inline_answer = answer_ai_cfo_question(inline_prompt, mode=chat_mode_inline)
                 st.markdown(inline_answer)
             st.session_state["ai_cfo_chat_messages"].append({"role": "assistant", "content": inline_answer})
-    with panel_left:
-        st.info("AI CFO is open on the right. You can continue reviewing this page while asking questions.")
+        st.markdown('<div class="ai-side-note">Available across Home, Upload, Dashboard, Reports, Working Capital, Insights and Downloads.</div></div>', unsafe_allow_html=True)
+    with page_col:
+        st.info("AI CFO is open on the right. Continue using this page normally.")
 
 if selected_page == "🏠 Home":
     profile = st.session_state.get("company_profile", {}) or {}
@@ -1894,7 +1922,7 @@ if selected_page == "🏠 Home":
             st.rerun()
     with h3:
         if st.button("Ask AI CFO", use_container_width=True, key="home_go_ai"):
-            st.query_params["page"] = "ask_ai_cfo"
+            st.session_state["ai_cfo_panel_open"] = True
             st.rerun()
 
     st.markdown('</div>', unsafe_allow_html=True)
