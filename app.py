@@ -1752,7 +1752,7 @@ for idx, ((label, done), col) in enumerate(zip(steps, step_cols)):
 
 st.markdown("""
 <style>
-/* Native Streamlit floating AI CFO button. This does not use a link, so it does not open a new page/window. */
+/* Floating AI CFO launcher. Clicking toggles the panel. */
 .st-key-open_ai_cfo_global button {
     position: fixed !important;
     right: 26px !important;
@@ -1774,32 +1774,53 @@ st.markdown("""
     transform: scale(1.08) !important;
     box-shadow: 0 20px 55px rgba(124,58,237,0.45) !important;
 }
-.ai-side-shell {
-    border:1px solid rgba(96,165,250,0.35);
-    background:linear-gradient(180deg, rgba(15,23,42,0.98), rgba(17,24,39,0.95));
-    border-radius:24px;
-    padding:1rem;
-    box-shadow:0 18px 55px rgba(0,0,0,0.32);
-    margin:1rem 0 1.2rem 0;
+
+/* Chatbot overlay panel. It is fixed and does NOT change page layout. */
+.st-key-ai_cfo_overlay_panel {
+    position: fixed !important;
+    right: 24px !important;
+    bottom: 112px !important;
+    width: min(430px, calc(100vw - 32px)) !important;
+    max-height: calc(100vh - 150px) !important;
+    z-index: 999998 !important;
+    overflow: auto !important;
+    border: 1px solid rgba(96,165,250,0.38) !important;
+    background: linear-gradient(180deg, rgba(15,23,42,0.98), rgba(17,24,39,0.98)) !important;
+    border-radius: 24px !important;
+    padding: 1rem !important;
+    box-shadow: 0 24px 70px rgba(0,0,0,0.48) !important;
 }
-.ai-side-title {font-size:1.2rem;font-weight:850;color:#f8fafc;margin-bottom:0.25rem;}
-.ai-side-sub {color:#cbd5e1;font-size:0.92rem;margin-bottom:0.75rem;}
-.ai-side-note {color:#93c5fd;font-size:0.86rem;margin-top:0.5rem;}
+.st-key-ai_cfo_overlay_panel * { color: #f8fafc; }
+.st-key-ai_cfo_overlay_panel label, .st-key-ai_cfo_overlay_panel p { color: #dbeafe !important; }
+.st-key-ai_cfo_overlay_panel textarea, .st-key-ai_cfo_overlay_panel input {
+    background: rgba(255,255,255,0.08) !important;
+    color: #ffffff !important;
+    border: 1px solid rgba(148,163,184,0.45) !important;
+    border-radius: 12px !important;
+}
+.st-key-ai_cfo_overlay_panel textarea::placeholder, .st-key-ai_cfo_overlay_panel input::placeholder { color: #cbd5e1 !important; }
+.ai-overlay-title {font-size:1.2rem;font-weight:850;color:#f8fafc;margin-bottom:0.25rem;}
+.ai-overlay-sub {color:#cbd5e1;font-size:0.9rem;margin-bottom:0.85rem;line-height:1.35;}
+.ai-bubble-user {background:#2563eb;color:#fff;border-radius:16px 16px 4px 16px;padding:0.68rem 0.78rem;margin:0.35rem 0 0.35rem auto;max-width:88%;font-size:0.92rem;}
+.ai-bubble-assistant {background:rgba(255,255,255,0.08);color:#f8fafc;border:1px solid rgba(148,163,184,0.24);border-radius:16px 16px 16px 4px;padding:0.68rem 0.78rem;margin:0.35rem auto 0.35rem 0;max-width:94%;font-size:0.92rem;}
+.ai-panel-note {color:#93c5fd;font-size:0.78rem;margin-top:0.45rem;}
 @media (max-width: 768px) {
     .st-key-open_ai_cfo_global button { right: 16px !important; bottom: 18px !important; width: 62px !important; height: 62px !important; min-height: 62px !important; }
+    .st-key-ai_cfo_overlay_panel { right: 12px !important; left: 12px !important; bottom: 92px !important; width: auto !important; max-height: calc(100vh - 120px) !important; }
 }
 </style>
 """, unsafe_allow_html=True)
 
-if st.button("🤖", key="open_ai_cfo_global", help="Open AI CFO Assistant"):
-    st.session_state["ai_cfo_panel_open"] = True
+if st.button("🤖", key="open_ai_cfo_global", help="Open / close AI CFO Assistant"):
+    st.session_state["ai_cfo_panel_open"] = not st.session_state.get("ai_cfo_panel_open", False)
     st.rerun()
 
-# Global AI CFO side panel. It is available on every page and opens in-place, without navigation or a new window.
+# Global AI CFO overlay panel. Fixed position, so it does not disturb page alignment.
 if st.session_state.get("ai_cfo_panel_open"):
-    page_col, ai_col = st.columns([0.64, 0.36])
-    with ai_col:
-        st.markdown('<div class="ai-side-shell"><div class="ai-side-title">🤖 AI CFO Assistant</div><div class="ai-side-sub">Ask upload questions before data, or ask CFO-style questions after upload. I stay on this page while you work.</div>', unsafe_allow_html=True)
+    with st.container(key="ai_cfo_overlay_panel"):
+        st.markdown('<div class="ai-overlay-title">🤖 AI CFO Assistant</div>', unsafe_allow_html=True)
+        st.markdown('<div class="ai-overlay-sub">Ask upload questions before data, or CFO-style questions after upload. This panel floats above the page and will not move your dashboard or reports.</div>', unsafe_allow_html=True)
+
         close_col, clear_col = st.columns(2)
         if close_col.button("Close", use_container_width=True, key="close_ai_cfo_panel"):
             st.session_state["ai_cfo_panel_open"] = False
@@ -1807,29 +1828,36 @@ if st.session_state.get("ai_cfo_panel_open"):
         if clear_col.button("Clear", use_container_width=True, key="clear_ai_cfo_panel"):
             st.session_state["ai_cfo_chat_messages"] = []
             st.rerun()
+
         chat_mode_inline = st.selectbox(
             "Mode",
             ["Auto", "General Help", "Data-specific CFO Analysis", "Internet & Benchmark Research"],
             key="global_ai_cfo_mode"
         )
+
         if not st.session_state.get("ai_cfo_chat_messages"):
-            st.info("Hi, I’m your AI CFO. Ask me about uploads, mapping, validation, benchmarks, forecasts, or your uploaded financial data.")
-        for msg in st.session_state.get("ai_cfo_chat_messages", [])[-10:]:
-            with st.chat_message(msg.get("role", "assistant")):
-                st.markdown(msg.get("content", ""))
-        inline_prompt = st.chat_input("Ask AI CFO here...", key="global_ai_cfo_chat_input")
-        if inline_prompt:
-            st.session_state["ai_cfo_chat_messages"].append({"role": "user", "content": inline_prompt})
-            with st.chat_message("user"):
-                st.markdown(inline_prompt)
-            with st.chat_message("assistant"):
-                with st.spinner("AI CFO is thinking..."):
-                    inline_answer = answer_ai_cfo_question(inline_prompt, mode=chat_mode_inline)
-                st.markdown(inline_answer)
+            st.markdown('<div class="ai-bubble-assistant">Hi, I’m your AI CFO. Ask me about upload formats, mapping, validation, benchmarks, forecasts, or your uploaded financial data.</div>', unsafe_allow_html=True)
+
+        for msg in st.session_state.get("ai_cfo_chat_messages", [])[-8:]:
+            role = msg.get("role", "assistant")
+            content = msg.get("content", "")
+            if role == "user":
+                st.markdown(f'<div class="ai-bubble-user">{content}</div>', unsafe_allow_html=True)
+            else:
+                st.markdown(f'<div class="ai-bubble-assistant">{content}</div>', unsafe_allow_html=True)
+
+        with st.form("ai_cfo_overlay_form", clear_on_submit=True):
+            user_question = st.text_area("Ask a question", placeholder="Example: Why is gross margin down?", height=85, key="ai_cfo_overlay_question")
+            send_col, hint_col = st.columns([0.42, 0.58])
+            send_clicked = send_col.form_submit_button("Send", use_container_width=True)
+            hint_col.markdown('<div class="ai-panel-note">Use Close or click 🤖 again to hide this chat.</div>', unsafe_allow_html=True)
+
+        if send_clicked and user_question.strip():
+            st.session_state["ai_cfo_chat_messages"].append({"role": "user", "content": user_question.strip()})
+            with st.spinner("AI CFO is thinking..."):
+                inline_answer = answer_ai_cfo_question(user_question.strip(), mode=chat_mode_inline)
             st.session_state["ai_cfo_chat_messages"].append({"role": "assistant", "content": inline_answer})
-        st.markdown('<div class="ai-side-note">Available across Home, Upload, Dashboard, Reports, Working Capital, Insights and Downloads.</div></div>', unsafe_allow_html=True)
-    with page_col:
-        st.info("AI CFO is open on the right. Continue using this page normally.")
+            st.rerun()
 
 if selected_page == "🏠 Home":
     profile = st.session_state.get("company_profile", {}) or {}
