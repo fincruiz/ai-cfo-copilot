@@ -1626,9 +1626,9 @@ st.markdown("""
 .section-title-row {display:flex;align-items:center;gap:0.65rem;margin:1.1rem 0 0.7rem 0;}
 .section-title-icon {width:34px;height:34px;border-radius:12px;display:flex;align-items:center;justify-content:center;background:#eff6ff;color:#2563eb;font-size:1.08rem;}
 .section-title-text {font-size:1.22rem;font-weight:800;color:var(--ink);}
-.workflow-step {padding:0.8rem 1rem;border-radius:16px;background:#f8fafc;border:1px solid #e5e7eb;text-align:center;font-weight:800;color:#374151;box-shadow:0 6px 16px rgba(15,23,42,0.035);}
-.workflow-step-done {background:#ecfdf5;border-color:#bbf7d0;color:#047857;}
-.workflow-step-active {background:#eff6ff;border-color:#bfdbfe;color:#1d4ed8;}
+.workflow-step {padding:0.8rem 1rem;border-radius:16px;background:#111827;border:1px solid rgba(148,163,184,0.30);text-align:center;font-weight:800;color:#f8fafc;box-shadow:0 6px 18px rgba(0,0,0,0.18);}
+.workflow-step-done {background:#064e3b;border-color:#34d399;color:#d1fae5;}
+.workflow-step-active {background:#1e3a8a;border-color:#60a5fa;color:#eff6ff;}
 .small-muted {color:#6b7280;font-size:0.9rem;}
 .alert-card {padding:0.9rem 1rem;border-radius:14px;background:#fff7ed;border:1px solid #fed7aa;margin-bottom:0.55rem;box-shadow:0 4px 14px rgba(251,146,60,0.08);}
 .status-strip {display:grid;grid-template-columns:repeat(4,1fr);gap:0.8rem;margin-bottom:1rem;}
@@ -1644,8 +1644,8 @@ st.markdown("""
 <div style="display:flex;align-items:center;gap:0.65rem;margin-bottom:0.2rem;">
   <div style="width:40px;height:40px;border-radius:14px;background:linear-gradient(135deg,#0f766e,#2563eb);display:flex;align-items:center;justify-content:center;color:white;font-size:1.35rem;font-weight:800;">▣</div>
   <div>
-    <div style="font-size:2rem;font-weight:850;letter-spacing:-0.04em;color:#111827;line-height:1;">AI CFO Copilot</div>
-    <div style="color:#6b7280;font-size:0.95rem;margin-top:0.2rem;">Finance reporting, validation, forecasting, benchmarking and AI analysis in one guided workspace</div>
+    <div style="font-size:2rem;font-weight:850;letter-spacing:-0.04em;color:#f8fafc;line-height:1;">AI CFO Copilot</div>
+    <div style="color:#cbd5e1;font-size:0.95rem;margin-top:0.2rem;">Finance reporting, validation, forecasting, benchmarking and AI analysis in one guided workspace</div>
   </div>
 </div>
 """, unsafe_allow_html=True)
@@ -1657,7 +1657,6 @@ pages = [
     "📈 Reports",
     "💰 Working Capital",
     "🧠 Insights",
-    "💬 Ask AI CFO",
     "📤 Downloads",
 ]
 
@@ -1669,7 +1668,6 @@ page_key_map = {
     "reports": "📈 Reports",
     "working_capital": "💰 Working Capital",
     "insights": "🧠 Insights",
-    "ask_ai_cfo": "💬 Ask AI CFO",
     "downloads": "📤 Downloads",
 }
 page_slug_map = {v: k for k, v in page_key_map.items()}
@@ -1693,14 +1691,20 @@ st.markdown("""
 }
 div[data-testid="stButton"] > button {
     border-radius: 14px !important;
-    border: 1px solid #e5e7eb !important;
-    background: #ffffff !important;
-    box-shadow: 0 6px 18px rgba(15,23,42,0.04) !important;
+    border: 1px solid rgba(148,163,184,0.35) !important;
+    background: linear-gradient(135deg, #111827, #1f2937) !important;
+    color: #f8fafc !important;
+    box-shadow: 0 8px 24px rgba(0,0,0,0.22) !important;
     min-height: 2.55rem !important;
 }
 div[data-testid="stButton"] > button:hover {
-    border-color: #93c5fd !important;
-    box-shadow: 0 8px 24px rgba(37,99,235,0.10) !important;
+    border-color: #60a5fa !important;
+    background: linear-gradient(135deg, #1d4ed8, #2563eb) !important;
+    color: #ffffff !important;
+    box-shadow: 0 12px 30px rgba(37,99,235,0.28) !important;
+}
+div[data-testid="stButton"] > button p, div[data-testid="stButton"] > button span {
+    color: #f8fafc !important;
 }
 </style>
 """, unsafe_allow_html=True)
@@ -1744,14 +1748,60 @@ for idx, ((label, done), col) in enumerate(zip(steps, step_cols)):
     cls = "workflow-step-done" if done else ("workflow-step-active" if (idx == 0 and not profile_done) or (idx == 1 and profile_done and not data_loaded) or (idx == 2 and data_loaded and not validation_ok) else "")
     col.markdown(f'<div class="workflow-step {cls}">{"✓ " if done else ""}{label}</div>', unsafe_allow_html=True)
 
-st.markdown("""
+st.markdown(f"""
 <div class="floating-ai-cfo-wrap">
-    <a class="floating-ai-cfo-button" href="?page=ask_ai_cfo" title="Open AI CFO Chatbot" aria-label="Open AI CFO Chatbot">
+    <a class="floating-ai-cfo-button" href="?page={page_slug_map.get(selected_page, 'home')}&chat=open" title="Open AI CFO Chatbot" aria-label="Open AI CFO Chatbot">
         🤖
         <span class="floating-ai-cfo-dot"></span>
     </a>
 </div>
 """, unsafe_allow_html=True)
+
+# Inline AI CFO side panel. It opens on the current page instead of navigating away.
+chat_open = st.query_params.get("chat", "") == "open"
+if chat_open:
+    st.markdown("""
+    <style>
+    .ai-panel-card {
+        border:1px solid rgba(96,165,250,0.35);
+        background:linear-gradient(180deg, rgba(15,23,42,0.96), rgba(17,24,39,0.92));
+        border-radius:22px;
+        padding:1rem;
+        box-shadow:0 18px 55px rgba(0,0,0,0.32);
+        margin:1rem 0;
+    }
+    .ai-panel-title {font-size:1.15rem;font-weight:850;color:#f8fafc;margin-bottom:0.25rem;}
+    .ai-panel-sub {color:#cbd5e1;font-size:0.92rem;margin-bottom:0.75rem;}
+    </style>
+    """, unsafe_allow_html=True)
+    panel_left, panel_right = st.columns([0.62, 0.38])
+    with panel_right:
+        st.markdown('<div class="ai-panel-card"><div class="ai-panel-title">🤖 AI CFO Assistant</div><div class="ai-panel-sub">Ask upload questions, mapping questions, benchmark questions or data-specific CFO questions without leaving this page.</div></div>', unsafe_allow_html=True)
+        close_col, clear_col = st.columns(2)
+        if close_col.button("Close AI CFO", use_container_width=True, key="close_inline_ai_cfo"):
+            st.query_params.pop("chat", None)
+            st.rerun()
+        if clear_col.button("Clear Chat", use_container_width=True, key="clear_inline_ai_cfo"):
+            st.session_state["ai_cfo_chat_messages"] = []
+            st.rerun()
+        chat_mode_inline = st.selectbox("Mode", ["Auto", "General Help", "Data-specific CFO Analysis", "Internet & Benchmark Research"], key="inline_ai_cfo_mode")
+        if not st.session_state.get("ai_cfo_chat_messages"):
+            st.info("Hi, I’m your AI CFO. Ask me about uploads, validation, mapping, benchmarks, forecast, or uploaded financial data.")
+        for msg in st.session_state.get("ai_cfo_chat_messages", [])[-8:]:
+            with st.chat_message(msg.get("role", "assistant")):
+                st.markdown(msg.get("content", ""))
+        inline_prompt = st.chat_input("Ask AI CFO here...")
+        if inline_prompt:
+            st.session_state["ai_cfo_chat_messages"].append({"role": "user", "content": inline_prompt})
+            with st.chat_message("user"):
+                st.markdown(inline_prompt)
+            with st.chat_message("assistant"):
+                with st.spinner("AI CFO is thinking..."):
+                    inline_answer = answer_ai_cfo_question(inline_prompt, mode=chat_mode_inline)
+                st.markdown(inline_answer)
+            st.session_state["ai_cfo_chat_messages"].append({"role": "assistant", "content": inline_answer})
+    with panel_left:
+        st.info("AI CFO is open on the right. You can continue reviewing this page while asking questions.")
 
 if selected_page == "🏠 Home":
     profile = st.session_state.get("company_profile", {}) or {}
