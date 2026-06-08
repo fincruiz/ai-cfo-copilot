@@ -2510,68 +2510,26 @@ elif selected_page == "💰 Working Capital":
             st.dataframe(style_dataframe(ap["by_branch"]), use_container_width=True)
             st.dataframe(style_dataframe(ap["top_parties"]), use_container_width=True)
 
-elif selected_page == "🔍 Validation Centre":
-    st.subheader("Validation Centre")
-    report = st.session_state.get("last_validation_report") or {}
-    if not report:
-        st.info("Validation Centre is hidden until data has been uploaded. Go to Data Upload and click Validate & Upload Files.")
-    else:
-        critical = report.get("critical", [])
-        warnings = report.get("warnings", [])
-        recommendations = report.get("recommendations", [])
-        info_items = report.get("info", [])
-        score = report.get("score", 0)
-        c1, c2, c3, c4 = st.columns(4)
-        c1.metric("Readiness Score", f"{score}/100")
-        c2.metric("Critical", len(critical))
-        c3.metric("Warnings", len(warnings))
-        c4.metric("Recommendations", len(recommendations))
-        if not critical and not warnings and not recommendations:
-            st.success("No validation errors and no recommendations.")
-        else:
-            if critical:
-                st.error("Critical issues must be fixed before relying on reports.")
-                st.dataframe(pd.DataFrame(critical), use_container_width=True, hide_index=True)
-            if warnings:
-                st.warning("Warnings should be reviewed.")
-                st.dataframe(pd.DataFrame(warnings), use_container_width=True, hide_index=True)
-            if recommendations:
-                st.info("Recommendations")
-                st.dataframe(pd.DataFrame(recommendations), use_container_width=True, hide_index=True)
-            if info_items:
-                with st.expander("Information items"):
-                    st.dataframe(pd.DataFrame(info_items), use_container_width=True, hide_index=True)
-        if st.session_state.get("coa_mapping_review") is not None and not st.session_state.get("coa_mapping_review").empty:
-            st.markdown("### COA Mapping Review")
-            st.dataframe(style_dataframe(st.session_state["coa_mapping_review"]), use_container_width=True)
-        if st.session_state.get("financial_logic_review") is not None and not st.session_state.get("financial_logic_review").empty:
-            st.markdown("### Financial Logic Review")
-            st.dataframe(style_dataframe(st.session_state["financial_logic_review"]), use_container_width=True)
-        if st.session_state.get("unmapped") is not None and not st.session_state.get("unmapped").empty:
-            st.markdown("### Unmapped GL Rows")
-            st.dataframe(style_dataframe(st.session_state["unmapped"].head(100)), use_container_width=True)
-
 elif selected_page == "🧠 Insights":
     st.subheader("Insights")
-    insight_anom, insight_mapping, insight_ai = st.tabs(["Anomalies", "Mapping Review", "AI Commentary"])
+    st.caption("Insights now focuses only on performance anomalies and AI commentary. Mapping, duplicates, and upload recommendations are handled in the Validation Centre during upload.")
+
+    insight_anom, insight_ai = st.tabs(["Anomalies", "AI Commentary"])
+
     with insight_anom:
         flags = st.session_state.get("anomaly_flags", [])
         if flags:
             for flag in flags:
                 st.warning(flag)
         else:
-            st.success("No major anomalies detected based on current rules.")
-    with insight_mapping:
-        mapping_review = st.session_state.get("coa_mapping_review")
+            st.success("No major financial anomalies detected based on current rules.")
+
         logic_review = st.session_state.get("financial_logic_review")
-        if mapping_review is None or mapping_review.empty:
-            st.success("No obvious COA mapping issues detected by keyword rules.")
-        else:
-            st.warning("Review these mappings. The system only suggests; it does not reclassify automatically.")
-            st.dataframe(style_dataframe(mapping_review), use_container_width=True)
         if logic_review is not None and not logic_review.empty:
-            st.markdown("### Financial Logic Review")
+            st.markdown("### Financial Logic Notes")
+            st.info("These are calculation-level checks. Upload-format, duplicate COA, and COA mapping recommendations stay inside the Validation Centre.")
             st.dataframe(style_dataframe(logic_review), use_container_width=True)
+
     with insight_ai:
         if st.session_state["mapped"] is None:
             st.warning("Please upload and validate data first.")
