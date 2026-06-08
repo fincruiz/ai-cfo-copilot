@@ -1245,6 +1245,233 @@ Write: Executive Summary, Key Insights, Risks, Opportunities, Recommended Action
         return f"AI Commentary failed: {str(e)}"
 
 
+
+def dataframe_context(label: str, df: pd.DataFrame | None, max_rows: int = 30, max_chars: int = 4500) -> str:
+    """Convert an in-memory dataframe into compact text for AI context."""
+    if df is None or not isinstance(df, pd.DataFrame) or df.empty:
+        return f"{label}: Not available."
+    try:
+        preview = df.head(max_rows).to_string(index=False)
+        return f"{label} (first {min(len(df), max_rows)} of {len(df)} rows):\n{preview[:max_chars]}"
+    except Exception as exc:
+        return f"{label}: Could not render dataframe context ({exc})."
+
+
+def build_ai_cfo_context() -> str:
+    """Build a grounded context pack from the currently uploaded/processed finance data."""
+    profile = st.session_state.get("company_profile", {}) or {}
+    ar_summary = st.session_state.get("ar_summary")
+    ap_summary = st.session_state.get("ap_summary")
+    validation_report = st.session_state.get("last_validation_report") or {}
+
+    summary_lines = [
+        f"Company Profile: {profile}",
+        f"Reporting Structure: {st.session_state.get('reporting_structure')}",
+        f"Validation Score: {validation_report.get('score', 'Not available')}",
+        f"Validation Critical Items: {len(validation_report.get('critical', []))}",
+        f"Validation Warnings: {len(validation_report.get('warnings', []))}",
+        f"Validation Recommendations: {len(validation_report.get('recommendations', []))}",
+    ]
+    if ar_summary is not None:
+        summary_lines.append(f"AR Summary: Total={ar_summary.get('total', 0):,.2f}, Overdue={ar_summary.get('overdue', 0):,.2f}, Overdue %={ar_summary.get('overdue_pct', 0):.2f}%")
+    if ap_summary is not None:
+        summary_lines.append(f"AP Summary: Total={ap_summary.get('total', 0):,.2f}, Overdue={ap_summary.get('overdue', 0):,.2f}, Overdue %={ap_summary.get('overdue_pct', 0):.2f}%")
+
+    context_parts = [
+        "\n".join(summary_lines),
+        dataframe_context("Consolidated P&L", st.session_state.get("consolidated_pnl")),
+        dataframe_context("Consolidated KPIs", st.session_state.get("consolidated_kpis")),
+        dataframe_context("Consolidated Balance Sheet", st.session_state.get("consolidated_bs")),
+        dataframe_context("Branch KPI Summary", st.session_state.get("branch_summary")),
+        dataframe_context("Budget vs Actual Summary", st.session_state.get("budget_summary")),
+        dataframe_context("Forecast P&L Comparison", st.session_state.get("forecast_pnl_compare")),
+        dataframe_context("Previous Year P&L Comparison", st.session_state.get("previous_year_pnl_compare")),
+        dataframe_context("Benchmark Comparison", st.session_state.get("benchmark_compare")),
+        dataframe_context("COA Mapping Review", st.session_state.get("coa_mapping_review")),
+        dataframe_context("Financial Logic Review", st.session_state.get("financial_logic_review")),
+        dataframe_context("AR Ageing Buckets", (ar_summary or {}).get("by_bucket") if ar_summary else None),
+        dataframe_context("AP Ageing Buckets", (ap_summary or {}).get("by_bucket") if ap_summary else None),
+        dataframe_context("Monthly Actuals", st.session_state.get("monthly_actuals")),
+        dataframe_context("Unmapped GL Rows", st.session_state.get("unmapped"), max_rows=20),
+    ]
+    return "\n\n---\n\n".join(context_parts)[:28000]
+
+
+
+def generic_ai_cfo_help_context() -> str:
+    """Static product guidance the chatbot can use before any upload."""
+    return """
+AI CFO Copilot app guidance:
+- Mandatory current-period uploads: Current GL Report and COA Mapping.
+- GL mandatory columns in Consolidated Only mode: Account code, Debit, Credit. Branch is optional and defaults to Consolidated.
+- GL mandatory columns in Branch / Business Unit mode: Account code, Debit, Credit, Branch.
+- GL optional but useful columns: Net, Date, Description.
+- COA Mapping mandatory columns: Account code, Reporting Group, Reporting Subgroup, Statement.
+- COA optional columns: Sign Convention, Display Order, Account Name.
+- Forecast P&L upload columns: Reporting Group, Reporting Subgroup, Report Value.
+- Forecast Balance Sheet upload columns: Reporting Group, Reporting Subgroup, Balance.
+- Previous Year P&L upload columns: Reporting Group, Reporting Subgroup, Report Value.
+- Budget upload columns: Month, Branch, Reporting Group, Amount.
+- AR/AP Ageing mandatory columns: Party Name, Outstanding Amount. Optional: Document Number, Document Date, Due Date, Branch, Age Bucket.
+- Benchmark upload columns: Metric, Benchmark Value.
+- Recommended flow: set company profile, choose reporting structure, download templates, replace sample rows, validate and upload, review validation centre, then view dashboard/reports.
+- The chatbot can answer generic upload questions before upload. After upload, it can also answer data-specific CFO questions.
+- Internet/benchmark capability: the app can use fetched FX rates, World Bank country indicators, starter industry benchmark data, and optionally web search if TAVILY_API_KEY is configured by the deployment owner.
+""".strip()
+
+
+def fetch_tavily_search_context(query: str, max_results: int = 5) -> str:
+    """Optional web search context using Tavily if TAVILY_API_KEY is configured. Uses stdlib only."""
+    api_key = os.getenv("TAVILY_API_KEY")
+    if not api_key:
+        return "Web search: Not configured. Set TAVILY_API_KEY to enable live web search."
+    try:
+        import json as _json
+        payload = _json.dumps({
+            "api_key": api_key,
+            "query": query,
+            "search_depth": "basic",
+            "include_answer": True,
+            "max_results": max_results,
+        }).encode("utf-8")
+        req = Request(
+            "https://api.tavily.com/search",
+            data=payload,
+            headers={"Content-Type": "application/json"},
+            method="POST",
+        )
+        with urlopen(req, timeout=20) as response:
+            data = _json.loads(response.read().decode("utf-8"))
+        lines = []
+        if data.get("answer"):
+            lines.append(f"Search answer: {data.get('answer')}")
+        for item in data.get("results", [])[:max_results]:
+            title = item.get("title", "Untitled")
+            url = item.get("url", "")
+            content = item.get("content", "")[:700]
+            lines.append(f"- {title}\n  URL: {url}\n  Summary: {content}")
+        return "Web search results:\n" + "\n".join(lines) if lines else "Web search returned no usable results."
+    except Exception as exc:
+        return f"Web search failed: {exc}"
+
+
+def build_external_ai_context(question: str) -> str:
+    """Build optional internet/benchmark context from configured APIs and already loaded external data."""
+    profile = st.session_state.get("company_profile", {}) or {}
+    country = profile.get("Country", "") or "Australia"
+    industry = profile.get("Industry", "") or "Other"
+    currency = profile.get("Currency", "") or "AUD"
+    q = (question or "").lower()
+
+    parts = []
+    parts.append(dataframe_context("Loaded Country Indicators", st.session_state.get("country_indicators")))
+    parts.append(dataframe_context("Loaded External Benchmark Data", st.session_state.get("external_benchmark_df")))
+    fx_info = st.session_state.get("fx_rate_info")
+    if fx_info:
+        parts.append(f"Loaded FX Rate: {fx_info}")
+
+    wants_external = any(word in q for word in [
+        "benchmark", "industry", "country", "market", "inflation", "gdp", "forex", "fx", "exchange", "external", "internet", "web", "compare"
+    ])
+
+    if wants_external:
+        try:
+            country_ind = fetch_country_indicators(country)
+            parts.append(dataframe_context(f"Fresh World Bank Country Indicators for {country}", country_ind))
+        except Exception as exc:
+            parts.append(f"World Bank country indicator fetch failed: {exc}")
+        try:
+            starter_bench = get_builtin_industry_benchmarks(industry, country)
+            parts.append(dataframe_context(f"Starter Industry Benchmarks for {industry} / {country}", starter_bench))
+        except Exception as exc:
+            parts.append(f"Starter benchmark load failed: {exc}")
+        try:
+            if currency and currency != "AUD":
+                parts.append(f"FX context note: profile currency is {currency}. Use the app's FX section for exact conversion rate before financial comparison.")
+        except Exception:
+            pass
+        parts.append(fetch_tavily_search_context(question))
+
+    return "\n\n---\n\n".join([p for p in parts if p])[:18000]
+
+
+def fallback_chatbot_answer(question: str, has_data: bool) -> str:
+    """Useful fallback when OpenAI key is not available."""
+    q = (question or "").lower()
+    if any(w in q for w in ["branch", "business unit", "division"]):
+        return "Branch is optional. Use **Consolidated Only** if the GL has no branch/business unit column; the app will use `Consolidated`. Use **Branch / Business Unit Reporting** only when you want branch-wise P&L/KPIs and your GL has a Branch column."
+    if any(w in q for w in ["template", "upload", "column", "format"]):
+        return "Use the **Download Sample Templates** section. For GL, the required columns are `Account code`, `Debit`, `Credit`; `Branch` is required only for Branch / Business Unit Reporting. COA needs `Account code`, `Reporting Group`, `Reporting Subgroup`, and `Statement`."
+    if any(w in q for w in ["forecast", "3 way", "three way"]):
+        return "For now, upload Forecast P&L and Forecast Balance Sheet directly. A driver-based 3-way model should later generate P&L, BS and Cash Flow from assumptions like revenue growth, gross margin, DSO, DPO, inventory days, capex, debt and tax."
+    if any(w in q for w in ["benchmark", "industry", "country", "forex", "fx"]):
+        return "The app supports uploaded benchmark files, starter industry benchmarks, World Bank country indicators, and FX-rate fetching. For live web search, configure `TAVILY_API_KEY`; otherwise the app uses built-in/API sources only."
+    if not has_data:
+        return "I can answer generic questions now. For company-specific analysis, upload and validate GL + COA first, then I can review P&L, KPIs, AR/AP, budget, forecast, benchmarks and mapping warnings."
+    return "I can help analyse the uploaded financial data. Ask about margin movement, revenue, branch performance, AR/AP risk, budget variance, forecast variance, benchmarks, or mapping issues."
+
+
+def answer_ai_cfo_question(question: str, mode: str = "Auto") -> str:
+    """Chatbot answer supporting generic pre-upload help, uploaded-data analysis, and optional external benchmark context."""
+    has_data = st.session_state.get("mapped") is not None
+    if OpenAI is None or not os.getenv("OPENAI_API_KEY"):
+        return fallback_chatbot_answer(question, has_data)
+
+    generic_context = generic_ai_cfo_help_context()
+    uploaded_context = build_ai_cfo_context() if has_data else "Uploaded finance data: Not available yet. User has not validated and uploaded files."
+    external_context = build_external_ai_context(question)
+    prior_messages = st.session_state.get("ai_cfo_chat_messages", [])[-10:]
+    chat_history = "\n".join([f"{m.get('role', 'user')}: {m.get('content', '')}" for m in prior_messages])[:7000]
+
+    system_prompt = """
+You are an AI CFO chatbot inside a finance reporting web app.
+You have three jobs:
+1. Before upload: answer generic questions about upload templates, columns, validation, benchmarks, forecasts, and how to use the app.
+2. After upload: answer data-specific CFO questions using the uploaded financial context.
+3. When benchmark/external research is requested: use the external context provided. Do not pretend live internet search is available unless web search context is present.
+
+Rules:
+- Do not invent company-specific numbers. Use uploaded-data context only for data-specific analysis.
+- If required data is missing, say exactly which upload or field is needed.
+- External benchmark data can be broad and may need verification; clearly label it as external/starter/API-based.
+- Be practical, CFO-style, and concise. Give recommended actions.
+- Do not provide legal, tax, audit, or assurance conclusions.
+""".strip()
+
+    user_prompt = f"""
+Chat mode selected by user: {mode}
+
+Generic app guidance:
+{generic_context}
+
+Uploaded data context:
+{uploaded_context}
+
+External/benchmark context:
+{external_context}
+
+Recent chat history:
+{chat_history}
+
+Current user question:
+{question}
+"""
+    try:
+        client = OpenAI()
+        model_name = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
+        response = client.chat.completions.create(
+            model=model_name,
+            messages=[
+                {"role": "developer", "content": system_prompt},
+                {"role": "user", "content": user_prompt},
+            ],
+            temperature=0.25,
+        )
+        return response.choices[0].message.content
+    except Exception as e:
+        return f"AI CFO Chat failed: {str(e)}"
+
+
 def prepare_data(gl_file, mapping_file, kpi_file=None, latest_bs_file=None, allow_duplicate_coa_cleanup: bool = False, reporting_structure: str = "Consolidated Only"):
     gl = pd.read_excel(gl_file)
     coa = pd.read_excel(mapping_file)
@@ -1288,7 +1515,7 @@ def prepare_data(gl_file, mapping_file, kpi_file=None, latest_bs_file=None, allo
 # Session defaults
 # ----------------------------
 for key in [
-    "gl", "coa", "kpi_master", "latest_bs", "mapped", "pnl_mapped", "bs_mapped", "unmapped", "consolidated_pnl", "consolidated_bs", "consolidated_kpis", "branch_outputs", "branch_summary", "detected_branches", "validation_passed", "company_profile", "bs_disclaimer", "ai_commentary", "prior_pnl", "prior_bs", "prior_kpis", "save_run_preference", "anomaly_flags", "ar_df", "ap_df", "ar_summary", "ap_summary", "budget_df", "budget_compare", "budget_summary", "benchmark_df", "py_compare", "benchmark_compare", "monthly_actuals", "monthly_branch_actuals", "executive_summary_df", "forecast_pnl", "forecast_bs", "previous_year_pnl", "forecast_pnl_compare", "previous_year_pnl_compare", "fx_rate_info", "country_indicators", "external_benchmark_df", "consolidated_pnl_detail", "consolidated_bs_detail", "coa_duplicate_rows", "coa_mapping_review", "financial_logic_review", "last_validation_report", "reporting_structure"
+    "gl", "coa", "kpi_master", "latest_bs", "mapped", "pnl_mapped", "bs_mapped", "unmapped", "consolidated_pnl", "consolidated_bs", "consolidated_kpis", "branch_outputs", "branch_summary", "detected_branches", "validation_passed", "company_profile", "bs_disclaimer", "ai_commentary", "prior_pnl", "prior_bs", "prior_kpis", "save_run_preference", "anomaly_flags", "ar_df", "ap_df", "ar_summary", "ap_summary", "budget_df", "budget_compare", "budget_summary", "benchmark_df", "py_compare", "benchmark_compare", "monthly_actuals", "monthly_branch_actuals", "executive_summary_df", "forecast_pnl", "forecast_bs", "previous_year_pnl", "forecast_pnl_compare", "previous_year_pnl_compare", "fx_rate_info", "country_indicators", "external_benchmark_df", "consolidated_pnl_detail", "consolidated_bs_detail", "coa_duplicate_rows", "coa_mapping_review", "financial_logic_review", "last_validation_report", "reporting_structure", "ai_cfo_chat_messages"
 ]:
     if key not in st.session_state:
         st.session_state[key] = None
@@ -1296,17 +1523,130 @@ if st.session_state["company_profile"] is None:
     st.session_state["company_profile"] = {}
 if st.session_state["save_run_preference"] is None:
     st.session_state["save_run_preference"] = False
+if st.session_state["ai_cfo_chat_messages"] is None:
+    st.session_state["ai_cfo_chat_messages"] = []
 
 # ----------------------------
-# UI
+# UI - Product-style navigation
 # ----------------------------
+st.markdown("""
+<style>
+.main-card {
+    padding: 1.1rem 1.25rem;
+    border: 1px solid #e6e8eb;
+    border-radius: 14px;
+    background: #ffffff;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.04);
+    margin-bottom: 1rem;
+}
+.workflow-step {
+    padding: 0.75rem 1rem;
+    border-radius: 12px;
+    background: #f7f9fb;
+    border: 1px solid #e6e8eb;
+    text-align: center;
+    font-weight: 600;
+}
+.workflow-step-done {background:#eefaf1;border-color:#bfe8c8;}
+.workflow-step-active {background:#eef5ff;border-color:#b8d6ff;}
+.small-muted {color:#6b7280;font-size:0.9rem;}
+.alert-card {padding:0.8rem 1rem;border-radius:12px;background:#fff7ed;border:1px solid #fed7aa;margin-bottom:0.5rem;}
+</style>
+""", unsafe_allow_html=True)
+
 st.title("AI CFO Copilot")
-st.caption("Automated branch-wise P&L, KPI packs, dashboarding, working capital, budget/forecast comparison, and AI insights")
+st.caption("A guided CFO workflow for upload validation, dashboards, reports, forecasting, working capital, AI insights and downloads")
 
-tab_setup, tab_dashboard, tab_financials, tab_working_capital, tab_insights, tab_downloads = st.tabs(["Setup", "Dashboard", "Financials", "Working Capital", "Insights", "Downloads"])
+pages = [
+    "🏠 Home",
+    "📁 Data Upload",
+    "📊 Dashboard",
+    "📈 Reports",
+    "💰 Working Capital",
+    "🔍 Validation Centre",
+    "🧠 Insights",
+    "💬 Ask AI CFO",
+    "📤 Downloads",
+]
 
-with tab_setup:
-    st.subheader("Setup")
+with st.sidebar:
+    st.markdown("### AI CFO Copilot")
+    selected_page = st.radio("Navigation", pages, label_visibility="collapsed")
+    st.markdown("---")
+    profile = st.session_state.get("company_profile", {}) or {}
+    st.markdown(f"**Company:** {profile.get('Company Name', 'Not set')}")
+    st.markdown(f"**Industry:** {profile.get('Industry', 'Not set')}")
+    st.markdown(f"**Period:** {profile.get('Financial Year', 'Not set')}")
+    st.markdown("---")
+    report = st.session_state.get("last_validation_report") or {}
+    score = report.get("score", 0 if not st.session_state.get("mapped") else 100)
+    st.metric("Readiness", f"{score}/100")
+    if st.session_state.get("mapped") is not None:
+        st.success("Data loaded")
+    else:
+        st.info("Upload pending")
+
+# Workflow status shown on every page
+profile_done = bool((st.session_state.get("company_profile") or {}).get("Company Name"))
+data_loaded = st.session_state.get("mapped") is not None
+validation_ok = bool(st.session_state.get("validation_passed")) if data_loaded else False
+reports_ready = st.session_state.get("consolidated_pnl") is not None
+insights_ready = bool(st.session_state.get("ai_commentary"))
+
+steps = [
+    ("1 Configure", profile_done),
+    ("2 Upload", data_loaded),
+    ("3 Validate", validation_ok),
+    ("4 Reports", reports_ready),
+    ("5 Insights", insights_ready),
+]
+step_cols = st.columns(len(steps))
+for idx, ((label, done), col) in enumerate(zip(steps, step_cols)):
+    cls = "workflow-step-done" if done else ("workflow-step-active" if (idx == 0 and not profile_done) or (idx == 1 and profile_done and not data_loaded) or (idx == 2 and data_loaded and not validation_ok) else "")
+    col.markdown(f'<div class="workflow-step {cls}">{"✓ " if done else ""}{label}</div>', unsafe_allow_html=True)
+
+if selected_page == "🏠 Home":
+    st.subheader("Home")
+    profile = st.session_state.get("company_profile", {}) or {}
+    report = st.session_state.get("last_validation_report") or {}
+    critical = report.get("critical", [])
+    warnings = report.get("warnings", [])
+    recommendations = report.get("recommendations", [])
+    score = report.get("score", 0 if not st.session_state.get("mapped") else 100)
+
+    c1, c2, c3, c4 = st.columns(4)
+    c1.metric("Data Readiness", f"{score}/100")
+    c2.metric("Critical Errors", len(critical))
+    c3.metric("Warnings", len(warnings))
+    c4.metric("Recommendations", len(recommendations))
+
+    st.markdown('<div class="main-card">', unsafe_allow_html=True)
+    st.markdown("### Quick Start")
+    st.write("Use the left navigation to move through the workflow. Start with Data Upload, then validate files, review dashboard and export reports.")
+    q1, q2, q3, q4 = st.columns(4)
+    q1.info("1. Save company profile")
+    q2.info("2. Upload GL + COA")
+    q3.info("3. Validate & Upload Files")
+    q4.info("4. Review dashboard")
+    st.markdown('</div>', unsafe_allow_html=True)
+
+    st.markdown("### Current Company")
+    if profile:
+        st.dataframe(pd.DataFrame(profile.items(), columns=["Field", "Value"]), use_container_width=True, hide_index=True)
+    else:
+        st.warning("Company profile has not been configured yet.")
+
+    if critical or warnings or recommendations:
+        st.markdown("### Items Needing Attention")
+        for item in (critical + warnings + recommendations)[:8]:
+            st.markdown(f'<div class="alert-card"><b>{item.get("Area", "Review")}</b><br>{item.get("Issue", "")}</div>', unsafe_allow_html=True)
+    elif st.session_state.get("mapped") is not None:
+        st.success("No validation errors and no recommendations found in the last validation run.")
+    else:
+        st.info("Upload data to activate the Validation Centre.")
+
+elif selected_page == "📁 Data Upload":
+    st.subheader("Data Upload")
     with st.expander("Company Profile", expanded=True):
         c1, c2 = st.columns(2)
         with c1:
@@ -1682,7 +2022,7 @@ with tab_setup:
                     key=f"tpl_{name}",
                 )
 
-with tab_dashboard:
+elif selected_page == "📊 Dashboard":
     st.subheader("Dashboard")
     if st.session_state["mapped"] is None:
         st.warning("Please complete setup and load files first.")
@@ -1745,8 +2085,8 @@ with tab_dashboard:
                 st.markdown("**Operating Margin % by Branch**")
                 st.bar_chart(branch_df.set_index("Branch")[["Operating Margin %"]])
 
-with tab_financials:
-    st.subheader("Financials")
+elif selected_page == "📈 Reports":
+    st.subheader("Reports")
     sub_pnl, sub_bs, sub_kpi, sub_trends, sub_variance = st.tabs(["P&L", "Balance Sheet", "KPIs", "Trends", "Variance"])
     with sub_pnl:
         if st.session_state["consolidated_pnl"] is None:
@@ -1832,7 +2172,7 @@ with tab_financials:
             st.markdown("### Benchmark Comparison")
             st.dataframe(style_dataframe(st.session_state["benchmark_compare"]), use_container_width=True)
 
-with tab_working_capital:
+elif selected_page == "💰 Working Capital":
     st.subheader("Working Capital")
     wc_ar, wc_ap = st.tabs(["AR", "AP"])
     with wc_ar:
@@ -1864,7 +2204,48 @@ with tab_working_capital:
             st.dataframe(style_dataframe(ap["by_branch"]), use_container_width=True)
             st.dataframe(style_dataframe(ap["top_parties"]), use_container_width=True)
 
-with tab_insights:
+elif selected_page == "🔍 Validation Centre":
+    st.subheader("Validation Centre")
+    report = st.session_state.get("last_validation_report") or {}
+    if not report:
+        st.info("Validation Centre is hidden until data has been uploaded. Go to Data Upload and click Validate & Upload Files.")
+    else:
+        critical = report.get("critical", [])
+        warnings = report.get("warnings", [])
+        recommendations = report.get("recommendations", [])
+        info_items = report.get("info", [])
+        score = report.get("score", 0)
+        c1, c2, c3, c4 = st.columns(4)
+        c1.metric("Readiness Score", f"{score}/100")
+        c2.metric("Critical", len(critical))
+        c3.metric("Warnings", len(warnings))
+        c4.metric("Recommendations", len(recommendations))
+        if not critical and not warnings and not recommendations:
+            st.success("No validation errors and no recommendations.")
+        else:
+            if critical:
+                st.error("Critical issues must be fixed before relying on reports.")
+                st.dataframe(pd.DataFrame(critical), use_container_width=True, hide_index=True)
+            if warnings:
+                st.warning("Warnings should be reviewed.")
+                st.dataframe(pd.DataFrame(warnings), use_container_width=True, hide_index=True)
+            if recommendations:
+                st.info("Recommendations")
+                st.dataframe(pd.DataFrame(recommendations), use_container_width=True, hide_index=True)
+            if info_items:
+                with st.expander("Information items"):
+                    st.dataframe(pd.DataFrame(info_items), use_container_width=True, hide_index=True)
+        if st.session_state.get("coa_mapping_review") is not None and not st.session_state.get("coa_mapping_review").empty:
+            st.markdown("### COA Mapping Review")
+            st.dataframe(style_dataframe(st.session_state["coa_mapping_review"]), use_container_width=True)
+        if st.session_state.get("financial_logic_review") is not None and not st.session_state.get("financial_logic_review").empty:
+            st.markdown("### Financial Logic Review")
+            st.dataframe(style_dataframe(st.session_state["financial_logic_review"]), use_container_width=True)
+        if st.session_state.get("unmapped") is not None and not st.session_state.get("unmapped").empty:
+            st.markdown("### Unmapped GL Rows")
+            st.dataframe(style_dataframe(st.session_state["unmapped"].head(100)), use_container_width=True)
+
+elif selected_page == "🧠 Insights":
     st.subheader("Insights")
     insight_anom, insight_mapping, insight_ai = st.tabs(["Anomalies", "Mapping Review", "AI Commentary"])
     with insight_anom:
@@ -1897,7 +2278,112 @@ with tab_insights:
             if st.session_state["ai_commentary"]:
                 st.write(st.session_state["ai_commentary"])
 
-with tab_downloads:
+elif selected_page == "💬 Ask AI CFO":
+    st.subheader("AI CFO Chatbot")
+
+    has_data = st.session_state.get("mapped") is not None
+    profile = st.session_state.get("company_profile", {}) or {}
+
+    st.markdown("""
+    <div class="section-card">
+        <h3>💬 Ask questions before or after upload</h3>
+        <p class="small-muted">
+        Before upload, ask about templates, required columns, validation, forecast setup, or benchmarks.
+        After upload, ask data-specific questions about P&L, KPIs, AR/AP, budget, forecast, branch performance and mapping review.
+        </p>
+    </div>
+    """, unsafe_allow_html=True)
+
+    status_cols = st.columns(4)
+    with status_cols[0]:
+        st.metric("Data Status", "Loaded" if has_data else "Not uploaded")
+    with status_cols[1]:
+        st.metric("Company", profile.get("Company Name", "Not set"))
+    with status_cols[2]:
+        st.metric("Industry", profile.get("Industry", "Not set"))
+    with status_cols[3]:
+        st.metric("Country", profile.get("Country", "Not set"))
+
+    chat_mode = st.radio(
+        "Chat mode",
+        ["Auto", "General Help", "Data-specific CFO Analysis", "Internet & Benchmark Research"],
+        horizontal=True,
+        help="Auto chooses based on your question. Internet & Benchmark Research uses available external APIs and optional Tavily search if configured.",
+    )
+
+    if not has_data:
+        st.info("You can ask generic questions now. Upload and validate GL + COA to unlock company-specific CFO analysis.")
+    else:
+        st.success("Uploaded financial data is available for data-specific CFO questions.")
+
+    st.markdown("### Suggested questions")
+    qcols = st.columns(3)
+    with qcols[0]:
+        if st.button("What files should I upload?", use_container_width=True):
+            st.session_state["_ai_cfo_pending_prompt"] = "What files should I upload and which columns are mandatory?"
+        if st.button("How should I map freight accounts?", use_container_width=True):
+            st.session_state["_ai_cfo_pending_prompt"] = "How should I decide whether freight domestic and freight international should be COGS or overheads?"
+    with qcols[1]:
+        if st.button("Compare me with benchmarks", use_container_width=True):
+            st.session_state["_ai_cfo_pending_prompt"] = "Compare the company against available country and industry benchmarks. Tell me what data is missing if needed."
+        if st.button("Explain forecast uploads", use_container_width=True):
+            st.session_state["_ai_cfo_pending_prompt"] = "How should I upload forecast P&L and forecast balance sheet, and how will the app compare them?"
+    with qcols[2]:
+        if st.button("Why is GP changing?", use_container_width=True):
+            st.session_state["_ai_cfo_pending_prompt"] = "Why is gross profit or gross margin changing based on the uploaded data?"
+        if st.button("What should management focus on?", use_container_width=True):
+            st.session_state["_ai_cfo_pending_prompt"] = "What are the top management focus areas based on the uploaded data and validation review?"
+
+    tool_cols = st.columns([1, 1, 3])
+    with tool_cols[0]:
+        if st.button("Clear Chat", use_container_width=True):
+            st.session_state["ai_cfo_chat_messages"] = []
+            st.rerun()
+    with tool_cols[1]:
+        if st.button("Fetch Benchmark Context", use_container_width=True):
+            try:
+                selected_country = profile.get("Country", "Australia") or "Australia"
+                selected_industry = profile.get("Industry", "Other") or "Other"
+                st.session_state["country_indicators"] = fetch_country_indicators(selected_country)
+                st.session_state["external_benchmark_df"] = get_builtin_industry_benchmarks(selected_industry, selected_country)
+                st.success("Benchmark context loaded. Ask the chatbot to compare benchmarks now.")
+            except Exception as exc:
+                st.error(f"Benchmark context fetch failed: {exc}")
+
+    # Chat transcript
+    st.markdown("### Conversation")
+    if not st.session_state.get("ai_cfo_chat_messages"):
+        with st.chat_message("assistant"):
+            st.markdown(
+                "Hi, I’m your AI CFO assistant. I can help with upload formats, mapping decisions, validation issues, benchmarks, forecasts, and uploaded-data analysis. What would you like to check?"
+            )
+
+    for msg in st.session_state.get("ai_cfo_chat_messages", []):
+        with st.chat_message(msg.get("role", "assistant")):
+            st.markdown(msg.get("content", ""))
+
+    pending_prompt = st.session_state.pop("_ai_cfo_pending_prompt", None)
+    typed_prompt = st.chat_input("Ask about uploads, benchmarks, mapping, forecasts, or your uploaded financial data...")
+    user_question = pending_prompt or typed_prompt
+
+    if user_question:
+        st.session_state["ai_cfo_chat_messages"].append({"role": "user", "content": user_question})
+        with st.chat_message("user"):
+            st.markdown(user_question)
+        with st.chat_message("assistant"):
+            with st.spinner("AI CFO is thinking..."):
+                answer = answer_ai_cfo_question(user_question, mode=chat_mode)
+            st.markdown(answer)
+        st.session_state["ai_cfo_chat_messages"].append({"role": "assistant", "content": answer})
+
+    with st.expander("What can the chatbot use?"):
+        st.write("Before upload: app guidance, template rules, validation rules, generic finance logic and available external benchmark APIs.")
+        st.write("After upload: your uploaded P&L, balance sheet, KPIs, branch data, AR/AP, budget, forecast, benchmarks, validation issues and mapping review.")
+        st.write("Live web search is optional and requires `TAVILY_API_KEY` in deployment secrets. Without it, the app uses FX APIs, World Bank indicators, starter benchmarks and uploaded benchmark files.")
+        st.write("The chatbot does not permanently train itself and does not replace finance review.")
+
+
+elif selected_page == "📤 Downloads":
     st.subheader("Downloads")
     if st.session_state["mapped"] is None:
         st.warning("Please validate and load files first.")
