@@ -161,6 +161,75 @@ def safe_float(value, default=0.0):
         return default
 
 
+def get_report_period_label(profile: dict) -> str:
+    """Human-readable period label used across reports and downloads."""
+    profile = profile or {}
+    label = str(profile.get("Report Period", "") or "").strip()
+    fy = str(profile.get("Financial Year", "") or "").strip()
+    period_type = str(profile.get("Reporting Period", "") or "").strip()
+
+    if label and fy:
+        return f"{label} | {fy}"
+    if label:
+        return label
+    if fy and period_type:
+        return f"{period_type} | {fy}"
+    if fy:
+        return fy
+    return "Period not set"
+
+
+def get_period_dates(profile: dict):
+    """Return selected period start/end as pandas timestamps, or (None, None)."""
+    profile = profile or {}
+    start_raw = profile.get("Period Start Date")
+    end_raw = profile.get("Period End Date")
+
+    start = pd.to_datetime(start_raw, errors="coerce") if start_raw not in [None, ""] else pd.NaT
+    end = pd.to_datetime(end_raw, errors="coerce") if end_raw not in [None, ""] else pd.NaT
+
+    return (None if pd.isna(start) else start.normalize(), None if pd.isna(end) else end.normalize())
+
+
+def validate_gl_dates_against_profile(gl_df: pd.DataFrame, profile: dict) -> list[dict]:
+    """Return warning/recommendation items if GL dates are outside selected report period."""
+    issues = []
+    if gl_df is None or gl_df.empty or "Date" not in gl_df.columns:
+        issues.append({
+            "Area": "Current GL Report",
+            "Issue": "Date column not provided or not readable in GL.",
+            "Recommendation": "Add Date to the GL if you want period validation and monthly trend reporting."
+        })
+        return issues
+
+    start, end = get_period_dates(profile)
+    if start is None or end is None:
+        issues.append({
+            "Area": "Company Profile",
+            "Issue": "Period Start Date and/or Period End Date not set.",
+            "Recommendation": "Set the reporting period dates on Home so the app can validate whether GL rows belong to the selected period."
+        })
+        return issues
+
+    dates = pd.to_datetime(gl_df["Date"], errors="coerce")
+    valid_dates = dates.dropna()
+    if valid_dates.empty:
+        issues.append({
+            "Area": "Current GL Report",
+            "Issue": "GL Date column is present but dates could not be read.",
+            "Recommendation": "Use a standard Excel date format such as 2026-04-30."
+        })
+        return issues
+
+    outside_count = int(((valid_dates < start) | (valid_dates > end)).sum())
+    if outside_count > 0:
+        issues.append({
+            "Area": "Current GL Report",
+            "Issue": f"{outside_count} GL row(s) have dates outside the selected reporting period {start.date()} to {end.date()}.",
+            "Recommendation": "Check whether the uploaded GL is for the correct month/period, or update the Home reporting period dates."
+        })
+    return issues
+
 
 # ----------------------------
 # External FX / benchmark helpers
@@ -413,9 +482,9 @@ def make_sample_template_bytes(df: pd.DataFrame) -> bytes:
 def get_sample_templates():
     templates = {}
     templates["Current GL Report"] = pd.DataFrame([
-        {"Account code": "4000", "Debit": 0, "Credit": 25000, "Branch": "Sydney", "Net": -25000, "Date": "2026-03-01", "Description": "Sales invoice"},
-        {"Account code": "5100", "Debit": 8000, "Credit": 0, "Branch": "Sydney", "Net": 8000, "Date": "2026-03-02", "Description": "Freight domestic cost"},
-        {"Account code": "5200", "Debit": 3000, "Credit": 0, "Branch": "Melbourne", "Net": 3000, "Date": "2026-03-03", "Description": "Freight international overhead"},
+        {"Account code": "4000", "Debit": 0, "Credit": 25000, "Branch": "Sydney", "Net": -25000, "Date": "2026-04-01", "Period": "April 2026", "Description": "Sales invoice"},
+        {"Account code": "5100", "Debit": 8000, "Credit": 0, "Branch": "Sydney", "Net": 8000, "Date": "2026-04-02", "Period": "April 2026", "Description": "Freight domestic cost"},
+        {"Account code": "5200", "Debit": 3000, "Credit": 0, "Branch": "Melbourne", "Net": 3000, "Date": "2026-04-03", "Period": "April 2026", "Description": "Freight international overhead"},
     ])
     templates["COA Mapping"] = pd.DataFrame([
         {"Account code": "4000", "Account Name": "Sales Revenue", "Reporting Group": "Revenue", "Reporting Subgroup": "Sales", "Statement": "Income Statement", "Sign Convention": "positive", "Display Order": 1},
@@ -443,9 +512,9 @@ def get_sample_templates():
         {"Month": "2026-01", "Branch": "Melbourne", "Reporting Group": "Revenue", "Amount": 85000},
     ])
     templates["Forecast P&L"] = pd.DataFrame([
-        {"Reporting Group": "Revenue", "Reporting Subgroup": "Sales", "Report Value": 120000},
-        {"Reporting Group": "Cost of Sales", "Reporting Subgroup": "Cost of Sales", "Report Value": 72000},
-        {"Reporting Group": "Operating Expense", "Reporting Subgroup": "Rent", "Report Value": 15000},
+        {"Period": "April 2026", "Reporting Group": "Revenue", "Reporting Subgroup": "Sales", "Report Value": 120000},
+        {"Period": "April 2026", "Reporting Group": "Cost of Sales", "Reporting Subgroup": "Cost of Sales", "Report Value": 72000},
+        {"Period": "April 2026", "Reporting Group": "Operating Expense", "Reporting Subgroup": "Rent", "Report Value": 15000},
     ])
     templates["Forecast Balance Sheet"] = pd.DataFrame([
         {"Reporting Group": "Assets", "Reporting Subgroup": "Cash", "Balance": 65000},
@@ -453,9 +522,9 @@ def get_sample_templates():
         {"Reporting Group": "Equity", "Reporting Subgroup": "Retained Earnings", "Balance": 37000},
     ])
     templates["Previous Year P&L"] = pd.DataFrame([
-        {"Reporting Group": "Revenue", "Reporting Subgroup": "Sales", "Report Value": 98000},
-        {"Reporting Group": "Cost of Sales", "Reporting Subgroup": "Cost of Sales", "Report Value": 59000},
-        {"Reporting Group": "Operating Expense", "Reporting Subgroup": "Rent", "Report Value": 13000},
+        {"Period": "April 2025", "Reporting Group": "Revenue", "Reporting Subgroup": "Sales", "Report Value": 98000},
+        {"Period": "April 2025", "Reporting Group": "Cost of Sales", "Reporting Subgroup": "Cost of Sales", "Report Value": 59000},
+        {"Period": "April 2025", "Reporting Group": "Operating Expense", "Reporting Subgroup": "Rent", "Report Value": 13000},
     ])
     templates["AR Ageing"] = pd.DataFrame([
         {"Party Name": "Customer A", "Outstanding Amount": 12000, "Document Number": "INV001", "Document Date": "2026-02-01", "Due Date": "2026-03-01", "Branch": "Sydney", "Age Bucket": "1-30"},
@@ -1170,14 +1239,33 @@ def build_monthly_actuals(pnl_mapped: pd.DataFrame) -> pd.DataFrame:
 def build_monthly_branch_actuals(pnl_mapped: pd.DataFrame) -> pd.DataFrame:
     if pnl_mapped is None or pnl_mapped.empty or "Date" not in pnl_mapped.columns:
         return pd.DataFrame(columns=["Month", "Branch", "Amount"])
+
     df = pnl_mapped.copy()
     df["Date"] = pd.to_datetime(df["Date"], errors="coerce")
     df = df[df["Date"].notna()].copy()
     if df.empty:
         return pd.DataFrame(columns=["Month", "Branch", "Amount"])
+
+    if "Branch" not in df.columns:
+        df["Branch"] = "Consolidated"
+    df["Branch"] = df["Branch"].fillna("Consolidated").astype(str).str.strip().replace("", "Consolidated")
     df["Month"] = df["Date"].dt.to_period("M").astype(str)
-    rev = df[df["Reporting Group"].astype(str).str.strip().str.lower() == "revenue"]
+
+    # Revenue names vary by client, e.g. "Sales Revenue Labour..." rather than exactly "Revenue".
+    group_text = df["Reporting Group"].astype(str).str.strip().str.lower()
+    subgroup_text = df["Reporting Subgroup"].astype(str).str.strip().str.lower() if "Reporting Subgroup" in df.columns else ""
+    rev = df[
+        group_text.str.contains("revenue|sales|income", na=False)
+        | (subgroup_text.str.contains("income|revenue|sales", na=False) if hasattr(subgroup_text, "str") else False)
+    ].copy()
+
+    if rev.empty:
+        return pd.DataFrame(columns=["Month", "Branch", "Amount"])
+
     account_values = account_level_report_values(rev, extra_cols=["Month", "Branch"])
+    if account_values.empty or "Month" not in account_values.columns or "Branch" not in account_values.columns:
+        return pd.DataFrame(columns=["Month", "Branch", "Amount"])
+
     return (
         account_values.groupby(["Month", "Branch"], dropna=False)["Report Value"]
         .sum()
@@ -1345,7 +1433,7 @@ def save_run_to_history(company_profile, consolidated_pnl, consolidated_bs, cons
         return
     company_slug = slugify_company_name(company_name)
     financial_year = company_profile.get("Financial Year", "unknown_year").strip().replace(" ", "_") or "unknown_year"
-    reporting_period = company_profile.get("Reporting Period", "unknown_period").strip().replace(" ", "_") or "unknown_period"
+    reporting_period = company_profile.get("Report Period", company_profile.get("Reporting Period", "unknown_period")).strip().replace(" ", "_") or "unknown_period"
     run_folder = HISTORY_ROOT / company_slug / f"{financial_year}_{reporting_period}"
     run_folder.mkdir(parents=True, exist_ok=True)
     consolidated_pnl.to_excel(run_folder / "consolidated_pnl.xlsx", index=False)
@@ -1811,11 +1899,11 @@ st.markdown('</div>', unsafe_allow_html=True)
 
 profile = st.session_state.get("company_profile", {}) or {}
 report = st.session_state.get("last_validation_report") or {}
-score = report.get("score", 100 if st.session_state.get("mapped") is not None else 0)
+score = report.get("score", 100 if isinstance(st.session_state.get("mapped"), pd.DataFrame) and not st.session_state.get("mapped").empty else 0)
 meta_cols = st.columns(4)
 meta_cols[0].caption(f"Company: {profile.get('Company Name', 'Not set')}")
 meta_cols[1].caption(f"Industry: {profile.get('Industry', 'Not set')}")
-meta_cols[2].caption(f"Period: {profile.get('Financial Year', 'Not set')}")
+meta_cols[2].caption(f"Period: {get_report_period_label(profile)}")
 meta_cols[3].caption(f"Readiness: {score}/100")
 
 # Workflow status shown on every page
@@ -1952,7 +2040,7 @@ if selected_page == "🏠 Home":
     critical = report.get("critical", [])
     warnings = report.get("warnings", [])
     recommendations = report.get("recommendations", [])
-    score = report.get("score", 100 if st.session_state.get("mapped") is not None else 0)
+    score = report.get("score", 100 if isinstance(st.session_state.get("mapped"), pd.DataFrame) and not st.session_state.get("mapped").empty else 0)
 
     st.markdown("""
     <div class="hero-card">
@@ -2009,10 +2097,13 @@ if selected_page == "🏠 Home":
         country = st.selectbox("Country", country_options, index=option_index(country_options, profile.get("Country", "Select Country")), key="home_country")
         state_region = st.text_input("State / Region", value=profile.get("State / Region", ""), key="home_state_region")
         financial_year = st.text_input("Financial Year", value=profile.get("Financial Year", ""), placeholder="Example: FY2026 or 2025-26", key="home_financial_year")
+        report_period = st.text_input("Report Period *", value=profile.get("Report Period", ""), placeholder="Example: April 2026 or Q1 FY2026", key="home_report_period")
+        period_start_date = st.date_input("Period Start Date", value=pd.to_datetime(profile.get("Period Start Date"), errors="coerce").date() if profile.get("Period Start Date") else None, key="home_period_start_date")
     with c2:
         currency = st.selectbox("Currency", currency_options, index=option_index(currency_options, profile.get("Currency", "Select Currency")), key="home_currency")
         tax_identifier = st.text_input("Tax Identifier / ABN / GSTIN (Optional)", value=profile.get("Tax Identifier", ""), key="home_tax_identifier")
-        reporting_period = st.selectbox("Reporting Period", period_options, index=option_index(period_options, profile.get("Reporting Period", "Monthly")), key="home_reporting_period")
+        reporting_period = st.selectbox("Period Type", period_options, index=option_index(period_options, profile.get("Reporting Period", "Monthly")), key="home_reporting_period")
+        period_end_date = st.date_input("Period End Date", value=pd.to_datetime(profile.get("Period End Date"), errors="coerce").date() if profile.get("Period End Date") else None, key="home_period_end_date")
         reporting_structure = st.radio("Reporting Structure", structure_options, index=option_index(structure_options, profile.get("Reporting Structure", "Consolidated Only")), key="home_reporting_structure", help="If Consolidated Only is selected, Branch is optional in GL and the app uses a default Consolidated unit.")
         benchmark_group = st.text_input("Benchmark Group (Optional)", value=profile.get("Benchmark Group", ""), key="home_benchmark_group")
 
@@ -2026,8 +2117,12 @@ if selected_page == "🏠 Home":
                 st.error("Company Name is mandatory.")
             elif industry == "Select Industry" or country == "Select Country":
                 st.error("Please select at least Industry and Country.")
+            elif not report_period.strip():
+                st.error("Report Period is mandatory. Example: April 2026 or Q1 FY2026.")
+            elif period_start_date and period_end_date and pd.to_datetime(period_start_date) > pd.to_datetime(period_end_date):
+                st.error("Period Start Date cannot be after Period End Date.")
             else:
-                st.session_state["company_profile"] = {"Company Name": company_name.strip(), "Industry": industry, "Country": country, "State / Region": state_region, "Financial Year": financial_year, "Currency": currency if currency != "Select Currency" else "", "Tax Identifier": tax_identifier, "Reporting Period": reporting_period, "Reporting Structure": reporting_structure, "Benchmark Group": benchmark_group, "Business Notes": business_notes}
+                st.session_state["company_profile"] = {"Company Name": company_name.strip(), "Industry": industry, "Country": country, "State / Region": state_region, "Financial Year": financial_year, "Report Period": report_period.strip(), "Period Start Date": str(period_start_date) if period_start_date else "", "Period End Date": str(period_end_date) if period_end_date else "", "Currency": currency if currency != "Select Currency" else "", "Tax Identifier": tax_identifier, "Reporting Period": reporting_period, "Reporting Structure": reporting_structure, "Benchmark Group": benchmark_group, "Business Notes": business_notes}
                 st.session_state["reporting_structure"] = reporting_structure
                 st.session_state["save_run_preference"] = save_run_preference
                 st.success("Company profile saved. You can now go to Data Upload.")
@@ -2205,6 +2300,9 @@ elif selected_page == "📁 Data Upload":
                     validate_required_columns(df, required, file_label)
                     if key == "gl" and not branch_required and "Branch" not in df.columns:
                         df["Branch"] = "Consolidated"
+                    if key == "gl":
+                        for period_issue in validate_gl_dates_against_profile(df, profile):
+                            add_item(warning_items, period_issue["Area"], period_issue["Issue"], period_issue["Recommendation"])
                     if key == "coa":
                         duplicate_rows = find_coa_duplicate_rows(df)
                         st.session_state["coa_duplicate_rows"] = duplicate_rows
@@ -2389,15 +2487,15 @@ elif selected_page == "📁 Data Upload":
     with st.expander("Required Columns Guide"):
         g1, g2 = st.columns(2)
         with g1:
-            show_required_columns("Current GL Report", ["Account code", "Debit", "Credit"], ["Branch / Business Unit", "Net", "Date", "Description", "Account Name"])
+            show_required_columns("Current GL Report", ["Account code", "Debit", "Credit"], ["Branch / Business Unit", "Net", "Date", "Period", "Description", "Account Name"])
             show_required_columns("COA Mapping", ["Account code", "Reporting Group", "Reporting Subgroup", "Statement"], ["Account Name", "Sign Convention", "Display Order"])
             show_required_columns("KPI Master", ["KPI Name", "Formula Type", "Numerator Group", "Denominator Group", "Output Type", "Display Order"], [])
             show_required_columns("Latest Previous Balance Sheet", ["Reporting Group", "Reporting Subgroup", "Balance"], [])
             show_required_columns("Budget Data", ["Month", "Reporting Group", "Amount"], ["Branch / Business Unit"])
-            show_required_columns("Forecast P&L", ["Reporting Group", "Reporting Subgroup", "Report Value"], [])
+            show_required_columns("Forecast P&L", ["Reporting Group", "Reporting Subgroup", "Report Value"], ["Period"])
         with g2:
             show_required_columns("Forecast Balance Sheet", ["Reporting Group", "Reporting Subgroup", "Balance"], [])
-            show_required_columns("Previous Year P&L", ["Reporting Group", "Reporting Subgroup", "Report Value"], [])
+            show_required_columns("Previous Year P&L", ["Reporting Group", "Reporting Subgroup", "Report Value"], ["Period"])
             show_required_columns("AR Ageing", ["Party Name", "Outstanding Amount"], ["Document Number", "Document Date", "Due Date", "Branch", "Age Bucket"])
             show_required_columns("AP Ageing", ["Party Name", "Outstanding Amount"], ["Document Number", "Document Date", "Due Date", "Branch", "Age Bucket"])
             show_required_columns("Industry Benchmark File", ["Metric", "Benchmark Value"], [])
@@ -2419,6 +2517,7 @@ elif selected_page == "📁 Data Upload":
 
 elif selected_page == "📊 Dashboard":
     st.subheader("Dashboard")
+    st.caption(f"Reporting period: {get_report_period_label(st.session_state.get('company_profile', {}))}")
     if st.session_state["mapped"] is None:
         st.warning("Please complete setup and load files first.")
     elif not st.session_state["validation_passed"]:
@@ -2482,6 +2581,7 @@ elif selected_page == "📊 Dashboard":
 
 elif selected_page == "📈 Reports":
     st.subheader("Reports")
+    st.caption(f"Reporting period: {get_report_period_label(st.session_state.get('company_profile', {}))}")
     sub_pnl, sub_bs, sub_kpi, sub_trends, sub_variance = st.tabs(["P&L", "Balance Sheet", "KPIs", "Trends", "Variance"])
     with sub_pnl:
         if st.session_state["consolidated_pnl"] is None:
@@ -2569,6 +2669,7 @@ elif selected_page == "📈 Reports":
 
 elif selected_page == "💰 Working Capital":
     st.subheader("Working Capital")
+    st.caption(f"Reporting period: {get_report_period_label(st.session_state.get('company_profile', {}))}")
     wc_ar, wc_ap = st.tabs(["AR", "AP"])
     with wc_ar:
         if st.session_state["ar_summary"] is None:
