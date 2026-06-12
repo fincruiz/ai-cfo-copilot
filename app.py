@@ -128,11 +128,22 @@ def slugify_company_name(name: str) -> str:
 
 
 def style_dataframe(df: pd.DataFrame):
-    return df.style.set_properties(**{
-        "font-family": "Arial",
-        "font-size": "13px",
-        "text-align": "left",
-    })
+    """Consistent table styling with numeric columns shown to 2 decimal places."""
+    if df is None:
+        return pd.DataFrame().style
+
+    numeric_cols = df.select_dtypes(include=["number"]).columns.tolist()
+    fmt = {col: "{:,.2f}" for col in numeric_cols}
+
+    return (
+        df.style
+        .format(fmt)
+        .set_properties(**{
+            "font-family": "Arial",
+            "font-size": "13px",
+            "text-align": "left",
+        })
+    )
 
 
 def validate_required_columns(df: pd.DataFrame, required_cols: list[str], file_label: str):
@@ -903,14 +914,8 @@ def build_pnl_detail(report_df: pd.DataFrame) -> pd.DataFrame:
     if report_df is None or report_df.empty:
         return pd.DataFrame(columns=cols + ["Report Value"])
 
-    detail = report_df.copy()
-    if "Account Name" not in detail.columns:
-        detail["Account Name"] = ""
-    if "Display Order" not in detail.columns:
-        detail["Display Order"] = pd.NA
-
-    group_cols = ["Reporting Group", "Reporting Subgroup", "Account code", "Account Name", "Display Order"]
-    out = detail.groupby(group_cols, dropna=False)["Report Value"].sum().reset_index()
+    out = account_level_report_values(report_df)
+    out = out.drop(columns=["Sign Convention"], errors="ignore")
     return apply_reporting_order(out)
 
 
@@ -920,35 +925,88 @@ def build_balance_sheet_detail(bs_df: pd.DataFrame) -> pd.DataFrame:
     if bs_df is None or bs_df.empty:
         return pd.DataFrame(columns=cols + ["Balance"])
 
-    detail = bs_df.copy()
-    if "Account Name" not in detail.columns:
-        detail["Account Name"] = ""
-    if "Display Order" not in detail.columns:
-        detail["Display Order"] = pd.NA
-
-    group_cols = ["Reporting Group", "Reporting Subgroup", "Account code", "Account Name", "Display Order"]
-    out = detail.groupby(group_cols, dropna=False)["Report Value"].sum().reset_index().rename(columns={"Report Value": "Balance"})
+    out = account_level_report_values(bs_df)
+    out = out.drop(columns=["Sign Convention"], errors="ignore")
+    out = out.rename(columns={"Report Value": "Balance"})
     return apply_reporting_order(out)
 
 
 def apply_sign_convention_to_gl(row) -> float:
+    """
+    Keep transaction-level value as raw Net. Do not use abs() at transaction level.
+
+    The display sign is applied after grouping by Account code, so debit and credit
+    movements inside the same GL account are netted first.
+    """
     net = row.get("Net", 0)
-    sign = str(row.get("Sign Convention", "positive")).strip().lower()
     if pd.isna(net):
         return 0.0
-    val = abs(float(net))
-    return -val if sign == "negative" else val
+    return float(net)
+
+
+def apply_sign_after_account_group(df: pd.DataFrame, value_col: str = "Report Value") -> pd.DataFrame:
+    """Apply Sign Convention after account-level netting."""
+    if df is None or df.empty:
+        return df
+
+    out = df.copy()
+    if "Sign Convention" not in out.columns:
+        out["Sign Convention"] = "positive"
+
+    def signed_value(row):
+        value = safe_float(row.get(value_col, 0))
+        sign = str(row.get("Sign Convention", "positive")).strip().lower()
+        display_value = abs(value)
+        return -display_value if sign == "negative" else display_value
+
+    out[value_col] = out.apply(signed_value, axis=1)
+    return out
+
+
+def account_level_report_values(report_df: pd.DataFrame, extra_cols=None) -> pd.DataFrame:
+    """
+    Net transactions by Account code first, then apply display sign convention.
+    This fixes accounts with both debit and credit movements.
+    """
+    if report_df is None or report_df.empty:
+        return pd.DataFrame()
+
+    extra_cols = extra_cols or []
+    df = report_df.copy()
+
+    for col in ["Account Name", "Display Order", "Sign Convention"]:
+        if col not in df.columns:
+            df[col] = "" if col != "Display Order" else pd.NA
+
+    group_cols = [
+        "Reporting Group",
+        "Reporting Subgroup",
+        "Account code",
+        "Account Name",
+        "Display Order",
+        "Sign Convention",
+    ]
+
+    for col in extra_cols:
+        if col in df.columns and col not in group_cols:
+            group_cols.append(col)
+
+    grouped = df.groupby(group_cols, dropna=False)["Report Value"].sum().reset_index()
+    grouped = apply_sign_after_account_group(grouped, "Report Value")
+    return grouped
 
 
 def build_pnl(report_df: pd.DataFrame) -> pd.DataFrame:
     if report_df is None or report_df.empty:
         return pd.DataFrame(columns=["Reporting Group", "Reporting Subgroup", "Report Value"])
 
+    account_values = account_level_report_values(report_df)
+
     group_cols = ["Reporting Group", "Reporting Subgroup"]
-    if "Display Order" in report_df.columns:
+    if "Display Order" in account_values.columns:
         group_cols.append("Display Order")
 
-    pnl = report_df.groupby(group_cols, dropna=False)["Report Value"].sum().reset_index()
+    pnl = account_values.groupby(group_cols, dropna=False)["Report Value"].sum().reset_index()
     return apply_reporting_order(pnl)
 
 
@@ -956,12 +1014,14 @@ def build_balance_sheet_from_gl(bs_df: pd.DataFrame) -> pd.DataFrame:
     if bs_df is None or bs_df.empty:
         return pd.DataFrame(columns=["Reporting Group", "Reporting Subgroup", "Balance"])
 
+    account_values = account_level_report_values(bs_df)
+
     group_cols = ["Reporting Group", "Reporting Subgroup"]
-    if "Display Order" in bs_df.columns:
+    if "Display Order" in account_values.columns:
         group_cols.append("Display Order")
 
     bs = (
-        bs_df.groupby(group_cols, dropna=False)["Report Value"]
+        account_values.groupby(group_cols, dropna=False)["Report Value"]
         .sum()
         .reset_index()
         .rename(columns={"Report Value": "Balance"})
@@ -984,7 +1044,11 @@ def combine_opening_and_current_bs(opening_bs: pd.DataFrame, current_bs: pd.Data
 def build_kpis(report_df: pd.DataFrame, kpi_master: pd.DataFrame) -> pd.DataFrame:
     if kpi_master is None or kpi_master.empty:
         return None
-    group_values = report_df.groupby("Reporting Group")["Report Value"].sum().to_dict() if report_df is not None and not report_df.empty else {}
+    if report_df is not None and not report_df.empty:
+        account_values = account_level_report_values(report_df)
+        group_values = account_values.groupby("Reporting Group")["Report Value"].sum().to_dict()
+    else:
+        group_values = {}
     results, calculated = [], {}
     kpi_master = kpi_master.sort_values("Display Order").copy()
     for _, row in kpi_master.iterrows():
@@ -1019,7 +1083,13 @@ def kpi_map_from_df(kpi_df: pd.DataFrame | None) -> dict:
 def build_actuals_by_branch_reporting_group(pnl_mapped: pd.DataFrame) -> pd.DataFrame:
     if pnl_mapped is None or pnl_mapped.empty:
         return pd.DataFrame(columns=["Branch", "Reporting Group", "Actual"])
-    return pnl_mapped.groupby(["Branch", "Reporting Group"], dropna=False)["Report Value"].sum().reset_index().rename(columns={"Report Value": "Actual"})
+    account_values = account_level_report_values(pnl_mapped, extra_cols=["Branch"])
+    return (
+        account_values.groupby(["Branch", "Reporting Group"], dropna=False)["Report Value"]
+        .sum()
+        .reset_index()
+        .rename(columns={"Report Value": "Actual"})
+    )
 
 
 def compare_plan_vs_actual(actuals_df: pd.DataFrame, plan_df: pd.DataFrame, label: str) -> pd.DataFrame:
@@ -1087,7 +1157,14 @@ def build_monthly_actuals(pnl_mapped: pd.DataFrame) -> pd.DataFrame:
     if df.empty:
         return pd.DataFrame(columns=["Month", "Reporting Group", "Amount"])
     df["Month"] = df["Date"].dt.to_period("M").astype(str)
-    return df.groupby(["Month", "Reporting Group"], dropna=False)["Report Value"].sum().reset_index().rename(columns={"Report Value": "Amount"}).sort_values(["Month", "Reporting Group"])
+    account_values = account_level_report_values(df, extra_cols=["Month"])
+    return (
+        account_values.groupby(["Month", "Reporting Group"], dropna=False)["Report Value"]
+        .sum()
+        .reset_index()
+        .rename(columns={"Report Value": "Amount"})
+        .sort_values(["Month", "Reporting Group"])
+    )
 
 
 def build_monthly_branch_actuals(pnl_mapped: pd.DataFrame) -> pd.DataFrame:
@@ -1100,7 +1177,14 @@ def build_monthly_branch_actuals(pnl_mapped: pd.DataFrame) -> pd.DataFrame:
         return pd.DataFrame(columns=["Month", "Branch", "Amount"])
     df["Month"] = df["Date"].dt.to_period("M").astype(str)
     rev = df[df["Reporting Group"].astype(str).str.strip().str.lower() == "revenue"]
-    return rev.groupby(["Month", "Branch"], dropna=False)["Report Value"].sum().reset_index().rename(columns={"Report Value": "Amount"}).sort_values(["Month", "Branch"])
+    account_values = account_level_report_values(rev, extra_cols=["Month", "Branch"])
+    return (
+        account_values.groupby(["Month", "Branch"], dropna=False)["Report Value"]
+        .sum()
+        .reset_index()
+        .rename(columns={"Report Value": "Amount"})
+        .sort_values(["Month", "Branch"])
+    )
 
 
 def build_py_comparison(current_kpis: pd.DataFrame | None, prior_kpis: pd.DataFrame | None) -> pd.DataFrame:
