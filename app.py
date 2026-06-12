@@ -2122,7 +2122,7 @@ elif selected_page == "📁 Data Upload":
                     if key == "gl" and not branch_required and "Branch" not in df.columns:
                         df["Branch"] = "Consolidated"
                     if key == "coa":
-                        duplicate_rows = find_duplicate_coa_rows(df)
+                        duplicate_rows = find_coa_duplicate_rows(df)
                         st.session_state["coa_duplicate_rows"] = duplicate_rows
                         if not duplicate_rows.empty:
                             add_item(warning_items, "COA Mapping", f"Duplicate Account code rows found: {duplicate_rows['Account code'].nunique()} duplicated code(s).", "Review duplicate mapping rows. Tick the duplicate confirmation box to keep the first row for each duplicate for this run.")
