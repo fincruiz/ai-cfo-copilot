@@ -1727,7 +1727,7 @@ st.markdown('</div>', unsafe_allow_html=True)
 
 profile = st.session_state.get("company_profile", {}) or {}
 report = st.session_state.get("last_validation_report") or {}
-score = report.get("score", 0 if not st.session_state.get("mapped") else 100)
+score = report.get("score", 100 if st.session_state.get("mapped") is not None else 0)
 meta_cols = st.columns(4)
 meta_cols[0].caption(f"Company: {profile.get('Company Name', 'Not set')}")
 meta_cols[1].caption(f"Industry: {profile.get('Industry', 'Not set')}")
@@ -1868,7 +1868,7 @@ if selected_page == "🏠 Home":
     critical = report.get("critical", [])
     warnings = report.get("warnings", [])
     recommendations = report.get("recommendations", [])
-    score = report.get("score", 0 if not st.session_state.get("mapped") else 100)
+    score = report.get("score", 100 if st.session_state.get("mapped") is not None else 0)
 
     st.markdown("""
     <div class="hero-card">
