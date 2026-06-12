@@ -1065,9 +1065,164 @@ def account_level_report_values(report_df: pd.DataFrame, extra_cols=None) -> pd.
     return grouped
 
 
+def infer_pnl_section_from_row(row) -> str:
+    """Infer whether a P&L row belongs to Revenue, COGS, Overheads, etc.
+
+    This deliberately checks both Reporting Group and Reporting Subgroup because
+    many COA files use Reporting Group as the GL/report line name and use
+    Reporting Subgroup as the real financial section, for example:
+    - Reporting Group = Sales Revenue Labour...
+    - Reporting Subgroup = Income
+    """
+    group = str(row.get("Reporting Group", "") or "").strip()
+    subgroup = str(row.get("Reporting Subgroup", "") or "").strip()
+    text = f"{group} {subgroup}".lower()
+
+    # Most specific checks first.
+    if any(k in text for k in ["cost of goods", "cost of sales", "cogs", "direct cost", "direct costs"]):
+        return "COGS"
+    if any(k in text for k in ["other income", "sundry income", "non operating income"]):
+        return "Other Income"
+    if any(k in text for k in ["other expense", "other expenses", "non operating expense"]):
+        return "Other Expenses"
+    if any(k in text for k in ["interest", "finance cost", "finance costs", "borrowing cost"]):
+        return "Interest"
+    if "tax" in text:
+        return "Tax"
+    if any(k in text for k in ["sales", "revenue", "income"]):
+        return "Revenue"
+    if any(k in text for k in ["operating expense", "operating expenses", "overhead", "overheads", "opex", "expense", "expenses"]):
+        return "Overheads"
+    if "gross profit" in text:
+        return "Calculated"
+    if any(k in text for k in ["net profit", "profit after tax", "profit for the period"]):
+        return "Calculated"
+    if any(k in text for k in ["operating profit", "ebit", "ebitda"]):
+        return "Calculated"
+    return "Other"
+
+
+def _sum_section(pnl_df: pd.DataFrame, section: str) -> float:
+    if pnl_df is None or pnl_df.empty or "__Section" not in pnl_df.columns:
+        return 0.0
+    return float(pd.to_numeric(pnl_df.loc[pnl_df["__Section"] == section, "Report Value"], errors="coerce").fillna(0).sum())
+
+
+def _make_pnl_total_row(label: str, value: float, order: float, line_type: str = "Total") -> dict:
+    return {
+        "Reporting Group": label,
+        "Reporting Subgroup": "",
+        "Display Order": order,
+        "Report Value": round(float(value), 2),
+        "Line Type": line_type,
+    }
+
+
+def add_pnl_subtotals(base_pnl: pd.DataFrame) -> pd.DataFrame:
+    """Insert management-report totals into P&L.
+
+    Output order:
+    Revenue lines -> Total Revenue -> COGS lines -> Total COGS -> Gross Profit
+    -> Overheads lines -> Total Overheads -> other sections -> Net Profit.
+    """
+    if base_pnl is None or base_pnl.empty:
+        return pd.DataFrame(columns=["Reporting Group", "Reporting Subgroup", "Display Order", "Report Value", "Line Type"])
+
+    pnl = base_pnl.copy()
+    if "Display Order" not in pnl.columns:
+        pnl["Display Order"] = pd.NA
+    pnl["Display Order"] = pd.to_numeric(pnl["Display Order"], errors="coerce")
+    pnl["Report Value"] = pd.to_numeric(pnl["Report Value"], errors="coerce").fillna(0).round(2)
+    pnl["__Section"] = pnl.apply(infer_pnl_section_from_row, axis=1)
+    pnl["Line Type"] = "Detail"
+
+    section_sort = {
+        "Revenue": 1,
+        "COGS": 2,
+        "Overheads": 4,
+        "Other Income": 6,
+        "Other Expenses": 7,
+        "Interest": 8,
+        "Tax": 9,
+        "Other": 10,
+        "Calculated": 99,
+    }
+    pnl["__Section Order"] = pnl["__Section"].map(section_sort).fillna(99)
+    pnl = pnl.sort_values(["__Section Order", "Display Order", "Reporting Group", "Reporting Subgroup"], na_position="last")
+
+    revenue_total = _sum_section(pnl, "Revenue")
+    cogs_raw = _sum_section(pnl, "COGS")
+    overheads_raw = _sum_section(pnl, "Overheads")
+    other_income = _sum_section(pnl, "Other Income")
+    other_expenses_raw = _sum_section(pnl, "Other Expenses")
+    interest_raw = _sum_section(pnl, "Interest")
+    tax_raw = _sum_section(pnl, "Tax")
+
+    # Costs can be uploaded/displayed as either positive or negative depending on Sign Convention.
+    # For management P&L totals, we treat cost sections as deductions using absolute values.
+    cogs_total = abs(cogs_raw)
+    overheads_total = abs(overheads_raw)
+    other_expenses_total = abs(other_expenses_raw)
+    interest_total = abs(interest_raw)
+    tax_total = abs(tax_raw)
+
+    gross_profit = revenue_total - cogs_total
+    net_profit = gross_profit - overheads_total + other_income - other_expenses_total - interest_total - tax_total
+
+    output_rows = []
+
+    def append_section(section: str):
+        details = pnl[pnl["__Section"] == section].drop(columns=["__Section", "__Section Order"], errors="ignore")
+        if not details.empty:
+            output_rows.extend(details.to_dict("records"))
+
+    append_section("Revenue")
+    if revenue_total != 0:
+        output_rows.append(_make_pnl_total_row("Total Revenue", revenue_total, 1.90))
+
+    append_section("COGS")
+    if cogs_total != 0:
+        output_rows.append(_make_pnl_total_row("Total COGS", cogs_total, 2.90))
+
+    if revenue_total != 0 or cogs_total != 0:
+        output_rows.append(_make_pnl_total_row("Gross Profit", gross_profit, 3.00, "Subtotal"))
+
+    append_section("Overheads")
+    if overheads_total != 0:
+        output_rows.append(_make_pnl_total_row("Total Overheads", overheads_total, 4.90))
+
+    append_section("Other Income")
+    if other_income != 0:
+        output_rows.append(_make_pnl_total_row("Total Other Income", other_income, 6.90))
+
+    append_section("Other Expenses")
+    if other_expenses_total != 0:
+        output_rows.append(_make_pnl_total_row("Total Other Expenses", other_expenses_total, 7.90))
+
+    append_section("Interest")
+    if interest_total != 0:
+        output_rows.append(_make_pnl_total_row("Total Interest / Finance Costs", interest_total, 8.90))
+
+    append_section("Tax")
+    if tax_total != 0:
+        output_rows.append(_make_pnl_total_row("Total Tax", tax_total, 9.90))
+
+    append_section("Other")
+
+    output_rows.append(_make_pnl_total_row("Net Profit", net_profit, 99.00, "Final Profit"))
+
+    out = pd.DataFrame(output_rows)
+    preferred_cols = ["Reporting Group", "Reporting Subgroup", "Display Order", "Report Value", "Line Type"]
+    for col in preferred_cols:
+        if col not in out.columns:
+            out[col] = "" if col != "Report Value" else 0.0
+    out["Report Value"] = pd.to_numeric(out["Report Value"], errors="coerce").fillna(0).round(2)
+    return out[preferred_cols].reset_index(drop=True)
+
+
 def build_pnl(report_df: pd.DataFrame) -> pd.DataFrame:
     if report_df is None or report_df.empty:
-        return pd.DataFrame(columns=["Reporting Group", "Reporting Subgroup", "Report Value"])
+        return pd.DataFrame(columns=["Reporting Group", "Reporting Subgroup", "Display Order", "Report Value", "Line Type"])
 
     account_values = account_level_report_values(report_df)
 
@@ -1075,8 +1230,9 @@ def build_pnl(report_df: pd.DataFrame) -> pd.DataFrame:
     if "Display Order" in account_values.columns:
         group_cols.append("Display Order")
 
-    pnl = account_values.groupby(group_cols, dropna=False)["Report Value"].sum().reset_index()
-    return apply_reporting_order(pnl)
+    base_pnl = account_values.groupby(group_cols, dropna=False)["Report Value"].sum().reset_index()
+    base_pnl = apply_reporting_order(base_pnl)
+    return add_pnl_subtotals(base_pnl)
 
 
 def build_balance_sheet_from_gl(bs_df: pd.DataFrame) -> pd.DataFrame:
