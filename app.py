@@ -1,3 +1,4 @@
+from modules.reporting import *
 from core.validation import *
 from core.formatting import *
 import os
