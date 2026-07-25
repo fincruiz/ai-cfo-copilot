@@ -1,6 +1,3 @@
-from modules.reporting import *
-from core.validation import *
-from core.formatting import *
 import os
 import re
 import json
@@ -19,7 +16,62 @@ try:
 except Exception:
     OpenAI = None
 
+
+# Modular imports
+from core.common import *
+from core.normalizers import *
+from core.excel_templates import *
+from core.pipeline import *
+from services.external_data import *
+from services.downloads import *
+from services.history_service import *
+from services.ai_cfo import *
+from services.research_service import *
+from modules.reporting import *
+from ui.validation_ui import *
+from ui.v1_ui import *
+from ui.login_flow import render_login_and_workspace_gate
+from ui.product_experience import apply_product_motion, render_demo_experience
+from ui.business_analytics_ui import render_business_analytics_page, render_market_research_page
+
 st.set_page_config(page_title="AI CFO Copilot", layout="wide")
+
+# Global application alignment and overlay fixes
+st.markdown("""
+<style>
+html, body { overflow-x: hidden; }
+[data-testid="stAppViewContainer"] > .main { width: 100%; }
+.main .block-container {
+    width: min(100%, 1500px) !important;
+    max-width: 1500px !important;
+    margin-left: auto !important;
+    margin-right: auto !important;
+    padding-left: clamp(1rem, 2.5vw, 2.5rem) !important;
+    padding-right: clamp(1rem, 2.5vw, 2.5rem) !important;
+}
+[data-testid="stDialog"] > div, div[role="dialog"] > div {
+    margin-left: auto !important;
+    margin-right: auto !important;
+}
+/* Keep global AI launcher visible on every page and independent of page flow. */
+.st-key-open_ai_cfo_global {
+    position: fixed !important; right: 24px !important; bottom: 24px !important;
+    z-index: 1000000 !important; width: 68px !important; height: 68px !important;
+}
+.st-key-open_ai_cfo_global > div { width:68px !important; height:68px !important; }
+.st-key-open_ai_cfo_global button {
+    position: static !important; width:68px !important; height:68px !important; min-height:68px !important;
+    border-radius:50% !important; margin:0 !important; padding:0 !important;
+}
+/* Prevent tour coach from colliding with the AI launcher. */
+.demo-guide-shell { right: 24px !important; bottom: 112px !important; }
+@media (max-width: 900px) {
+  .main .block-container {padding-left:.85rem !important;padding-right:.85rem !important;}
+  .st-key-open_ai_cfo_global {right:14px !important;bottom:14px !important;}
+  .demo-guide-shell {left:12px !important;right:12px !important;bottom:94px !important;width:auto !important;}
+}
+</style>
+""", unsafe_allow_html=True)
 
 st.markdown("""
 <style>
@@ -111,347 +163,37 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 
-HISTORY_ROOT = Path("history")
-HISTORY_ROOT.mkdir(exist_ok=True)
 
 # ----------------------------
 # Generic helpers
 # ----------------------------
-def clean_columns(df: pd.DataFrame) -> pd.DataFrame:
-    df = df.copy()
-    df.columns = df.columns.astype(str).str.strip()
-    return df
 
 
-def slugify_company_name(name: str) -> str:
-    name = str(name).strip().lower()
-    name = re.sub(r"[^a-z0-9]+", "_", name)
-    name = re.sub(r"_+", "_", name).strip("_")
-    return name or "unknown_company"
+# ----------------------------
+# External FX / benchmark helpers
+# ----------------------------
 
-
-def style_dataframe(df: pd.DataFrame):
-    """Consistent table styling with numeric columns shown to 2 decimal places."""
-    if df is None:
-        return pd.DataFrame().style
-
-    numeric_cols = df.select_dtypes(include=["number"]).columns.tolist()
-    fmt = {col: "{:,.2f}" for col in numeric_cols}
-
-    return (
-        df.style
-        .format(fmt)
-        .set_properties(**{
-            "font-family": "Arial",
-            "font-size": "13px",
-            "text-align": "left",
-        })
-    )
-
-
-def validate_required_columns(df: pd.DataFrame, required_cols: list[str], file_label: str):
-    missing = [c for c in required_cols if c not in df.columns]
-    if missing:
-        raise ValueError(f"{file_label} → Missing columns: {missing} | Found columns: {list(df.columns)}")
-
-
-def safe_float(value, default=0.0):
-    try:
-        if pd.isna(value):
-            return default
-        return float(value)
-    except Exception:
-        return default
-
-
-def get_report_period_label(profile: dict) -> str:
-    """Human-readable period label used across reports and downloads."""
-    profile = profile or {}
-    label = str(profile.get("Report Period", "") or "").strip()
-    fy = str(profile.get("Financial Year", "") or "").strip()
-    period_type = str(profile.get("Reporting Period", "") or "").strip()
-
-    if label and fy:
-        return f"{label} | {fy}"
-    if label:
-        return label
-    if fy and period_type:
-        return f"{period_type} | {fy}"
-    if fy:
-        return fy
-    return "Period not set"
-
-
-def get_period_dates(profile: dict):
-    """Return selected period start/end as pandas timestamps, or (None, None)."""
-    profile = profile or {}
-    start_raw = profile.get("Period Start Date")
-    end_raw = profile.get("Period End Date")
-
-    start = pd.to_datetime(start_raw, errors="coerce") if start_raw not in [None, ""] else pd.NaT
-    end = pd.to_datetime(end_raw, errors="coerce") if end_raw not in [None, ""] else pd.NaT
-
-    return (None if pd.isna(start) else start.normalize(), None if pd.isna(end) else end.normalize())
-
-
-def validate_gl_dates_against_profile(gl_df: pd.DataFrame, profile: dict) -> list[dict]:
-    """Return warning/recommendation items if GL dates are outside selected report period."""
-    issues = []
-    if gl_df is None or gl_df.empty or "Date" not in gl_df.columns:
-        issues.append({
-            "Area": "Current GL Report",
-            "Issue": "Date column not provided or not readable in GL.",
-            "Recommendation": "Add Date to the GL if you want period validation and monthly trend reporting."
-        })
-        return issues
-
-    start, end = get_period_dates(profile)
-    if start is None or end is None:
-        issues.append({
-            "Area": "Company Profile",
-            "Issue": "Period Start Date and/or Period End Date not set.",
-            "Recommendation": "Set the reporting period dates on Home so the app can validate whether GL rows belong to the selected period."
-        })
-        return issues
-
-    dates = pd.to_datetime(gl_df["Date"], errors="coerce")
-    valid_dates = dates.dropna()
-    if valid_dates.empty:
-        issues.append({
-            "Area": "Current GL Report",
-            "Issue": "GL Date column is present but dates could not be read.",
-            "Recommendation": "Use a standard Excel date format such as 2026-04-30."
-        })
-        return issues
-
-    outside_count = int(((valid_dates < start) | (valid_dates > end)).sum())
-    if outside_count > 0:
-        issues.append({
-            "Area": "Current GL Report",
-            "Issue": f"{outside_count} GL row(s) have dates outside the selected reporting period {start.date()} to {end.date()}.",
-            "Recommendation": "Check whether the uploaded GL is for the correct month/period, or update the Home reporting period dates."
-        })
-    return issues
-
-
-
-def show_required_columns(title, required_cols, optional_cols=None):
-    st.markdown(f"**{title}**")
-    req_df = pd.DataFrame({"Column": required_cols, "Required": ["Yes"] * len(required_cols)})
-    if optional_cols:
-        opt_df = pd.DataFrame({"Column": optional_cols, "Required": ["Optional"] * len(optional_cols)})
-        display_df = pd.concat([req_df, opt_df], ignore_index=True)
-    else:
-        display_df = req_df
-    st.dataframe(display_df, use_container_width=True, hide_index=True)
-
-
-def calculate_validation_score(critical_count: int, warning_count: int, recommendation_count: int) -> int:
-    score = 100 - (critical_count * 35) - (warning_count * 8) - (recommendation_count * 3)
-    return max(0, min(100, score))
-
-
-def render_validation_centre(critical_items=None, warning_items=None, recommendation_items=None, info_items=None, previews=None, block_processing=False):
-    """Show upload validation results in a popup-style Validation Centre."""
-    critical_items = critical_items or []
-    warning_items = warning_items or []
-    recommendation_items = recommendation_items or []
-    info_items = info_items or []
-    previews = previews or {}
-
-    score = calculate_validation_score(len(critical_items), len(warning_items), len(recommendation_items))
-
-    def _content():
-        st.markdown("### Data Validation Centre")
-        s1, s2, s3, s4 = st.columns(4)
-        s1.metric("Readiness Score", f"{score}/100")
-        s2.metric("Critical Errors", len(critical_items))
-        s3.metric("Warnings", len(warning_items))
-        s4.metric("Recommendations", len(recommendation_items))
-
-        if not critical_items and not warning_items and not recommendation_items:
-            st.success("No validation errors and no recommendations. Data is ready to generate reports.")
-        elif critical_items:
-            st.error("Critical errors found. Please fix these before reports can be generated.")
-        else:
-            st.warning("Data can be processed, but review the warnings/recommendations below.")
-
-        if critical_items:
-            st.markdown("#### Critical Errors")
-            st.dataframe(pd.DataFrame(critical_items), use_container_width=True, hide_index=True)
-        if warning_items:
-            st.markdown("#### Warnings")
-            st.dataframe(pd.DataFrame(warning_items), use_container_width=True, hide_index=True)
-        if recommendation_items:
-            st.markdown("#### Recommendations")
-            st.dataframe(pd.DataFrame(recommendation_items), use_container_width=True, hide_index=True)
-        if info_items:
-            st.markdown("#### Information")
-            st.dataframe(pd.DataFrame(info_items), use_container_width=True, hide_index=True)
-
-        issue_frames = []
-        if critical_items:
-            issue_frames.append(pd.DataFrame(critical_items).assign(Severity="Critical"))
-        if warning_items:
-            issue_frames.append(pd.DataFrame(warning_items).assign(Severity="Warning"))
-        if recommendation_items:
-            issue_frames.append(pd.DataFrame(recommendation_items).assign(Severity="Recommendation"))
-        if info_items:
-            issue_frames.append(pd.DataFrame(info_items).assign(Severity="Info"))
-        if issue_frames:
-            issue_df = pd.concat(issue_frames, ignore_index=True)
-            st.download_button(
-                "Download Validation Review",
-                data=dataframe_to_excel_bytes({"Validation Review": issue_df}),
-                file_name="validation_review.xlsx",
-                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                use_container_width=True,
-                key="download_validation_review_popup",
-            )
-
-        if previews:
-            st.markdown("#### File Previews")
-            for name, df in previews.items():
-                with st.expander(f"Preview: {name}"):
-                    st.dataframe(df.head(5), use_container_width=True)
-
-        if block_processing:
-            st.caption("Reports are blocked until critical errors are fixed.")
-        else:
-            st.caption("You can proceed. Recommendations do not change your mapping automatically.")
-
-    if hasattr(st, "dialog"):
-        @st.dialog("Validation Centre")
-        def _dialog():
-            _content()
-        _dialog()
-    else:
-        with st.expander("Validation Centre", expanded=True):
-            _content()
 
 
 # ----------------------------
 # Excel / template helpers
 # ----------------------------
-def format_excel_sheet(ws):
-    header_fill = PatternFill(fill_type="solid", fgColor="D9EAF7")
-    header_font = Font(name="Arial", size=11, bold=True)
-    body_font = Font(name="Arial", size=10)
-    thin_border = Border(
-        left=Side(style="thin", color="D9D9D9"),
-        right=Side(style="thin", color="D9D9D9"),
-        top=Side(style="thin", color="D9D9D9"),
-        bottom=Side(style="thin", color="D9D9D9"),
-    )
-    for cell in ws[1]:
-        cell.font = header_font
-        cell.fill = header_fill
-        cell.alignment = Alignment(horizontal="center", vertical="center")
-        cell.border = thin_border
-    for row in ws.iter_rows(min_row=2):
-        for cell in row:
-            cell.font = body_font
-            cell.alignment = Alignment(horizontal="left", vertical="center")
-            cell.border = thin_border
-    for col_cells in ws.columns:
-        max_length = 0
-        col_letter = get_column_letter(col_cells[0].column)
-        for cell in col_cells:
-            try:
-                max_length = max(max_length, len(str(cell.value)) if cell.value is not None else 0)
-            except Exception:
-                pass
-        ws.column_dimensions[col_letter].width = min(max_length + 3, 40)
-    ws.freeze_panes = "A2"
-    ws.row_dimensions[1].height = 22
 
 
-def dataframe_to_excel_bytes(df_dict: dict[str, pd.DataFrame]) -> bytes:
-    output = BytesIO()
-    with pd.ExcelWriter(output, engine="openpyxl") as writer:
-        for sheet_name, df in df_dict.items():
-            safe_sheet = str(sheet_name)[:31]
-            if df is None:
-                df = pd.DataFrame()
-            df.to_excel(writer, sheet_name=safe_sheet, index=False)
-            format_excel_sheet(writer.book[safe_sheet])
-    return output.getvalue()
+# ----------------------------
+# Standardizers / normalizers
+# ----------------------------
 
 
-def make_sample_template_bytes(df: pd.DataFrame) -> bytes:
-    return dataframe_to_excel_bytes({"Template": df})
+# ----------------------------
+# Finance calculations
+# ----------------------------
 
 
-def get_sample_templates():
-    templates = {}
-    templates["Current GL Report"] = pd.DataFrame([
-        {"Account code": "4000", "Debit": 0, "Credit": 25000, "Branch": "Sydney", "Net": -25000, "Date": "2026-04-01", "Period": "April 2026", "Description": "Sales invoice"},
-        {"Account code": "5100", "Debit": 8000, "Credit": 0, "Branch": "Sydney", "Net": 8000, "Date": "2026-04-02", "Period": "April 2026", "Description": "Freight domestic cost"},
-        {"Account code": "5200", "Debit": 3000, "Credit": 0, "Branch": "Melbourne", "Net": 3000, "Date": "2026-04-03", "Period": "April 2026", "Description": "Freight international overhead"},
-    ])
-    templates["COA Mapping"] = pd.DataFrame([
-        {"Account code": "4000", "Account Name": "Sales Revenue", "Reporting Group": "Revenue", "Reporting Subgroup": "Sales", "Statement": "Income Statement", "Sign Convention": "positive", "Display Order": 1},
-        {"Account code": "5100", "Account Name": "Freight Domestic", "Reporting Group": "Cost of Sales", "Reporting Subgroup": "Freight Domestic", "Statement": "Income Statement", "Sign Convention": "positive", "Display Order": 2},
-        {"Account code": "5200", "Account Name": "Freight International", "Reporting Group": "Operating Expense", "Reporting Subgroup": "Freight International", "Statement": "Income Statement", "Sign Convention": "positive", "Display Order": 4},
-    ])
-    templates["KPI Master"] = pd.DataFrame([
-        {"KPI Name": "Revenue", "Formula Type": "direct", "Numerator Group": "Revenue", "Denominator Group": "", "Output Type": "value", "Display Order": 1},
-        {"KPI Name": "COGS", "Formula Type": "direct", "Numerator Group": "Cost of Sales", "Denominator Group": "", "Output Type": "value", "Display Order": 2},
-        {"KPI Name": "Gross Profit", "Formula Type": "derived", "Numerator Group": "Revenue", "Denominator Group": "Cost of Sales", "Output Type": "value", "Display Order": 3},
-        {"KPI Name": "Gross Margin %", "Formula Type": "ratio", "Numerator Group": "Gross Profit", "Denominator Group": "Revenue", "Output Type": "percent", "Display Order": 4},
-        {"KPI Name": "Operating Expenses", "Formula Type": "direct", "Numerator Group": "Operating Expense", "Denominator Group": "", "Output Type": "value", "Display Order": 5},
-        {"KPI Name": "Operating Profit", "Formula Type": "derived", "Numerator Group": "Gross Profit", "Denominator Group": "Operating Expense", "Output Type": "value", "Display Order": 6},
-        {"KPI Name": "Operating Margin %", "Formula Type": "ratio", "Numerator Group": "Operating Profit", "Denominator Group": "Revenue", "Output Type": "percent", "Display Order": 7},
-        {"KPI Name": "Opex as % of Revenue", "Formula Type": "ratio", "Numerator Group": "Operating Expense", "Denominator Group": "Revenue", "Output Type": "percent", "Display Order": 8},
-    ])
-    templates["Latest Previous Balance Sheet"] = pd.DataFrame([
-        {"Reporting Group": "Assets", "Reporting Subgroup": "Cash", "Balance": 50000},
-        {"Reporting Group": "Liabilities", "Reporting Subgroup": "Trade Payables", "Balance": 22000},
-        {"Reporting Group": "Equity", "Reporting Subgroup": "Retained Earnings", "Balance": 28000},
-    ])
-    templates["Budget Data"] = pd.DataFrame([
-        {"Month": "2026-01", "Branch": "Sydney", "Reporting Group": "Revenue", "Amount": 100000},
-        {"Month": "2026-01", "Branch": "Sydney", "Reporting Group": "Cost of Sales", "Amount": 60000},
-        {"Month": "2026-01", "Branch": "Melbourne", "Reporting Group": "Revenue", "Amount": 85000},
-    ])
-    templates["Forecast P&L"] = pd.DataFrame([
-        {"Period": "April 2026", "Reporting Group": "Revenue", "Reporting Subgroup": "Sales", "Report Value": 120000},
-        {"Period": "April 2026", "Reporting Group": "Cost of Sales", "Reporting Subgroup": "Cost of Sales", "Report Value": 72000},
-        {"Period": "April 2026", "Reporting Group": "Operating Expense", "Reporting Subgroup": "Rent", "Report Value": 15000},
-    ])
-    templates["Forecast Balance Sheet"] = pd.DataFrame([
-        {"Reporting Group": "Assets", "Reporting Subgroup": "Cash", "Balance": 65000},
-        {"Reporting Group": "Liabilities", "Reporting Subgroup": "Trade Payables", "Balance": 28000},
-        {"Reporting Group": "Equity", "Reporting Subgroup": "Retained Earnings", "Balance": 37000},
-    ])
-    templates["Previous Year P&L"] = pd.DataFrame([
-        {"Period": "April 2025", "Reporting Group": "Revenue", "Reporting Subgroup": "Sales", "Report Value": 98000},
-        {"Period": "April 2025", "Reporting Group": "Cost of Sales", "Reporting Subgroup": "Cost of Sales", "Report Value": 59000},
-        {"Period": "April 2025", "Reporting Group": "Operating Expense", "Reporting Subgroup": "Rent", "Report Value": 13000},
-    ])
-    templates["AR Ageing"] = pd.DataFrame([
-        {"Party Name": "Customer A", "Outstanding Amount": 12000, "Document Number": "INV001", "Document Date": "2026-02-01", "Due Date": "2026-03-01", "Branch": "Sydney", "Age Bucket": "1-30"},
-        {"Party Name": "Customer B", "Outstanding Amount": 8000, "Document Number": "INV002", "Document Date": "2026-01-15", "Due Date": "2026-02-15", "Branch": "Melbourne", "Age Bucket": "31-60"},
-        {"Party Name": "Customer C", "Outstanding Amount": 5000, "Document Number": "INV003", "Document Date": "2026-03-05", "Due Date": "2026-04-05", "Branch": "Sydney", "Age Bucket": "Current"},
-    ])
-    templates["AP Ageing"] = pd.DataFrame([
-        {"Party Name": "Supplier A", "Outstanding Amount": 9000, "Document Number": "BILL001", "Document Date": "2026-02-01", "Due Date": "2026-03-01", "Branch": "Sydney", "Age Bucket": "1-30"},
-        {"Party Name": "Supplier B", "Outstanding Amount": 14000, "Document Number": "BILL002", "Document Date": "2026-01-10", "Due Date": "2026-02-10", "Branch": "Melbourne", "Age Bucket": "31-60"},
-        {"Party Name": "Supplier C", "Outstanding Amount": 6000, "Document Number": "BILL003", "Document Date": "2026-03-04", "Due Date": "2026-04-04", "Branch": "Sydney", "Age Bucket": "Current"},
-    ])
-    templates["Industry Benchmark File"] = pd.DataFrame([
-        {"Metric": "Gross Margin %", "Benchmark Value": 35},
-        {"Metric": "Operating Margin %", "Benchmark Value": 12},
-        {"Metric": "Opex as % of Revenue", "Benchmark Value": 20},
-    ])
-    templates["Prior Period P&L"] = templates["Previous Year P&L"].copy()
-    templates["Prior Period Balance Sheet"] = templates["Latest Previous Balance Sheet"].copy()
-    templates["Prior Period KPI Pack"] = pd.DataFrame([
-        {"KPI": "Revenue", "Value": 98000, "Display Value": 98000, "Output Type": "value"},
-        {"KPI": "Gross Margin %", "Value": 39.80, "Display Value": "39.80%", "Output Type": "percent"},
-        {"KPI": "Operating Margin %", "Value": 26.53, "Display Value": "26.53%", "Output Type": "percent"},
-    ])
-    return templates
+
+
+
+
 
 
 
@@ -460,7 +202,7 @@ def get_sample_templates():
 # Session defaults
 # ----------------------------
 for key in [
-    "gl", "coa", "kpi_master", "latest_bs", "mapped", "pnl_mapped", "bs_mapped", "unmapped", "consolidated_pnl", "consolidated_bs", "consolidated_kpis", "branch_outputs", "branch_summary", "detected_branches", "validation_passed", "company_profile", "bs_disclaimer", "ai_commentary", "prior_pnl", "prior_bs", "prior_kpis", "save_run_preference", "anomaly_flags", "ar_df", "ap_df", "ar_summary", "ap_summary", "budget_df", "budget_compare", "budget_summary", "benchmark_df", "py_compare", "benchmark_compare", "monthly_actuals", "monthly_branch_actuals", "executive_summary_df", "forecast_pnl", "forecast_bs", "previous_year_pnl", "forecast_pnl_compare", "previous_year_pnl_compare", "fx_rate_info", "country_indicators", "external_benchmark_df", "consolidated_pnl_detail", "consolidated_bs_detail", "coa_duplicate_rows", "coa_mapping_review", "financial_logic_review", "last_validation_report", "reporting_structure", "ai_cfo_chat_messages"
+    "gl", "coa", "kpi_master", "latest_bs", "mapped", "pnl_mapped", "bs_mapped", "unmapped", "consolidated_pnl", "consolidated_bs", "consolidated_kpis", "branch_outputs", "branch_summary", "detected_branches", "validation_passed", "company_profile", "bs_disclaimer", "ai_commentary", "prior_pnl", "prior_bs", "prior_kpis", "save_run_preference", "anomaly_flags", "ar_df", "ap_df", "ar_summary", "ap_summary", "budget_df", "budget_compare", "budget_summary", "benchmark_df", "py_compare", "benchmark_compare", "monthly_actuals", "monthly_branch_actuals", "executive_summary_df", "forecast_pnl", "forecast_bs", "previous_year_pnl", "forecast_pnl_compare", "previous_year_pnl_compare", "fx_rate_info", "country_indicators", "external_benchmark_df", "consolidated_pnl_detail", "consolidated_bs_detail", "coa_duplicate_rows", "coa_mapping_review", "financial_logic_review", "last_validation_report", "reporting_structure", "ai_cfo_chat_messages", "app_logged_in", "auth_mode", "onboarding_step", "workspace_modules", "external_research_pack", "custom_research_result"
 ]:
     if key not in st.session_state:
         st.session_state[key] = None
@@ -472,6 +214,162 @@ if st.session_state["ai_cfo_chat_messages"] is None:
     st.session_state["ai_cfo_chat_messages"] = []
 if "ai_cfo_panel_open" not in st.session_state or st.session_state["ai_cfo_panel_open"] is None:
     st.session_state["ai_cfo_panel_open"] = False
+
+# ----------------------------
+# Global AI CFO overlay (available before and after login)
+# ----------------------------
+st.markdown("""
+<style>
+/* Floating AI CFO launcher. Clicking toggles the panel. */
+.st-key-open_ai_cfo_global, div[class*="st-key-open_ai_cfo_global"] {
+    position: fixed !important;
+    right: 24px !important;
+    bottom: 24px !important;
+    width:72px !important;
+    height:72px !important;
+    z-index:2147483000 !important;
+    margin:0 !important;
+    padding:0 !important;
+}
+.st-key-open_ai_cfo_global button, div[class*="st-key-open_ai_cfo_global"] button {
+    position: static !important;
+    right: auto !important;
+    bottom: auto !important;
+    z-index: 2147483000 !important;
+    width: 72px !important;
+    height: 72px !important;
+    min-height: 72px !important;
+    border-radius: 50% !important;
+    background: linear-gradient(135deg, #0f766e, #2563eb, #7c3aed) !important;
+    color: #ffffff !important;
+    font-size: 30px !important;
+    border: 2px solid rgba(255,255,255,0.9) !important;
+    box-shadow: 0 18px 45px rgba(37,99,235,0.38) !important;
+    animation: aiFloat 2.8s ease-in-out infinite, aiPulse 1.8s ease-in-out infinite;
+}
+.st-key-open_ai_cfo_global button p { color: #ffffff !important; font-size: 30px !important; }
+.st-key-open_ai_cfo_global button:hover {
+    transform: scale(1.08) !important;
+    box-shadow: 0 20px 55px rgba(124,58,237,0.45) !important;
+}
+
+/* Chatbot overlay panel. It is fixed and does NOT change page layout. */
+.st-key-ai_cfo_overlay_panel {
+    position: fixed !important;
+    right: 24px !important;
+    bottom: 112px !important;
+    width: min(430px, calc(100vw - 32px)) !important;
+    max-height: calc(100vh - 150px) !important;
+    z-index: 2147482999 !important;
+    overflow: auto !important;
+    border: 1px solid rgba(96,165,250,0.38) !important;
+    background: linear-gradient(180deg, rgba(15,23,42,0.98), rgba(17,24,39,0.98)) !important;
+    border-radius: 24px !important;
+    padding: 1rem !important;
+    box-shadow: 0 24px 70px rgba(0,0,0,0.48) !important;
+}
+.st-key-ai_cfo_overlay_panel * { color: #f8fafc; }
+.st-key-ai_cfo_overlay_panel label, .st-key-ai_cfo_overlay_panel p { color: #dbeafe !important; }
+.st-key-ai_cfo_overlay_panel textarea, .st-key-ai_cfo_overlay_panel input {
+    background: rgba(255,255,255,0.08) !important;
+    color: #ffffff !important;
+    border: 1px solid rgba(148,163,184,0.45) !important;
+    border-radius: 12px !important;
+}
+.st-key-ai_cfo_overlay_panel textarea::placeholder, .st-key-ai_cfo_overlay_panel input::placeholder { color: #cbd5e1 !important; }
+.ai-overlay-title {font-size:1.2rem;font-weight:850;color:#f8fafc;margin-bottom:0.25rem;}
+.ai-overlay-sub {color:#cbd5e1;font-size:0.9rem;margin-bottom:0.85rem;line-height:1.35;}
+.ai-bubble-user {background:#2563eb;color:#fff;border-radius:16px 16px 4px 16px;padding:0.68rem 0.78rem;margin:0.35rem 0 0.35rem auto;max-width:88%;font-size:0.92rem;}
+.ai-bubble-assistant {background:rgba(255,255,255,0.08);color:#f8fafc;border:1px solid rgba(148,163,184,0.24);border-radius:16px 16px 16px 4px;padding:0.68rem 0.78rem;margin:0.35rem auto 0.35rem 0;max-width:94%;font-size:0.92rem;}
+.ai-panel-note {color:#93c5fd;font-size:0.78rem;margin-top:0.45rem;}
+@media (max-width: 768px) {
+    .st-key-open_ai_cfo_global button { right: 16px !important; bottom: 18px !important; width: 62px !important; height: 62px !important; min-height: 62px !important; }
+    .st-key-ai_cfo_overlay_panel { right: 12px !important; left: 12px !important; bottom: 92px !important; width: auto !important; max-height: calc(100vh - 120px) !important; }
+}
+</style>
+""", unsafe_allow_html=True)
+
+if st.button("🤖", key="open_ai_cfo_global", help="Open / close AI CFO Assistant"):
+    st.session_state["ai_cfo_panel_open"] = not st.session_state.get("ai_cfo_panel_open", False)
+    st.rerun()
+
+# Global AI CFO overlay panel. Fixed position, so it does not disturb page alignment.
+if st.session_state.get("ai_cfo_panel_open"):
+    with st.container(key="ai_cfo_overlay_panel"):
+        st.markdown('<div class="ai-overlay-title">🤖 AI CFO Assistant</div>', unsafe_allow_html=True)
+        st.markdown('<div class="ai-overlay-sub">Ask about your financials, industry conditions, benchmarks, economic changes or management actions. Market research is automatically included in AI commentary when configured.</div>', unsafe_allow_html=True)
+
+        research_pack = st.session_state.get("external_research_pack")
+        research_status = "Market context ready" if research_pack else "Market context not loaded"
+        st.caption(f"🌐 {research_status}")
+        research_col, market_col = st.columns(2)
+        if research_col.button("Refresh market context", use_container_width=True, key="ai_refresh_market_context"):
+            with st.spinner("Researching current industry and economic context..."):
+                pack = ensure_external_research_context(force=True, scan_type="Executive scan")
+            if pack:
+                st.success("Market context refreshed and connected to AI CFO.")
+            else:
+                st.warning("Market research could not be loaded. Check TAVILY_API_KEY and company profile.")
+            st.rerun()
+        if market_col.button("Open research page", use_container_width=True, key="ai_open_market_research"):
+            st.session_state["ai_cfo_panel_open"] = False
+            st.query_params["page"] = "research"
+            st.rerun()
+
+        close_col, clear_col = st.columns(2)
+        if close_col.button("Close", use_container_width=True, key="close_ai_cfo_panel"):
+            st.session_state["ai_cfo_panel_open"] = False
+            st.rerun()
+        if clear_col.button("Clear", use_container_width=True, key="clear_ai_cfo_panel"):
+            st.session_state["ai_cfo_chat_messages"] = []
+            st.rerun()
+
+        chat_mode_inline = st.selectbox(
+            "Mode",
+            ["Auto", "General Help", "Data-specific CFO Analysis", "Internet & Benchmark Research"],
+            key="global_ai_cfo_mode"
+        )
+
+        if not st.session_state.get("ai_cfo_chat_messages"):
+            st.markdown('<div class="ai-bubble-assistant">Hi, I’m your AI CFO. Ask me about upload formats, mapping, validation, benchmarks, forecasts, or your uploaded financial data.</div>', unsafe_allow_html=True)
+
+        for msg in st.session_state.get("ai_cfo_chat_messages", [])[-8:]:
+            role = msg.get("role", "assistant")
+            content = msg.get("content", "")
+            if role == "user":
+                st.markdown(f'<div class="ai-bubble-user">{content}</div>', unsafe_allow_html=True)
+            else:
+                st.markdown(f'<div class="ai-bubble-assistant">{content}</div>', unsafe_allow_html=True)
+
+        with st.form("ai_cfo_overlay_form", clear_on_submit=True):
+            user_question = st.text_area("Ask a question", placeholder="Example: Why is gross margin down?", height=85, key="ai_cfo_overlay_question")
+            send_col, hint_col = st.columns([0.42, 0.58])
+            send_clicked = send_col.form_submit_button("Send", use_container_width=True)
+            hint_col.markdown('<div class="ai-panel-note">Use Close or click 🤖 again to hide this chat.</div>', unsafe_allow_html=True)
+
+        if send_clicked and user_question.strip():
+            st.session_state["ai_cfo_chat_messages"].append({"role": "user", "content": user_question.strip()})
+            with st.spinner("AI CFO is thinking..."):
+                inline_answer = answer_ai_cfo_question(user_question.strip(), mode=chat_mode_inline)
+            st.session_state["ai_cfo_chat_messages"].append({"role": "assistant", "content": inline_answer})
+            st.rerun()
+
+
+# ----------------------------
+# V1 Login / Workspace onboarding gate
+# ----------------------------
+if st.session_state.get("app_logged_in") is None:
+    st.session_state["app_logged_in"] = False
+if st.session_state.get("onboarding_step") is None:
+    st.session_state["onboarding_step"] = 1
+if st.session_state.get("workspace_modules") is None:
+    st.session_state["workspace_modules"] = []
+
+if not render_login_and_workspace_gate():
+    st.stop()
+
+# Safe motion system for the authenticated product experience.
+apply_product_motion()
 
 # ----------------------------
 # UI - Product-style navigation
@@ -512,6 +410,41 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
+# ----------------------------
+# V1 Enterprise UX helpers (safe CSS - does not style Streamlit internals)
+# ----------------------------
+st.markdown("""
+<style>
+.v1-hero {
+  border-radius: 28px; padding: 2.1rem; margin: 1.2rem 0;
+  background: radial-gradient(circle at top left, rgba(37,99,235,.28), transparent 38%),
+              linear-gradient(135deg, #0b1220 0%, #111827 45%, #0f172a 100%);
+  border: 1px solid rgba(148,163,184,.22); box-shadow: 0 26px 70px rgba(0,0,0,.26);
+}
+.v1-hero h1 {font-size: 3rem !important; line-height: 1.02 !important; letter-spacing: -.055em !important; color: #fff !important; margin: .55rem 0 .65rem 0 !important;}
+.v1-hero p {color: #cbd5e1; font-size: 1.08rem; max-width: 760px;}
+.v1-badge {display:inline-flex; align-items:center; gap:.45rem; padding:.45rem .78rem; border-radius:999px; background:rgba(37,99,235,.16); border:1px solid rgba(96,165,250,.25); color:#bfdbfe; font-weight:800; font-size:.86rem;}
+.v1-grid-2 {display:grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap:1rem; margin: 1rem 0;}
+.v1-grid-3 {display:grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap:1rem; margin: 1rem 0;}
+.v1-card {border-radius:22px; padding:1.15rem; background:linear-gradient(180deg, rgba(17,24,39,.98), rgba(15,23,42,.98)); border:1px solid rgba(148,163,184,.24); box-shadow:0 16px 44px rgba(0,0,0,.18); color:#f8fafc;}
+.v1-card h3 {margin:.25rem 0 .45rem 0 !important; color:#fff !important;}
+.v1-card p, .v1-card li {color:#cbd5e1; font-size:.95rem;}
+.v1-step {padding: .9rem 1rem; border-radius: 18px; background:#101827; border:1px solid rgba(148,163,184,.24); color:#e5e7eb;}
+.v1-step.done {background:rgba(6,78,59,.56); border-color:rgba(52,211,153,.55);}
+.v1-step.active {background:rgba(30,64,175,.55); border-color:rgba(96,165,250,.65);}
+.v1-step b {display:block; color:#fff; margin-bottom:.15rem;}
+.v1-kpi {border-radius:20px; padding:1rem; background:#0f172a; border:1px solid rgba(148,163,184,.22);}
+.v1-kpi .label {color:#94a3b8; font-size:.82rem; font-weight:800; margin-bottom:.28rem;}
+.v1-kpi .value {color:#fff; font-size:1.55rem; font-weight:900; letter-spacing:-.04em;}
+.v1-divider {height:1px; background:linear-gradient(90deg, transparent, rgba(148,163,184,.38), transparent); margin:1rem 0;}
+.v1-source-card {min-height:205px;}
+.v1-source-card .tag {display:inline-flex; padding:.28rem .55rem; border-radius:999px; background:rgba(34,197,94,.12); border:1px solid rgba(34,197,94,.26); color:#86efac; font-size:.78rem; font-weight:800;}
+@media (max-width: 900px) {.v1-grid-2,.v1-grid-3{grid-template-columns:1fr}.v1-hero h1{font-size:2.2rem!important}}
+</style>
+""", unsafe_allow_html=True)
+
+
+
 st.markdown("""
 <div style="display:flex;align-items:center;gap:0.65rem;margin-bottom:0.2rem;">
   <div style="width:40px;height:40px;border-radius:14px;background:linear-gradient(135deg,#0f766e,#2563eb);display:flex;align-items:center;justify-content:center;color:white;font-size:1.35rem;font-weight:800;">▣</div>
@@ -523,11 +456,13 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 pages = [
-    "🏠 Home",
-    "📁 Data Upload",
     "📊 Dashboard",
+    "📉 Business Analytics",
+    "🌐 Market Research",
+    "🏠 Home",
+    "📥 Import Centre",
     "📈 Reports",
-    "💰 Working Capital",
+    "💰 Working Capital Centre",
     "🧠 Insights",
     "📤 Downloads",
 ]
@@ -535,61 +470,77 @@ pages = [
 page_query = st.query_params.get("page", "")
 page_key_map = {
     "home": "🏠 Home",
-    "upload": "📁 Data Upload",
+    "upload": "📥 Import Centre",
     "dashboard": "📊 Dashboard",
+    "analytics": "📉 Business Analytics",
+    "research": "🌐 Market Research",
     "reports": "📈 Reports",
-    "working_capital": "💰 Working Capital",
+    "working_capital": "💰 Working Capital Centre",
     "insights": "🧠 Insights",
     "downloads": "📤 Downloads",
 }
 page_slug_map = {v: k for k, v in page_key_map.items()}
-selected_page = page_key_map.get(page_query, "🏠 Home")
+selected_page = page_key_map.get(page_query, "📊 Dashboard")
+
+# Demo mode has two genuinely different journeys: an interactive guided tour or free exploration.
+render_demo_experience()
 
 # Hide Streamlit's default sidebar completely. Navigation is handled by top action buttons.
 st.markdown("""
 <style>
 [data-testid="stSidebar"] {display: none !important;}
 [data-testid="collapsedControl"] {display: none !important;}
-.block-container {padding-top: 2rem;}
+.block-container {padding-top: 1.15rem; max-width: 1440px;}
 .top-nav-row {
-    padding: 0.75rem 0 0.35rem 0;
-    border-bottom: 1px solid #eef0f3;
-    margin-bottom: 1rem;
+    padding: 0.65rem 0.75rem;
+    border: 1px solid rgba(148,163,184,0.20);
+    border-radius: 22px;
+    margin: 0.55rem 0 1rem 0;
+    background: linear-gradient(135deg, rgba(15,23,42,0.96), rgba(17,24,39,0.92));
+    box-shadow: 0 16px 45px rgba(2,6,23,0.24);
 }
 .nav-hint {
-    color: #6b7280;
-    font-size: 0.9rem;
-    margin-bottom: 0.4rem;
+    color: #93c5fd;
+    font-size: 0.78rem;
+    font-weight: 900;
+    letter-spacing: .08em;
+    text-transform: uppercase;
+    margin-bottom: 0.45rem;
 }
 div[data-testid="stButton"] > button {
-    border-radius: 14px !important;
-    border: 1px solid rgba(148,163,184,0.35) !important;
-    background: linear-gradient(135deg, #111827, #1f2937) !important;
-    color: #f8fafc !important;
-    box-shadow: 0 8px 24px rgba(0,0,0,0.22) !important;
-    min-height: 2.55rem !important;
+    border-radius: 999px !important;
+    border: 1px solid rgba(148,163,184,0.24) !important;
+    background: rgba(15,23,42,0.86) !important;
+    color: #e5e7eb !important;
+    box-shadow: none !important;
+    min-height: 2.35rem !important;
+    transition: all .18s ease !important;
 }
 div[data-testid="stButton"] > button:hover {
     border-color: #60a5fa !important;
     background: linear-gradient(135deg, #1d4ed8, #2563eb) !important;
     color: #ffffff !important;
-    box-shadow: 0 12px 30px rgba(37,99,235,0.28) !important;
+    transform: translateY(-1px);
+    box-shadow: 0 10px 28px rgba(37,99,235,0.22) !important;
 }
 div[data-testid="stButton"] > button p, div[data-testid="stButton"] > button span {
-    color: #f8fafc !important;
+    color: inherit !important;
 }
 </style>
 """, unsafe_allow_html=True)
 
 st.markdown('<div class="top-nav-row">', unsafe_allow_html=True)
 st.markdown('<div class="nav-hint">CFO Workflow</div>', unsafe_allow_html=True)
-nav_cols = st.columns(len(pages))
-for nav_page, nav_col in zip(pages, nav_cols):
-    is_current = selected_page == nav_page
-    button_label = ("✓ " if is_current else "") + nav_page
-    if nav_col.button(button_label, key=f"nav_{page_slug_map[nav_page]}", use_container_width=True):
-        st.query_params["page"] = page_slug_map[nav_page]
-        st.rerun()
+primary_pages = ["📊 Dashboard", "📉 Business Analytics", "🌐 Market Research", "📈 Reports", "🧠 Insights"]
+secondary_pages = ["🏠 Home", "📥 Import Centre", "💰 Working Capital Centre", "📤 Downloads"]
+for row_index, row_pages in enumerate([primary_pages, secondary_pages]):
+    nav_cols = st.columns(len(row_pages))
+    for nav_page, nav_col in zip(row_pages, nav_cols):
+        is_current = selected_page == nav_page
+        button_label = ("✓ " if is_current else "") + nav_page
+        if nav_col.button(button_label, key=f"nav_{row_index}_{page_slug_map[nav_page]}", use_container_width=True):
+            st.query_params["page"] = page_slug_map[nav_page]
+            st.rerun()
 st.markdown('</div>', unsafe_allow_html=True)
 
 profile = st.session_state.get("company_profile", {}) or {}
@@ -601,135 +552,25 @@ meta_cols[1].caption(f"Industry: {profile.get('Industry', 'Not set')}")
 meta_cols[2].caption(f"Period: {get_report_period_label(profile)}")
 meta_cols[3].caption(f"Readiness: {score}/100")
 
-# Workflow status shown on every page
+# Workflow status is now shown inside the Dashboard command centre instead of as large global blocks.
 profile_done = bool((st.session_state.get("company_profile") or {}).get("Company Name"))
 data_loaded = st.session_state.get("mapped") is not None
 validation_ok = bool(st.session_state.get("validation_passed")) if data_loaded else False
 reports_ready = st.session_state.get("consolidated_pnl") is not None
 insights_ready = bool(st.session_state.get("ai_commentary"))
 
-steps = [
-    ("1 Configure", profile_done),
-    ("2 Upload", data_loaded),
-    ("3 Validate", validation_ok),
-    ("4 Reports", reports_ready),
-    ("5 Insights", insights_ready),
-]
-step_cols = st.columns(len(steps))
-for idx, ((label, done), col) in enumerate(zip(steps, step_cols)):
-    cls = "workflow-step-done" if done else ("workflow-step-active" if (idx == 0 and not profile_done) or (idx == 1 and profile_done and not data_loaded) or (idx == 2 and data_loaded and not validation_ok) else "")
-    col.markdown(f'<div class="workflow-step {cls}">{"✓ " if done else ""}{label}</div>', unsafe_allow_html=True)
-
-st.markdown("""
-<style>
-/* Floating AI CFO launcher. Clicking toggles the panel. */
-.st-key-open_ai_cfo_global button {
-    position: fixed !important;
-    right: 26px !important;
-    bottom: 28px !important;
-    z-index: 999999 !important;
-    width: 72px !important;
-    height: 72px !important;
-    min-height: 72px !important;
-    border-radius: 50% !important;
-    background: linear-gradient(135deg, #0f766e, #2563eb, #7c3aed) !important;
-    color: #ffffff !important;
-    font-size: 30px !important;
-    border: 2px solid rgba(255,255,255,0.9) !important;
-    box-shadow: 0 18px 45px rgba(37,99,235,0.38) !important;
-    animation: aiFloat 2.8s ease-in-out infinite, aiPulse 1.8s ease-in-out infinite;
-}
-.st-key-open_ai_cfo_global button p { color: #ffffff !important; font-size: 30px !important; }
-.st-key-open_ai_cfo_global button:hover {
-    transform: scale(1.08) !important;
-    box-shadow: 0 20px 55px rgba(124,58,237,0.45) !important;
-}
-
-/* Chatbot overlay panel. It is fixed and does NOT change page layout. */
-.st-key-ai_cfo_overlay_panel {
-    position: fixed !important;
-    right: 24px !important;
-    bottom: 112px !important;
-    width: min(430px, calc(100vw - 32px)) !important;
-    max-height: calc(100vh - 150px) !important;
-    z-index: 999998 !important;
-    overflow: auto !important;
-    border: 1px solid rgba(96,165,250,0.38) !important;
-    background: linear-gradient(180deg, rgba(15,23,42,0.98), rgba(17,24,39,0.98)) !important;
-    border-radius: 24px !important;
-    padding: 1rem !important;
-    box-shadow: 0 24px 70px rgba(0,0,0,0.48) !important;
-}
-.st-key-ai_cfo_overlay_panel * { color: #f8fafc; }
-.st-key-ai_cfo_overlay_panel label, .st-key-ai_cfo_overlay_panel p { color: #dbeafe !important; }
-.st-key-ai_cfo_overlay_panel textarea, .st-key-ai_cfo_overlay_panel input {
-    background: rgba(255,255,255,0.08) !important;
-    color: #ffffff !important;
-    border: 1px solid rgba(148,163,184,0.45) !important;
-    border-radius: 12px !important;
-}
-.st-key-ai_cfo_overlay_panel textarea::placeholder, .st-key-ai_cfo_overlay_panel input::placeholder { color: #cbd5e1 !important; }
-.ai-overlay-title {font-size:1.2rem;font-weight:850;color:#f8fafc;margin-bottom:0.25rem;}
-.ai-overlay-sub {color:#cbd5e1;font-size:0.9rem;margin-bottom:0.85rem;line-height:1.35;}
-.ai-bubble-user {background:#2563eb;color:#fff;border-radius:16px 16px 4px 16px;padding:0.68rem 0.78rem;margin:0.35rem 0 0.35rem auto;max-width:88%;font-size:0.92rem;}
-.ai-bubble-assistant {background:rgba(255,255,255,0.08);color:#f8fafc;border:1px solid rgba(148,163,184,0.24);border-radius:16px 16px 16px 4px;padding:0.68rem 0.78rem;margin:0.35rem auto 0.35rem 0;max-width:94%;font-size:0.92rem;}
-.ai-panel-note {color:#93c5fd;font-size:0.78rem;margin-top:0.45rem;}
-@media (max-width: 768px) {
-    .st-key-open_ai_cfo_global button { right: 16px !important; bottom: 18px !important; width: 62px !important; height: 62px !important; min-height: 62px !important; }
-    .st-key-ai_cfo_overlay_panel { right: 12px !important; left: 12px !important; bottom: 92px !important; width: auto !important; max-height: calc(100vh - 120px) !important; }
-}
-</style>
-""", unsafe_allow_html=True)
-
-if st.button("🤖", key="open_ai_cfo_global", help="Open / close AI CFO Assistant"):
-    st.session_state["ai_cfo_panel_open"] = not st.session_state.get("ai_cfo_panel_open", False)
-    st.rerun()
-
-# Global AI CFO overlay panel. Fixed position, so it does not disturb page alignment.
-if st.session_state.get("ai_cfo_panel_open"):
-    with st.container(key="ai_cfo_overlay_panel"):
-        st.markdown('<div class="ai-overlay-title">🤖 AI CFO Assistant</div>', unsafe_allow_html=True)
-        st.markdown('<div class="ai-overlay-sub">Ask upload questions before data, or CFO-style questions after upload. This panel floats above the page and will not move your dashboard or reports.</div>', unsafe_allow_html=True)
-
-        close_col, clear_col = st.columns(2)
-        if close_col.button("Close", use_container_width=True, key="close_ai_cfo_panel"):
-            st.session_state["ai_cfo_panel_open"] = False
-            st.rerun()
-        if clear_col.button("Clear", use_container_width=True, key="clear_ai_cfo_panel"):
-            st.session_state["ai_cfo_chat_messages"] = []
-            st.rerun()
-
-        chat_mode_inline = st.selectbox(
-            "Mode",
-            ["Auto", "General Help", "Data-specific CFO Analysis", "Internet & Benchmark Research"],
-            key="global_ai_cfo_mode"
-        )
-
-        if not st.session_state.get("ai_cfo_chat_messages"):
-            st.markdown('<div class="ai-bubble-assistant">Hi, I’m your AI CFO. Ask me about upload formats, mapping, validation, benchmarks, forecasts, or your uploaded financial data.</div>', unsafe_allow_html=True)
-
-        for msg in st.session_state.get("ai_cfo_chat_messages", [])[-8:]:
-            role = msg.get("role", "assistant")
-            content = msg.get("content", "")
-            if role == "user":
-                st.markdown(f'<div class="ai-bubble-user">{content}</div>', unsafe_allow_html=True)
-            else:
-                st.markdown(f'<div class="ai-bubble-assistant">{content}</div>', unsafe_allow_html=True)
-
-        with st.form("ai_cfo_overlay_form", clear_on_submit=True):
-            user_question = st.text_area("Ask a question", placeholder="Example: Why is gross margin down?", height=85, key="ai_cfo_overlay_question")
-            send_col, hint_col = st.columns([0.42, 0.58])
-            send_clicked = send_col.form_submit_button("Send", use_container_width=True)
-            hint_col.markdown('<div class="ai-panel-note">Use Close or click 🤖 again to hide this chat.</div>', unsafe_allow_html=True)
-
-        if send_clicked and user_question.strip():
-            st.session_state["ai_cfo_chat_messages"].append({"role": "user", "content": user_question.strip()})
-            with st.spinner("AI CFO is thinking..."):
-                inline_answer = answer_ai_cfo_question(user_question.strip(), mode=chat_mode_inline)
-            st.session_state["ai_cfo_chat_messages"].append({"role": "assistant", "content": inline_answer})
-            st.rerun()
-
 if selected_page == "🏠 Home":
+    render_v1_onboarding_dialog()
+    profile = st.session_state.get("company_profile", {}) or {}
+    report = st.session_state.get("last_validation_report") or {}
+    score = report.get("score", 100 if isinstance(st.session_state.get("mapped"), pd.DataFrame) and not st.session_state.get("mapped").empty else 0)
+    profile_done = bool(profile.get("Company Name"))
+    data_loaded = st.session_state.get("mapped") is not None
+    validation_ok = bool(st.session_state.get("validation_passed")) if data_loaded else False
+    reports_ready = st.session_state.get("consolidated_pnl") is not None
+    insights_ready = bool(st.session_state.get("ai_commentary"))
+    render_v1_home_intro(profile, score, profile_done, data_loaded, validation_ok, reports_ready, insights_ready)
+    render_v1_data_source_cards()
     profile = st.session_state.get("company_profile", {}) or {}
     report = st.session_state.get("last_validation_report") or {}
     critical = report.get("critical", [])
@@ -820,9 +661,9 @@ if selected_page == "🏠 Home":
                 st.session_state["company_profile"] = {"Company Name": company_name.strip(), "Industry": industry, "Country": country, "State / Region": state_region, "Financial Year": financial_year, "Report Period": report_period.strip(), "Period Start Date": str(period_start_date) if period_start_date else "", "Period End Date": str(period_end_date) if period_end_date else "", "Currency": currency if currency != "Select Currency" else "", "Tax Identifier": tax_identifier, "Reporting Period": reporting_period, "Reporting Structure": reporting_structure, "Benchmark Group": benchmark_group, "Business Notes": business_notes}
                 st.session_state["reporting_structure"] = reporting_structure
                 st.session_state["save_run_preference"] = save_run_preference
-                st.success("Company profile saved. You can now go to Data Upload.")
+                st.success("Company profile saved. You can now go to Import Centre.")
     with h2:
-        if st.button("Go to Data Upload", use_container_width=True, key="home_go_upload"):
+        if st.button("Go to Import Centre", use_container_width=True, key="home_go_upload"):
             st.query_params["page"] = "upload"
             st.rerun()
     with h3:
@@ -839,7 +680,7 @@ if selected_page == "🏠 Home":
         selected_currency = profile.get("Currency", "AUD") if profile else "AUD"
         default_target_currency = selected_currency if selected_currency and selected_currency != "Select Currency" else currency_for_country(selected_country)
 
-        st.info("Optional setup for FX, country indicators and starter industry benchmarks. Uploaded benchmark files are still added from Data Upload, but external benchmark setup belongs here with the company profile.")
+        st.info("Optional setup for FX, country indicators and starter industry benchmarks. Uploaded benchmark files are still added from Import Centre, but external benchmark setup belongs here with the company profile.")
         fx1, fx2, fx3 = st.columns(3)
         with fx1:
             fx_base = st.selectbox("FX Base Currency", ["AUD", "INR", "USD", "GBP", "CAD", "NZD", "EUR"], index=0)
@@ -896,15 +737,15 @@ if selected_page == "🏠 Home":
     else:
         st.info("Save company profile, then upload data to activate the Validation Centre.")
 
-elif selected_page == "📁 Data Upload":
-    st.markdown('<div class="section-title-row"><div class="section-title-icon">📁</div><div class="section-title-text">Data Upload</div></div>', unsafe_allow_html=True)
+elif selected_page == "📥 Import Centre":
     profile = st.session_state.get("company_profile", {}) or {}
     if not profile or not profile.get("Company Name"):
-        st.warning("Please complete Company Setup on the Home page before uploading files.")
+        st.warning("Please complete Company Setup on the Home page before importing files.")
         if st.button("Go to Home Setup", use_container_width=True, key="upload_go_home_setup"):
             st.query_params["page"] = "home"
             st.rerun()
     else:
+        render_v1_import_intro(profile)
         st.markdown(f"""
         <div class="upload-intro">
             <b>Uploading for:</b> {profile.get("Company Name", "")} &nbsp; | &nbsp;
@@ -1211,68 +1052,30 @@ elif selected_page == "📁 Data Upload":
                 )
 
 elif selected_page == "📊 Dashboard":
-    st.subheader("Dashboard")
-    st.caption(f"Reporting period: {get_report_period_label(st.session_state.get('company_profile', {}))}")
-    if st.session_state["mapped"] is None:
-        st.warning("Please complete setup and load files first.")
-    elif not st.session_state["validation_passed"]:
-        st.error("Resolve unmapped GL rows before using dashboard.")
-    else:
-        exec_df = st.session_state["executive_summary_df"]
-        if exec_df is not None and not exec_df.empty:
-            c1, c2, c3 = st.columns(3)
-            c1.metric("Green", int((exec_df["Status"] == "Green").sum()))
-            c2.metric("Amber", int((exec_df["Status"] == "Amber").sum()))
-            c3.metric("Red", int((exec_df["Status"] == "Red").sum()))
-        k = kpi_map_from_df(st.session_state["consolidated_kpis"])
-        ar, ap = st.session_state.get("ar_summary"), st.session_state.get("ap_summary")
-        st.markdown("### Core KPI Snapshot")
-        k1, k2, k3, k4, k5 = st.columns(5)
-        k1.metric("Revenue", f"{k.get('Revenue', 0):,.2f}")
-        k2.metric("Gross Profit", f"{k.get('Gross Profit', 0):,.2f}")
-        k3.metric("Gross Margin %", f"{k.get('Gross Margin %', 0):.2f}%")
-        k4.metric("Operating Profit", f"{k.get('Operating Profit', 0):,.2f}")
-        k5.metric("Operating Margin %", f"{k.get('Operating Margin %', 0):.2f}%")
-        k6, k7, k8, k9, k10 = st.columns(5)
-        k6.metric("Opex %", f"{k.get('Opex as % of Revenue', 0):.2f}%")
-        k7.metric("Total AR", f"{ar['total']:,.2f}" if ar else "0.00")
-        k8.metric("AR Overdue %", f"{ar['overdue_pct']:.2f}%" if ar else "0.00%")
-        k9.metric("Total AP", f"{ap['total']:,.2f}" if ap else "0.00")
-        k10.metric("AP Overdue %", f"{ap['overdue_pct']:.2f}%" if ap else "0.00%")
-        st.markdown("### Key Charts")
-        if st.session_state["budget_summary"] is not None and not st.session_state["budget_summary"].empty:
-            st.markdown("**Budget vs Actual**")
-            st.bar_chart(st.session_state["budget_summary"].set_index("Reporting Group")[["Actual", "Budget"]])
-        if st.session_state["forecast_pnl_compare"] is not None and not st.session_state["forecast_pnl_compare"].empty:
-            st.markdown("**Actual vs Forecast P&L**")
-            st.bar_chart(st.session_state["forecast_pnl_compare"].groupby("Reporting Group")[["Actual", "Forecast"]].sum())
-        if st.session_state["previous_year_pnl_compare"] is not None and not st.session_state["previous_year_pnl_compare"].empty:
-            st.markdown("**Actual vs Previous Year P&L**")
-            st.bar_chart(st.session_state["previous_year_pnl_compare"].groupby("Reporting Group")[["Actual", "Previous Year"]].sum())
-        if st.session_state["benchmark_compare"] is not None and not st.session_state["benchmark_compare"].empty:
-            st.markdown("**Industry Benchmark Comparison**")
-            st.bar_chart(st.session_state["benchmark_compare"].set_index("Metric")[["Current Value", "Benchmark Value"]])
+    profile = st.session_state.get("company_profile", {}) or {}
+    report = st.session_state.get("last_validation_report") or {}
+    score = report.get("score", 100 if isinstance(st.session_state.get("mapped"), pd.DataFrame) and not st.session_state.get("mapped").empty else 0)
+    profile_done = bool(profile.get("Company Name"))
+    data_loaded = st.session_state.get("mapped") is not None
+    validation_ok = bool(st.session_state.get("validation_passed")) if data_loaded else False
+    reports_ready = st.session_state.get("consolidated_pnl") is not None
+    insights_ready = bool(st.session_state.get("ai_commentary"))
+    render_v1_dashboard_command_center(
+        profile,
+        score,
+        profile_done,
+        data_loaded,
+        validation_ok,
+        reports_ready,
+        insights_ready,
+        st.session_state,
+    )
 
-        if st.session_state.get("fx_rate_info"):
-            with st.expander("FX Rate Used"):
-                st.dataframe(pd.DataFrame([st.session_state["fx_rate_info"]]), use_container_width=True, hide_index=True)
-        if st.session_state.get("country_indicators") is not None:
-            with st.expander("Country Indicators"):
-                st.dataframe(st.session_state["country_indicators"], use_container_width=True, hide_index=True)
-        branch_rows = []
-        if st.session_state["branch_outputs"]:
-            for branch, reports in st.session_state["branch_outputs"].items():
-                bk = kpi_map_from_df(reports.get("kpis"))
-                branch_rows.append({"Branch": branch, "Revenue": bk.get("Revenue", 0), "Gross Margin %": bk.get("Gross Margin %", 0), "Operating Margin %": bk.get("Operating Margin %", 0)})
-        branch_df = pd.DataFrame(branch_rows)
-        if not branch_df.empty:
-            c1, c2 = st.columns(2)
-            with c1:
-                st.markdown("**Revenue by Branch**")
-                st.bar_chart(branch_df.set_index("Branch")[["Revenue"]])
-            with c2:
-                st.markdown("**Operating Margin % by Branch**")
-                st.bar_chart(branch_df.set_index("Branch")[["Operating Margin %"]])
+elif selected_page == "📉 Business Analytics":
+    render_business_analytics_page()
+
+elif selected_page == "🌐 Market Research":
+    render_market_research_page()
 
 elif selected_page == "📈 Reports":
     st.subheader("Reports")
@@ -1362,8 +1165,8 @@ elif selected_page == "📈 Reports":
             st.markdown("### Benchmark Comparison")
             st.dataframe(style_dataframe(st.session_state["benchmark_compare"]), use_container_width=True)
 
-elif selected_page == "💰 Working Capital":
-    st.subheader("Working Capital")
+elif selected_page == "💰 Working Capital Centre":
+    st.subheader("Working Capital Centre")
     st.caption(f"Reporting period: {get_report_period_label(st.session_state.get('company_profile', {}))}")
     wc_ar, wc_ap = st.tabs(["AR", "AP"])
     with wc_ar:
