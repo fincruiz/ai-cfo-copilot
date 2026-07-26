@@ -33,8 +33,12 @@ from ui.v1_ui import *
 from ui.login_flow import render_login_and_workspace_gate
 from ui.product_experience import apply_product_motion, render_demo_experience
 from ui.business_analytics_ui import render_business_analytics_page, render_market_research_page
+from ui.board_reporting_ui import render_board_report_page, render_ratio_page
+from ui.board_meeting_ui import render_board_meeting_page
+from ui.enterprise_v2 import inject_enterprise_v2_css, render_enterprise_sidebar, render_enterprise_topbar, render_dashboard_v2_summary
 
-st.set_page_config(page_title="AI CFO Copilot", layout="wide")
+st.set_page_config(page_title="AI CFO Copilot", page_icon="◈", layout="wide", initial_sidebar_state="expanded")
+inject_enterprise_v2_css()
 
 # Global application alignment and overlay fixes
 st.markdown("""
@@ -55,13 +59,14 @@ html, body { overflow-x: hidden; }
 }
 /* Keep global AI launcher visible on every page and independent of page flow. */
 .st-key-open_ai_cfo_global {
-    position: fixed !important; right: 24px !important; bottom: 24px !important;
-    z-index: 1000000 !important; width: 68px !important; height: 68px !important;
+    position: fixed !important; right: 0 !important; top: 44vh !important; bottom: auto !important;
+    transform: translateY(-50%) !important; z-index: 1000000 !important;
+    width: 54px !important; height: 132px !important;
 }
-.st-key-open_ai_cfo_global > div { width:68px !important; height:68px !important; }
+.st-key-open_ai_cfo_global > div { width:54px !important; height:132px !important; }
 .st-key-open_ai_cfo_global button {
-    position: static !important; width:68px !important; height:68px !important; min-height:68px !important;
-    border-radius:50% !important; margin:0 !important; padding:0 !important;
+    position: static !important; width:54px !important; height:132px !important; min-height:132px !important;
+    border-radius:18px 0 0 18px !important; margin:0 !important; padding:0 !important;
 }
 /* Prevent tour coach from colliding with the AI launcher. */
 .demo-guide-shell { right: 24px !important; bottom: 112px !important; }
@@ -164,6 +169,26 @@ st.markdown("""
 
 
 
+# Enterprise V2.1 final visual overrides: lighter dark palette, persistent navigation, edge Copilot tab.
+st.markdown("""
+<style>
+:root{--bg:#111827!important;--panel:#1b273b!important;--panel2:#24324a!important;--panel3:#2d3d58!important;}
+.stApp{background:radial-gradient(circle at 82% -10%,rgba(91,140,255,.16),transparent 35%),radial-gradient(circle at 10% 105%,rgba(53,212,232,.09),transparent 30%),linear-gradient(180deg,#172238 0%,#111827 100%)!important;}
+section[data-testid="stSidebar"],[data-testid="stSidebar"]{display:block!important;visibility:visible!important;opacity:1!important;transform:translateX(0)!important;left:0!important;margin-left:0!important;width:260px!important;min-width:260px!important;max-width:260px!important;background:linear-gradient(180deg,#202d43,#172238)!important;}
+section[data-testid="stSidebar"][aria-expanded="false"]{display:block!important;transform:translateX(0)!important;width:260px!important;min-width:260px!important;max-width:260px!important;}
+[data-testid="collapsedControl"],[data-testid="stSidebarCollapseButton"],button[aria-label*="sidebar" i]{display:none!important;}
+.v2-topbar{background:rgba(35,48,70,.88)!important;}
+.v2-card,.main-card,.aicfo-card,.feature-card,.v2-panel{background:linear-gradient(180deg,rgba(39,53,77,.97),rgba(28,39,59,.97))!important;}
+.v2-kpi{background:linear-gradient(145deg,rgba(43,59,84,.98),rgba(31,43,64,.98))!important;}
+.st-key-open_ai_cfo_global,div[class*="st-key-open_ai_cfo_global"]{position:fixed!important;right:0!important;top:44vh!important;bottom:auto!important;transform:translateY(-50%)!important;width:54px!important;height:132px!important;z-index:2147483000!important;margin:0!important;padding:0!important;}
+.st-key-open_ai_cfo_global button,div[class*="st-key-open_ai_cfo_global"] button{width:54px!important;height:132px!important;min-height:132px!important;border-radius:18px 0 0 18px!important;background:linear-gradient(180deg,#4f8cff,#745ee8)!important;border:1px solid rgba(255,255,255,.3)!important;border-right:0!important;box-shadow:0 16px 42px rgba(44,76,165,.38)!important;animation:v2Pulse 3.2s ease-in-out infinite!important;padding:.55rem .2rem!important;white-space:pre-line!important;}
+.st-key-open_ai_cfo_global button p{font-size:17px!important;line-height:1.05!important;color:#fff!important;font-weight:850!important;}
+.st-key-open_ai_cfo_global button:hover{width:62px!important;transform:translateX(-8px)!important;box-shadow:0 18px 50px rgba(76,92,210,.48)!important;}
+.st-key-ai_cfo_overlay_panel{right:66px!important;top:50%!important;bottom:auto!important;transform:translateY(-50%)!important;width:min(440px,calc(100vw - 96px))!important;max-height:calc(100vh - 70px)!important;background:linear-gradient(180deg,rgba(39,53,77,.99),rgba(25,36,54,.99))!important;}
+@media(max-width:900px){section[data-testid="stSidebar"],[data-testid="stSidebar"]{width:220px!important;min-width:220px!important;max-width:220px!important}.st-key-open_ai_cfo_global,div[class*="st-key-open_ai_cfo_global"]{top:auto!important;right:14px!important;bottom:16px!important;transform:none!important;width:58px!important;height:58px!important}.st-key-open_ai_cfo_global button,div[class*="st-key-open_ai_cfo_global"] button{width:58px!important;height:58px!important;min-height:58px!important;border-radius:18px!important}.st-key-ai_cfo_overlay_panel{left:12px!important;right:12px!important;top:auto!important;bottom:86px!important;transform:none!important;width:auto!important;max-height:calc(100vh - 110px)!important}}
+</style>
+""", unsafe_allow_html=True)
+
 # ----------------------------
 # Generic helpers
 # ----------------------------
@@ -202,7 +227,7 @@ st.markdown("""
 # Session defaults
 # ----------------------------
 for key in [
-    "gl", "coa", "kpi_master", "latest_bs", "mapped", "pnl_mapped", "bs_mapped", "unmapped", "consolidated_pnl", "consolidated_bs", "consolidated_kpis", "branch_outputs", "branch_summary", "detected_branches", "validation_passed", "company_profile", "bs_disclaimer", "ai_commentary", "prior_pnl", "prior_bs", "prior_kpis", "save_run_preference", "anomaly_flags", "ar_df", "ap_df", "ar_summary", "ap_summary", "budget_df", "budget_compare", "budget_summary", "benchmark_df", "py_compare", "benchmark_compare", "monthly_actuals", "monthly_branch_actuals", "executive_summary_df", "forecast_pnl", "forecast_bs", "previous_year_pnl", "forecast_pnl_compare", "previous_year_pnl_compare", "fx_rate_info", "country_indicators", "external_benchmark_df", "consolidated_pnl_detail", "consolidated_bs_detail", "coa_duplicate_rows", "coa_mapping_review", "financial_logic_review", "last_validation_report", "reporting_structure", "ai_cfo_chat_messages", "app_logged_in", "auth_mode", "onboarding_step", "workspace_modules", "external_research_pack", "custom_research_result"
+    "gl", "coa", "kpi_master", "latest_bs", "mapped", "pnl_mapped", "bs_mapped", "unmapped", "consolidated_pnl", "consolidated_bs", "consolidated_kpis", "branch_outputs", "branch_summary", "detected_branches", "validation_passed", "company_profile", "bs_disclaimer", "ai_commentary", "prior_pnl", "prior_bs", "prior_kpis", "save_run_preference", "anomaly_flags", "ar_df", "ap_df", "ar_summary", "ap_summary", "budget_df", "budget_compare", "budget_summary", "benchmark_df", "py_compare", "benchmark_compare", "monthly_actuals", "monthly_branch_actuals", "executive_summary_df", "forecast_pnl", "forecast_bs", "previous_year_pnl", "forecast_pnl_compare", "previous_year_pnl_compare", "fx_rate_info", "country_indicators", "external_benchmark_df", "consolidated_pnl_detail", "consolidated_bs_detail", "coa_duplicate_rows", "coa_mapping_review", "financial_logic_review", "last_validation_report", "reporting_structure", "ai_cfo_chat_messages", "app_logged_in", "auth_mode", "onboarding_step", "workspace_modules", "external_research_pack", "custom_research_result", "company_logo_bytes", "company_logo_name"
 ]:
     if key not in st.session_state:
         st.session_state[key] = None
@@ -223,10 +248,12 @@ st.markdown("""
 /* Floating AI CFO launcher. Clicking toggles the panel. */
 .st-key-open_ai_cfo_global, div[class*="st-key-open_ai_cfo_global"] {
     position: fixed !important;
-    right: 24px !important;
-    bottom: 24px !important;
-    width:72px !important;
-    height:72px !important;
+    right: 0 !important;
+    top: 44vh !important;
+    bottom: auto !important;
+    transform: translateY(-50%) !important;
+    width:54px !important;
+    height:132px !important;
     z-index:2147483000 !important;
     margin:0 !important;
     padding:0 !important;
@@ -236,18 +263,18 @@ st.markdown("""
     right: auto !important;
     bottom: auto !important;
     z-index: 2147483000 !important;
-    width: 72px !important;
-    height: 72px !important;
-    min-height: 72px !important;
-    border-radius: 50% !important;
-    background: linear-gradient(135deg, #0f766e, #2563eb, #7c3aed) !important;
+    width: 54px !important;
+    height: 132px !important;
+    min-height: 132px !important;
+    border-radius: 18px 0 0 18px !important;
+    background: linear-gradient(180deg, #4f8cff, #745ee8) !important;
     color: #ffffff !important;
-    font-size: 30px !important;
+    font-size: 20px !important;
     border: 2px solid rgba(255,255,255,0.9) !important;
     box-shadow: 0 18px 45px rgba(37,99,235,0.38) !important;
     animation: aiFloat 2.8s ease-in-out infinite, aiPulse 1.8s ease-in-out infinite;
 }
-.st-key-open_ai_cfo_global button p { color: #ffffff !important; font-size: 30px !important; }
+.st-key-open_ai_cfo_global button p { color: #ffffff !important; font-size: 20px !important; }
 .st-key-open_ai_cfo_global button:hover {
     transform: scale(1.08) !important;
     box-shadow: 0 20px 55px rgba(124,58,237,0.45) !important;
@@ -256,14 +283,16 @@ st.markdown("""
 /* Chatbot overlay panel. It is fixed and does NOT change page layout. */
 .st-key-ai_cfo_overlay_panel {
     position: fixed !important;
-    right: 24px !important;
-    bottom: 112px !important;
-    width: min(430px, calc(100vw - 32px)) !important;
+    right: 66px !important;
+    top: 50% !important;
+    bottom: auto !important;
+    transform: translateY(-50%) !important;
+    width: min(440px, calc(100vw - 96px)) !important;
     max-height: calc(100vh - 150px) !important;
     z-index: 2147482999 !important;
     overflow: auto !important;
     border: 1px solid rgba(96,165,250,0.38) !important;
-    background: linear-gradient(180deg, rgba(15,23,42,0.98), rgba(17,24,39,0.98)) !important;
+    background: linear-gradient(180deg, rgba(38,51,73,0.99), rgba(25,36,54,0.99)) !important;
     border-radius: 24px !important;
     padding: 1rem !important;
     box-shadow: 0 24px 70px rgba(0,0,0,0.48) !important;
@@ -289,7 +318,44 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-if st.button("🤖", key="open_ai_cfo_global", help="Open / close AI CFO Assistant"):
+
+# Draggable AI assistant launcher. Its browser position is remembered and it remains fixed while pages scroll.
+import streamlit.components.v1 as components
+
+def render_draggable_ai_launcher():
+    components.html(r"""
+<script>
+(function(){
+ const doc=window.parent.document;
+ let orb=doc.getElementById('aicfo-draggable-orb');
+ if(!orb){
+   orb=doc.createElement('button'); orb.id='aicfo-draggable-orb'; orb.type='button'; orb.title='Drag anywhere · click to open AI CFO';
+   orb.innerHTML='<span class="spark">✦</span><span class="bot">AI</span><span class="online"></span>';
+   doc.body.appendChild(orb);
+   const style=doc.createElement('style'); style.id='aicfo-draggable-style'; style.textContent=`
+   .st-key-open_ai_cfo_global{position:fixed!important;left:-9999px!important;top:-9999px!important;opacity:0!important;pointer-events:none!important}
+   #aicfo-draggable-orb{position:fixed;z-index:2147483646;width:72px;height:72px;border-radius:24px;border:2px solid rgba(255,255,255,.82);background:linear-gradient(135deg,#19c6dd,#4f8cff 52%,#8266ee);color:white;display:grid;place-items:center;box-shadow:0 18px 48px rgba(37,81,190,.48);cursor:grab;user-select:none;touch-action:none;animation:aicfoFloat 3.2s ease-in-out infinite;transition:box-shadow .2s,filter .2s,transform .15s}
+   #aicfo-draggable-orb:hover{filter:brightness(1.1);box-shadow:0 24px 62px rgba(74,95,218,.58)}#aicfo-draggable-orb.dragging{cursor:grabbing;animation:none;transform:scale(1.06)}
+   #aicfo-draggable-orb .spark{font-size:22px;position:absolute;top:9px}#aicfo-draggable-orb .bot{font-size:18px;font-weight:900;position:absolute;bottom:12px}#aicfo-draggable-orb .online{position:absolute;right:5px;bottom:5px;width:13px;height:13px;border-radius:50%;background:#32df89;border:2px solid white;box-shadow:0 0 15px #32df89}
+   @keyframes aicfoFloat{0%,100%{transform:translateY(0)}50%{transform:translateY(-8px)}}`;
+   doc.head.appendChild(style);
+ }
+ const saved=JSON.parse(localStorage.getItem('aicfo_orb_position')||'null');
+ const clamp=(v,min,max)=>Math.max(min,Math.min(max,v));
+ let x=saved?.x ?? (window.parent.innerWidth-100), y=saved?.y ?? (window.parent.innerHeight-115);
+ const place=()=>{x=clamp(x,8,window.parent.innerWidth-80);y=clamp(y,8,window.parent.innerHeight-80);orb.style.left=x+'px';orb.style.top=y+'px'};place();
+ let sx=0,sy=0,ox=0,oy=0,moved=false;
+ orb.onpointerdown=e=>{moved=false;sx=e.clientX;sy=e.clientY;ox=x;oy=y;orb.setPointerCapture(e.pointerId);orb.classList.add('dragging')};
+ orb.onpointermove=e=>{if(!orb.hasPointerCapture(e.pointerId))return;if(Math.abs(e.clientX-sx)+Math.abs(e.clientY-sy)>5)moved=true;x=ox+e.clientX-sx;y=oy+e.clientY-sy;place()};
+ orb.onpointerup=e=>{orb.releasePointerCapture(e.pointerId);orb.classList.remove('dragging');localStorage.setItem('aicfo_orb_position',JSON.stringify({x,y}));if(!moved){const b=doc.querySelector('.st-key-open_ai_cfo_global button');if(b)b.click()}};
+ window.parent.addEventListener('resize',place);
+})();
+</script>
+""", height=0, width=0)
+
+render_draggable_ai_launcher()
+
+if st.button("✦\nAI", key="open_ai_cfo_global", help="Open / close AI CFO Assistant"):
     st.session_state["ai_cfo_panel_open"] = not st.session_state.get("ai_cfo_panel_open", False)
     st.rerun()
 
@@ -455,19 +521,14 @@ st.markdown("""
 </div>
 """, unsafe_allow_html=True)
 
-pages = [
-    "📊 Dashboard",
-    "📉 Business Analytics",
-    "🌐 Market Research",
-    "🏠 Home",
-    "📥 Import Centre",
-    "📈 Reports",
-    "💰 Working Capital Centre",
-    "🧠 Insights",
-    "📤 Downloads",
-]
+st.markdown("""
+<style>
+.v6-meeting-hero{padding:1.35rem 1.5rem;border-radius:24px;background:linear-gradient(120deg,rgba(54,90,148,.62),rgba(72,56,138,.48),rgba(32,104,121,.34));border:1px solid rgba(173,198,235,.30);box-shadow:0 20px 55px rgba(2,8,20,.22);animation:v6Meeting .5s cubic-bezier(.2,.8,.2,1) both}.v6-meeting-kicker{color:#9fddec;font-size:.72rem;font-weight:900;letter-spacing:.12em}.v6-meeting-title{font-size:2rem;color:#fff;font-weight:950;margin-top:.35rem}.v6-meeting-company{color:#d8e4f4;margin-top:.3rem}@keyframes v6Meeting{from{opacity:0;transform:scale(.98) translateY(12px)}to{opacity:1;transform:none}}
+.st-key-ai_cfo_overlay_panel{position:fixed!important;right:24px!important;top:90px!important;bottom:24px!important;transform:none!important;width:min(440px,calc(100vw - 48px))!important;overflow:auto!important;z-index:2147483600!important}
+</style>
+""",unsafe_allow_html=True)
 
-page_query = st.query_params.get("page", "")
+page_query = st.query_params.get("page", "dashboard")
 page_key_map = {
     "home": "🏠 Home",
     "upload": "📥 Import Centre",
@@ -475,82 +536,58 @@ page_key_map = {
     "analytics": "📉 Business Analytics",
     "research": "🌐 Market Research",
     "reports": "📈 Reports",
+    "ratios": "📐 Ratio Centre",
+    "board_report": "📘 Board Report",
+    "board_meeting": "🎬 Board Meeting",
     "working_capital": "💰 Working Capital Centre",
     "insights": "🧠 Insights",
     "downloads": "📤 Downloads",
 }
-page_slug_map = {v: k for k, v in page_key_map.items()}
 selected_page = page_key_map.get(page_query, "📊 Dashboard")
 
 # Demo mode has two genuinely different journeys: an interactive guided tour or free exploration.
 render_demo_experience()
 
-# Hide Streamlit's default sidebar completely. Navigation is handled by top action buttons.
-st.markdown("""
-<style>
-[data-testid="stSidebar"] {display: none !important;}
-[data-testid="collapsedControl"] {display: none !important;}
-.block-container {padding-top: 1.15rem; max-width: 1440px;}
-.top-nav-row {
-    padding: 0.65rem 0.75rem;
-    border: 1px solid rgba(148,163,184,0.20);
-    border-radius: 22px;
-    margin: 0.55rem 0 1rem 0;
-    background: linear-gradient(135deg, rgba(15,23,42,0.96), rgba(17,24,39,0.92));
-    box-shadow: 0 16px 45px rgba(2,6,23,0.24);
-}
-.nav-hint {
-    color: #93c5fd;
-    font-size: 0.78rem;
-    font-weight: 900;
-    letter-spacing: .08em;
-    text-transform: uppercase;
-    margin-bottom: 0.45rem;
-}
-div[data-testid="stButton"] > button {
-    border-radius: 999px !important;
-    border: 1px solid rgba(148,163,184,0.24) !important;
-    background: rgba(15,23,42,0.86) !important;
-    color: #e5e7eb !important;
-    box-shadow: none !important;
-    min-height: 2.35rem !important;
-    transition: all .18s ease !important;
-}
-div[data-testid="stButton"] > button:hover {
-    border-color: #60a5fa !important;
-    background: linear-gradient(135deg, #1d4ed8, #2563eb) !important;
-    color: #ffffff !important;
-    transform: translateY(-1px);
-    box-shadow: 0 10px 28px rgba(37,99,235,0.22) !important;
-}
-div[data-testid="stButton"] > button p, div[data-testid="stButton"] > button span {
-    color: inherit !important;
-}
-</style>
-""", unsafe_allow_html=True)
-
-st.markdown('<div class="top-nav-row">', unsafe_allow_html=True)
-st.markdown('<div class="nav-hint">CFO Workflow</div>', unsafe_allow_html=True)
-primary_pages = ["📊 Dashboard", "📉 Business Analytics", "🌐 Market Research", "📈 Reports", "🧠 Insights"]
-secondary_pages = ["🏠 Home", "📥 Import Centre", "💰 Working Capital Centre", "📤 Downloads"]
-for row_index, row_pages in enumerate([primary_pages, secondary_pages]):
-    nav_cols = st.columns(len(row_pages))
-    for nav_page, nav_col in zip(row_pages, nav_cols):
-        is_current = selected_page == nav_page
-        button_label = ("✓ " if is_current else "") + nav_page
-        if nav_col.button(button_label, key=f"nav_{row_index}_{page_slug_map[nav_page]}", use_container_width=True):
-            st.query_params["page"] = page_slug_map[nav_page]
-            st.rerun()
-st.markdown('</div>', unsafe_allow_html=True)
-
 profile = st.session_state.get("company_profile", {}) or {}
 report = st.session_state.get("last_validation_report") or {}
 score = report.get("score", 100 if isinstance(st.session_state.get("mapped"), pd.DataFrame) and not st.session_state.get("mapped").empty else 0)
-meta_cols = st.columns(4)
-meta_cols[0].caption(f"Company: {profile.get('Company Name', 'Not set')}")
-meta_cols[1].caption(f"Industry: {profile.get('Industry', 'Not set')}")
-meta_cols[2].caption(f"Period: {get_report_period_label(profile)}")
-meta_cols[3].caption(f"Readiness: {score}/100")
+period_label = get_report_period_label(profile)
+# Final shell overrides are injected after legacy styles so compact navigation and the AI launcher cannot be overridden.
+_sidebar_compact = bool(st.session_state.get("v2_sidebar_compact", False))
+_sidebar_width = "86px" if _sidebar_compact else "260px"
+st.markdown(f"""
+<style>
+section[data-testid="stSidebar"],[data-testid="stSidebar"]{{
+ width:{_sidebar_width}!important;min-width:{_sidebar_width}!important;max-width:{_sidebar_width}!important;
+ transform:none!important;visibility:visible!important;opacity:1!important;
+ transition:width .32s cubic-bezier(.2,.8,.2,1),min-width .32s cubic-bezier(.2,.8,.2,1),max-width .32s cubic-bezier(.2,.8,.2,1)!important;
+}}
+section[data-testid="stSidebar"][aria-expanded="false"]{{width:{_sidebar_width}!important;min-width:{_sidebar_width}!important;max-width:{_sidebar_width}!important;}}
+/* Compact AI pill: visible, animated and non-obstructive. */
+.st-key-open_ai_cfo_global,div[class*="st-key-open_ai_cfo_global"]{{position:fixed!important;right:22px!important;top:78px!important;bottom:auto!important;transform:none!important;width:auto!important;height:48px!important;z-index:2147483000!important;}}
+.st-key-open_ai_cfo_global button,div[class*="st-key-open_ai_cfo_global"] button{{
+ width:58px!important;height:48px!important;min-height:48px!important;border-radius:16px!important;padding:0 .9rem!important;
+ white-space:nowrap!important;overflow:hidden!important;background:linear-gradient(135deg,#4f8cff,#735ee8)!important;
+ animation:v5AIBreathe 3s ease-in-out infinite!important;transition:width .26s ease,transform .22s ease,filter .22s ease!important;
+}}
+.st-key-open_ai_cfo_global button p{{font-size:0!important;color:#fff!important;}}
+.st-key-open_ai_cfo_global button p:after{{content:"✦  AI CFO";font-size:14px!important;font-weight:850!important;}}
+.st-key-open_ai_cfo_global button:hover{{width:142px!important;transform:translateY(-2px)!important;filter:brightness(1.08)!important;}}
+.st-key-ai_cfo_overlay_panel{{right:22px!important;top:138px!important;bottom:auto!important;transform:none!important;width:min(440px,calc(100vw - 44px))!important;max-height:calc(100vh - 165px)!important;animation:v5DrawerIn .28s cubic-bezier(.2,.8,.2,1) both!important;}}
+@keyframes v5AIBreathe{{0%,100%{{box-shadow:0 12px 32px rgba(61,91,190,.32)}}50%{{box-shadow:0 16px 48px rgba(111,91,232,.54)}}}}
+@keyframes v5DrawerIn{{from{{opacity:0;transform:translateY(-8px) scale(.985)}}to{{opacity:1;transform:none}}}}
+/* Restore all native chart toolbar actions, including Show data and Show chart. */
+[data-testid="stElementToolbar"] button{{display:inline-flex!important;visibility:visible!important;opacity:1!important;}}
+@media(max-width:700px){{
+ section[data-testid="stSidebar"],[data-testid="stSidebar"]{{width:86px!important;min-width:86px!important;max-width:86px!important;}}
+ .st-key-open_ai_cfo_global,div[class*="st-key-open_ai_cfo_global"]{{right:14px!important;top:auto!important;bottom:16px!important;}}
+ .st-key-open_ai_cfo_global button,div[class*="st-key-open_ai_cfo_global"] button{{width:58px!important;border-radius:18px!important;}}
+ .st-key-ai_cfo_overlay_panel{{left:12px!important;right:12px!important;top:auto!important;bottom:78px!important;width:auto!important;max-height:calc(100vh - 105px)!important;}}
+}}
+</style>
+""", unsafe_allow_html=True)
+render_enterprise_sidebar(page_query if page_query in page_key_map else "dashboard", profile, period_label, score)
+render_enterprise_topbar(page_query if page_query in page_key_map else "dashboard", profile, period_label)
 
 # Workflow status is now shown inside the Dashboard command centre instead of as large global blocks.
 profile_done = bool((st.session_state.get("company_profile") or {}).get("Company Name"))
@@ -1060,6 +1097,9 @@ elif selected_page == "📊 Dashboard":
     validation_ok = bool(st.session_state.get("validation_passed")) if data_loaded else False
     reports_ready = st.session_state.get("consolidated_pnl") is not None
     insights_ready = bool(st.session_state.get("ai_commentary"))
+    render_dashboard_v2_summary(
+        profile, score, [profile_done, data_loaded, validation_ok, reports_ready, insights_ready], st.session_state
+    )
     render_v1_dashboard_command_center(
         profile,
         score,
@@ -1076,6 +1116,15 @@ elif selected_page == "📉 Business Analytics":
 
 elif selected_page == "🌐 Market Research":
     render_market_research_page()
+
+elif selected_page == "📐 Ratio Centre":
+    render_ratio_page()
+
+elif selected_page == "📘 Board Report":
+    render_board_report_page()
+
+elif selected_page == "🎬 Board Meeting":
+    render_board_meeting_page()
 
 elif selected_page == "📈 Reports":
     st.subheader("Reports")

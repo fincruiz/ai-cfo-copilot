@@ -91,6 +91,12 @@ def apply_business_analytics_style() -> None:
 
 
 def render_business_analytics_page() -> None:
+    reset_col, note_col = st.columns([0.20, 0.80])
+    with reset_col:
+        if st.button("↻ Reset charts", key="reset_analytics_charts", use_container_width=True, help="Restore charts if a browser data view was opened"):
+            st.rerun()
+    with note_col:
+        st.caption("Interactive charts support hover, zoom and download. The unstable data-view toggle has been removed.")
     apply_business_analytics_style()
     profile = st.session_state.get("company_profile", {}) or {}
     currency = str(profile.get("Currency") or "AUD")

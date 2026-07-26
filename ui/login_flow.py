@@ -95,7 +95,7 @@ def _inject_login_css() -> None:
         .login-kicker {position:relative;z-index:2;display:inline-flex;width:max-content;padding:.43rem .75rem;border-radius:999px;color:#dbeafe;background:rgba(37,99,235,.20);border:1px solid rgba(147,197,253,.30);font-size:.74rem;font-weight:900;letter-spacing:.08em;text-transform:uppercase;backdrop-filter:blur(10px);}
         .login-headline {position:relative;z-index:2;font-size:clamp(2.65rem,4.2vw,4.7rem);line-height:.98;letter-spacing:-.065em;font-weight:950;color:#fff;margin:.75rem 0 .85rem;max-width:760px;text-shadow:0 12px 40px rgba(0,0,0,.35);}
         .login-copy {position:relative;z-index:2;font-size:1.02rem;line-height:1.65;color:#dbeafe;max-width:650px;}
-        .floating-finance-card {display:none !important;}
+        .floating-finance-card {position:absolute;z-index:3;width:172px;padding:.82rem .9rem;border-radius:17px;border:1px solid rgba(191,219,254,.26);background:linear-gradient(145deg,rgba(22,39,68,.82),rgba(18,26,47,.72));backdrop-filter:blur(16px);box-shadow:0 20px 55px rgba(0,0,0,.28);animation:cardFloat 5.8s ease-in-out infinite;}
         .ffc-1{right:7%;top:19%;}.ffc-2{right:13%;bottom:17%;animation-delay:-2.2s}.ffc-3{left:8%;bottom:10%;animation-delay:-3.6s}
         .ffc-label{font-size:.67rem;color:#93c5fd;text-transform:uppercase;letter-spacing:.08em;font-weight:900}.ffc-value{font-size:1.24rem;color:#fff;font-weight:950;margin-top:.15rem}.ffc-trend{font-size:.72rem;color:#86efac;font-weight:800;margin-top:.12rem}
         .login-feature-row {position:relative;z-index:2;display:flex;flex-wrap:wrap;gap:.55rem;margin-top:1.05rem;}
@@ -147,6 +147,23 @@ def _inject_login_css() -> None:
           .block-container{display:block;padding:.45rem !important}.enterprise-login{grid-template-columns:1fr;min-height:auto}.login-visual{min-height:430px;padding:1.35rem}.login-actions{padding:1.3rem;min-height:auto}.floating-finance-card{display:none}.login-proof{display:none}.login-headline{font-size:2.55rem}.login-feature-row{margin-bottom:.4rem}
         }
         @media(prefers-reduced-motion:reduce){*,*:before,*:after{animation-duration:.01ms !important;animation-iteration-count:1 !important;transition-duration:.01ms !important}}
+
+        /* V4 landing-page interaction and contrast */
+        .st-key-open_ai_cfo_global,div[class*="st-key-open_ai_cfo_global"],.st-key-ai_cfo_overlay_panel{display:none!important;}
+        .login-actions{background:linear-gradient(155deg,rgba(36,52,78,.99),rgba(26,38,59,.99))!important;}
+        .login-actions:after{content:"";position:absolute;inset:0;pointer-events:none;background:radial-gradient(circle at 85% 12%,rgba(108,156,255,.18),transparent 30%),radial-gradient(circle at 12% 88%,rgba(84,219,234,.10),transparent 28%);animation:loginAura 7s ease-in-out infinite alternate;}
+        .login-card-title,.login-card-copy,.login-primary-box,.login-divider,.login-trust{position:relative;z-index:2;}
+        .login-card-copy{color:#d4deec!important;}
+        .login-primary-box{background:linear-gradient(135deg,rgba(52,113,232,.28),rgba(122,86,236,.24))!important;border-color:rgba(151,185,255,.55)!important;box-shadow:0 18px 42px rgba(35,75,165,.18)!important;animation:primaryBoxGlow 3.8s ease-in-out infinite;}
+        .st-key-login_actions div[data-testid="stButton"]>button{background:linear-gradient(180deg,#354968,#2b3c58)!important;color:#f8fbff!important;border-color:rgba(213,225,242,.34)!important;opacity:1!important;box-shadow:0 8px 22px rgba(3,10,22,.16)!important;}
+        .st-key-login_actions div[data-testid="stButton"]>button p{color:#f8fbff!important;opacity:1!important;font-weight:850!important;}
+        .st-key-login_actions div[data-testid="stButton"]>button:hover{background:linear-gradient(135deg,#3178eb,#6f55e8)!important;border-color:#b9d0ff!important;transform:translateY(-3px) scale(1.012)!important;box-shadow:0 18px 42px rgba(48,91,205,.34)!important;}
+        .st-key-create_workspace button{background:linear-gradient(135deg,#10a8ca,#347af0 50%,#7757e9)!important;border-color:#c8ddff!important;box-shadow:0 18px 46px rgba(50,102,226,.38)!important;animation:ctaBreathe 3s ease-in-out infinite;}
+        .st-key-open_demo_choice button{background:linear-gradient(135deg,rgba(22,151,181,.34),rgba(88,75,207,.36))!important;border-color:rgba(100,220,235,.58)!important;}
+        .st-key-ms_signin button,.st-key-google_signin button{background:rgba(48,65,91,.96)!important;}
+        @keyframes ctaBreathe{0%,100%{filter:brightness(1);box-shadow:0 18px 46px rgba(50,102,226,.30)}50%{filter:brightness(1.12);box-shadow:0 22px 58px rgba(78,111,232,.46)}}
+        @keyframes primaryBoxGlow{0%,100%{transform:translateY(0)}50%{transform:translateY(-2px)}}
+        @keyframes loginAura{from{opacity:.72;transform:scale(1)}to{opacity:1;transform:scale(1.04)}}
         </style>
         """,
         unsafe_allow_html=True,
@@ -232,6 +249,11 @@ def _workspace_wizard_dialog() -> None:
 
     if step == 1:
         st.subheader("Tell us about the company")
+        logo_file = st.file_uploader("Company logo (optional)", type=["png", "jpg", "jpeg"], key="onboarding_company_logo", help="Used automatically in the workspace and board reports.")
+        if logo_file is not None:
+            st.session_state["company_logo_bytes"] = logo_file.getvalue()
+            st.session_state["company_logo_name"] = logo_file.name
+            st.image(st.session_state["company_logo_bytes"], width=120)
         with st.form("workspace_company_form"):
             company = st.text_input("Company name *", value=draft.get("Company Name", ""))
             c1, c2 = st.columns(2)
@@ -239,6 +261,7 @@ def _workspace_wizard_dialog() -> None:
             country = c2.selectbox("Country", COUNTRIES, index=COUNTRIES.index(draft.get("Country")) if draft.get("Country") in COUNTRIES else 0)
             currency = c1.selectbox("Currency", CURRENCIES, index=CURRENCIES.index(draft.get("Currency")) if draft.get("Currency") in CURRENCIES else 0)
             tax_id = c2.text_input("Tax ID / ABN / GSTIN (optional)", value=draft.get("Tax Identifier", ""))
+            brand_colour = c1.color_picker("Brand colour", value=draft.get("Brand Colour", "#4F8CFF"))
             nxt = st.form_submit_button("Continue →", use_container_width=True)
         if nxt:
             if not company.strip():
