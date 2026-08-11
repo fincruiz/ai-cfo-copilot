@@ -1,7 +1,0 @@
-streamlit
-pandas
-openpyxl
-openai
-altair
-python-docx
-Pillow
