@@ -74,21 +74,43 @@ export default function IntegrationsPage() {
     void load();
   }, []);
 
-  const connect = async (provider: "xero" | "zoho") => {
+  const connectXero = async () => {
     try {
-      setBusy(provider);
+      setBusy("xero");
       setError("");
 
-      const response = await integrationService.start(provider);
+      const response =
+        await integrationService.start("xero");
 
-      window.location.href = response.authorization_url;
+      window.location.assign(
+        response.authorization_url
+      );
     } catch (e) {
       setError(getApiErrorMessage(e));
       setBusy("");
     }
   };
 
-  const sync = async (provider: "xero" | "zoho") => {
+  const connectZoho = async () => {
+    try {
+      setBusy("zoho");
+      setError("");
+
+      const response =
+        await integrationService.start("zoho");
+
+      window.location.assign(
+        response.authorization_url
+      );
+    } catch (e) {
+      setError(getApiErrorMessage(e));
+      setBusy("");
+    }
+  };
+
+  const sync = async (
+    provider: "xero" | "zoho"
+  ) => {
     try {
       setBusy(provider);
       setError("");
@@ -168,13 +190,10 @@ export default function IntegrationsPage() {
 
   return (
     <div className="mx-auto max-w-7xl space-y-8 p-6 lg:p-10">
-      {/* Header */}
-
       <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
         <div>
           <div className="mb-3 inline-flex items-center gap-2 rounded-full border bg-background px-3 py-1 text-xs font-medium">
             <Zap className="size-3.5" />
-
             Organizational Brain · Data connections
           </div>
 
@@ -183,11 +202,10 @@ export default function IntegrationsPage() {
           </h1>
 
           <p className="mt-2 max-w-3xl text-muted-foreground">
-            FinCruiz brings finance and operational
-            systems into one governed intelligence
-            layer so management can ask one question
-            across the company instead of reconciling
-            separate dashboards.
+            FinCruiz brings finance and operational systems into one
+            governed intelligence layer so management can ask one
+            question across the company instead of reconciling separate
+            dashboards.
           </p>
         </div>
 
@@ -197,21 +215,17 @@ export default function IntegrationsPage() {
           </p>
 
           <p className="mt-1 text-muted-foreground">
-            Disconnecting a source can also remove its
-            synchronized FinCruiz copy.
+            Disconnecting a source can also remove its synchronized
+            FinCruiz copy.
           </p>
         </div>
       </div>
-
-      {/* Error */}
 
       {error ? (
         <div className="rounded-xl border border-destructive/30 bg-destructive/5 p-4 text-sm text-destructive">
           {error}
         </div>
       ) : null}
-
-      {/* Integration cards */}
 
       <div className="grid gap-5 lg:grid-cols-3">
         {(
@@ -233,8 +247,7 @@ export default function IntegrationsPage() {
               ? ((item?.metadata?.tenants as
                   | any[]
                   | undefined) ?? [])
-              : ((item?.metadata
-                  ?.organizations as
+              : ((item?.metadata?.organizations as
                   | any[]
                   | undefined) ?? []);
 
@@ -289,21 +302,15 @@ export default function IntegrationsPage() {
                   <br />
 
                   <strong>
-                    {
-                      item.external_tenant_name
-                    }
+                    {item.external_tenant_name}
                   </strong>
                 </div>
               ) : null}
 
-              {/* Organisation selector */}
-
-              {item?.status ===
-              "selection_required" ? (
+              {item?.status === "selection_required" ? (
                 <div className="mt-4 rounded-2xl border bg-muted/30 p-4">
                   <p className="text-sm font-medium">
-                    Choose the organisation FinCruiz
-                    should use
+                    Choose the organisation FinCruiz should use
                   </p>
 
                   <select
@@ -371,37 +378,63 @@ export default function IntegrationsPage() {
                 </div>
               ) : null}
 
-              {/* Actions */}
-
               <div className="mt-6 flex flex-wrap gap-2">
-                {provider !== "tally" &&
+                {provider === "xero" &&
                 !connected &&
                 item?.status !==
                   "selection_required" ? (
                   <Button
+                    type="button"
                     disabled={
-                      isBusy ||
+                      busy === "xero" ||
                       item?.configured ===
                         false
                     }
-                    onClick={() =>
-                      void connect(
-                        provider as
-                          | "xero"
-                          | "zoho"
-                      )
-                    }
+                    onClick={(event) => {
+                      event.preventDefault();
+                      event.stopPropagation();
+
+                      void connectXero();
+                    }}
                   >
-                    {item?.configured ===
-                    false
+                    {item?.configured === false
                       ? "Configure server"
-                      : "Connect"}
+                      : busy === "xero"
+                      ? "Connecting..."
+                      : "Connect Xero"}
+                  </Button>
+                ) : null}
+
+                {provider === "zoho" &&
+                !connected &&
+                item?.status !==
+                  "selection_required" ? (
+                  <Button
+                    type="button"
+                    disabled={
+                      busy === "zoho" ||
+                      item?.configured ===
+                        false
+                    }
+                    onClick={(event) => {
+                      event.preventDefault();
+                      event.stopPropagation();
+
+                      void connectZoho();
+                    }}
+                  >
+                    {item?.configured === false
+                      ? "Configure server"
+                      : busy === "zoho"
+                      ? "Connecting..."
+                      : "Connect Zoho Books"}
                   </Button>
                 ) : null}
 
                 {provider !== "tally" &&
                 connected ? (
                   <Button
+                    type="button"
                     onClick={() =>
                       void sync(
                         provider as
@@ -427,12 +460,15 @@ export default function IntegrationsPage() {
                 {provider === "tally" &&
                 !connected ? (
                   <Button
+                    type="button"
                     onClick={() =>
                       void createTallyBridge()
                     }
                     disabled={isBusy}
                   >
-                    Create secure bridge
+                    {isBusy
+                      ? "Creating..."
+                      : "Create secure bridge"}
                   </Button>
                 ) : null}
 
@@ -440,6 +476,7 @@ export default function IntegrationsPage() {
                 item.status !==
                   "disconnected" ? (
                   <Button
+                    type="button"
                     variant="outline"
                     disabled={isBusy}
                     onClick={() =>
@@ -466,8 +503,6 @@ export default function IntegrationsPage() {
         })}
       </div>
 
-      {/* Tally bridge token */}
-
       {tallyToken ? (
         <div className="rounded-3xl border bg-background p-6">
           <div className="flex items-start gap-3">
@@ -479,10 +514,9 @@ export default function IntegrationsPage() {
               </h2>
 
               <p className="mt-1 text-sm text-muted-foreground">
-                Use this token in the FinCruiz
-                Tally bridge running on the same
-                network as TallyPrime. Do not email
-                or store it in a spreadsheet.
+                Use this token in the FinCruiz Tally bridge running on
+                the same network as TallyPrime. Do not email or store it
+                in a spreadsheet.
               </p>
 
               <code className="mt-4 block break-all rounded-xl bg-muted p-4 text-xs">
@@ -493,12 +527,9 @@ export default function IntegrationsPage() {
         </div>
       ) : null}
 
-      {/* Benefits */}
-
       <div className="rounded-3xl border bg-muted/30 p-6">
         <h2 className="text-lg font-semibold">
-          What becomes possible when systems
-          connect
+          What becomes possible when systems connect
         </h2>
 
         <div className="mt-4 grid gap-3 md:grid-cols-3">
@@ -508,8 +539,7 @@ export default function IntegrationsPage() {
             </strong>
 
             <p className="mt-1 text-sm text-muted-foreground">
-              Finance, customers and operations
-              can be analysed together.
+              Finance, customers and operations can be analysed together.
             </p>
           </div>
 
@@ -519,8 +549,7 @@ export default function IntegrationsPage() {
             </strong>
 
             <p className="mt-1 text-sm text-muted-foreground">
-              Move from “what changed?” to “what
-              caused it?”
+              Move from “what changed?” to “what caused it?”
             </p>
           </div>
 
@@ -530,14 +559,11 @@ export default function IntegrationsPage() {
             </strong>
 
             <p className="mt-1 text-sm text-muted-foreground">
-              FinCruiz can surface issues before
-              management asks.
+              FinCruiz can surface issues before management asks.
             </p>
           </div>
         </div>
       </div>
-
-      {/* Disconnect confirmation */}
 
       <ConfirmDialog
         open={!!remove}
