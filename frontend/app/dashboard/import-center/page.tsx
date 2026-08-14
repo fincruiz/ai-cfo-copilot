@@ -17,6 +17,7 @@ import { Input } from "@/components/ui/input";
 import { getApiErrorMessage } from "@/lib/api";
 import { analyticsService } from "@/services/analytics-service";
 import type { FinanceImportResult } from "@/types/analytics";
+import { ModuleResetButton } from "@/components/module-reset-button";
 
 type ImportKind = "coa" | "ar" | "ap";
 
@@ -127,7 +128,7 @@ export default function ImportCenterPage() {
                 <div className="flex size-12 items-center justify-center rounded-2xl bg-slate-950 text-white">
                   <Icon className="size-5" />
                 </div>
-                <CardTitle className="pt-3">{title}</CardTitle>
+                <div className="flex items-start justify-between gap-2"><CardTitle className="pt-3">{title}</CardTitle><ModuleResetButton scope={kind === "ar" ? "ar_ageing" : kind === "ap" ? "ap_ageing" : "coa"} label={`Reset ${kind.toUpperCase()}`} description={`This removes only the ${title.toLowerCase()} data. Other company data remains untouched.`} /></div>
                 <CardDescription className="leading-6">{description}</CardDescription>
               </CardHeader>
 

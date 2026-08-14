@@ -11,7 +11,22 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { getApiErrorMessage } from "@/lib/api";
 import { financeService } from "@/services/finance-service";
+import { ModuleResetButton } from "@/components/module-reset-button";
 import type { GLUploadResult } from "@/types/finance";
+
+
+const fieldAliases: Record<string, string[]> = {
+  date: ["date", "transaction date", "transaction_date", "posting date", "journal date"],
+  account: ["account code", "account_code", "gl code", "ledger code", "nominal code", "account number"],
+  accountName: ["account name", "account_name", "ledger name", "description"],
+  debit: ["debit", "debit amount", "dr"],
+  credit: ["credit", "credit amount", "cr"],
+};
+
+function detectHeader(headers: string[]) {
+  const normalized = headers.map((h) => h.trim().toLowerCase());
+  return Object.fromEntries(Object.entries(fieldAliases).map(([key, aliases]) => [key, aliases.some((alias) => normalized.includes(alias))]));
+}
 
 export default function UploadsPage() {
   const [file, setFile] = useState<File | null>(null);
@@ -19,9 +34,14 @@ export default function UploadsPage() {
   const [isUploading, setIsUploading] = useState(false);
   const [error, setError] = useState("");
   const [result, setResult] = useState<GLUploadResult | null>(null);
+  const [preview, setPreview] = useState<string[][]>([]);
+  const detected = detectHeader(preview[0] ?? []);
+  const detectedCount = Object.values(detected).filter(Boolean).length;
 
-  function selectFile(event: ChangeEvent<HTMLInputElement>) {
-    setFile(event.target.files?.[0] ?? null);
+  async function selectFile(event: ChangeEvent<HTMLInputElement>) {
+    const selected = event.target.files?.[0] ?? null;
+    setFile(selected);
+    if (selected) { const text = await selected.text(); setPreview(text.split(/\r?\n/).filter(Boolean).slice(0,4).map(line => line.split(",").slice(0,8))); } else setPreview([]);
     setResult(null);
     setError("");
   }
@@ -47,16 +67,19 @@ export default function UploadsPage() {
 
   return (
     <div className="mx-auto max-w-6xl space-y-6">
-      <div>
+      <div className="flex items-start justify-between gap-4">
+        <div>
         <p className="text-sm font-medium text-muted-foreground">Finance data</p>
         <h1 className="mt-1 text-3xl font-semibold tracking-tight">Upload general ledger</h1>
         <p className="mt-2 text-muted-foreground">Upload a UTF-8 CSV. FinCruiz validates every row and creates ledger transactions.</p>
+        </div>
+        <ModuleResetButton scope="general_ledger" label="Reset GL data" description="This removes only the loaded General Ledger and its upload records. Your company profile, AR/AP data and settings remain." />
       </div>
 
       <div className="grid gap-6 lg:grid-cols-[1fr_360px]">
         <Card>
           <CardHeader>
-            <CardTitle>General ledger CSV</CardTitle>
+            <CardTitle>Step 1 · Choose your General Ledger</CardTitle>
             <CardDescription>Maximum file size 10 MB. Required fields include transaction date, account code, debit and credit.</CardDescription>
           </CardHeader>
           <CardContent>
@@ -70,6 +93,9 @@ export default function UploadsPage() {
                 <Input id="gl-file" type="file" accept=".csv,text/csv" className="sr-only" onChange={selectFile} />
               </Label>
 
+              {preview.length ? <div className="space-y-2 rounded-xl border bg-muted/20 p-4"><div className="flex items-center justify-between"><p className="font-medium">Smart file preview</p><span className="text-xs text-muted-foreground">Step 2 of 3 · confirm detected columns</span></div><div className="overflow-x-auto"><table className="w-full text-xs"><tbody>{preview.map((row,i)=><tr key={i} className={i===0?"font-semibold":"text-muted-foreground"}>{row.map((cell,j)=><td key={j} className="border-b px-2 py-2 whitespace-nowrap">{cell || "—"}</td>)}</tr>)}</tbody></table></div><p className="text-xs text-muted-foreground">FinCruiz will run full validation on upload and show any rows that need attention before you continue to mapping.</p></div>:null}
+              {preview.length ? <div className="rounded-xl border p-4"><div className="flex items-center justify-between gap-3"><div><p className="font-medium">Detected finance fields</p><p className="text-xs text-muted-foreground">A quick client-side check before the full backend validation.</p></div><span className={`rounded-full px-3 py-1 text-xs font-semibold ${detectedCount >= 4 ? "bg-emerald-100 text-emerald-800" : "bg-amber-100 text-amber-800"}`}>{detectedCount}/5 detected</span></div><div className="mt-4 grid gap-2 sm:grid-cols-5">{[["Date",detected.date],["Account",detected.account],["Account name",detected.accountName],["Debit",detected.debit],["Credit",detected.credit]].map(([label,ok])=><div key={String(label)} className={`rounded-lg border px-3 py-2 text-xs ${ok ? "bg-emerald-50 text-emerald-800" : "bg-amber-50 text-amber-800"}`}>{ok ? "✓" : "!"} {label}</div>)}</div>{detectedCount < 4 ? <p className="mt-3 text-xs text-amber-700">Some core fields were not recognised. You can still upload; the backend will perform the authoritative validation and explain what needs fixing.</p> : <p className="mt-3 text-xs text-emerald-700">The file looks structurally ready for full validation.</p>}</div> : null}
+
               <div className="space-y-2">
                 <Label htmlFor="source-system">Source system</Label>
                 <Input id="source-system" value={sourceSystem} onChange={(event) => setSourceSystem(event.target.value)} placeholder="Xero, MYOB, SAP, manual export..." />
@@ -77,7 +103,7 @@ export default function UploadsPage() {
 
               <Button type="submit" disabled={!file || isUploading} className="w-full sm:w-auto">
                 {isUploading ? <Loader2 className="size-4 animate-spin" /> : <UploadCloud className="size-4" />}
-                {isUploading ? "Uploading and validating..." : "Upload and validate"}
+                {isUploading ? "Uploading and validating..." : "Step 3 · Upload and validate"}
               </Button>
             </form>
           </CardContent>

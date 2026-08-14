@@ -104,6 +104,43 @@ class AuthService:
 
         return response.json()
 
+
+    async def refresh_session(
+        self,
+        *,
+        refresh_token: str,
+    ) -> dict[str, Any]:
+        url = f"{self.base_url}/auth/v1/token"
+        headers = {
+            "apikey": self.api_key,
+            "Content-Type": "application/json",
+        }
+        payload = {"refresh_token": refresh_token}
+
+        try:
+            async with httpx.AsyncClient(timeout=15.0) as client:
+                response = await client.post(
+                    url,
+                    params={"grant_type": "refresh_token"},
+                    headers=headers,
+                    json=payload,
+                )
+        except httpx.RequestError as exc:
+            raise ApplicationError(
+                message="Authentication service is unavailable.",
+                error_code="AUTH_SERVICE_UNAVAILABLE",
+                status_code=503,
+            ) from exc
+
+        if response.status_code != 200:
+            raise ApplicationError(
+                message="Your session has expired. Please sign in again.",
+                error_code="INVALID_REFRESH_TOKEN",
+                status_code=401,
+            )
+
+        return response.json()
+
     async def get_user(
         self,
         *,

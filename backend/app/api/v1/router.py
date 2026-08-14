@@ -15,12 +15,18 @@ from app.api.v1.finance.advanced_forecasting.router import router as advanced_fo
 from app.api.v1.finance.native_planning.router import router as native_planning_router
 from app.api.v1.finance.board_packs.router import router as board_packs_router
 from app.api.v1.health import router as health_router
+from app.api.v1.core.workspace.router import router as workspace_router
+from app.api.v1.account.router import router as account_router
+from app.api.v1.core.audit.router import router as audit_router
 api_router=APIRouter()
 api_router.include_router(health_router)
 api_router.include_router(auth_router)
 api_router.include_router(companies_router)
 api_router.include_router(branches_router)
 api_router.include_router(profile_router)
+api_router.include_router(workspace_router)
+api_router.include_router(account_router)
+api_router.include_router(audit_router)
 api_router.include_router(finance_uploads_router)
 api_router.include_router(finance_mappings_router)
 api_router.include_router(finance_reports_router)

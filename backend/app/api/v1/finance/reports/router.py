@@ -11,6 +11,7 @@ from app.dependencies.company import get_current_company
 from app.repositories.finance.gl_transaction_repository import GLTransactionRepository
 from app.schemas.finance.reports import (
     BalanceSheetResponse,
+    DataHealthResponse,
     BranchComparisonResponse,
     MonthlyActualResponse,
     ProfitAndLossResponse,
@@ -18,6 +19,8 @@ from app.schemas.finance.reports import (
     ReportLineResponse,
     TrialBalanceResponse,
 )
+from app.schemas.finance.assurance import FinancialAssuranceResponse
+from app.services.finance.assurance_service import FinancialAssuranceService
 from app.schemas.responses import APIResponse
 from app.services.finance.reporting_service import ReportingService
 
@@ -73,6 +76,30 @@ async def trial_balance(
                 for item in report.accounts
             ],
         ),
+    )
+
+
+@router.get("/assurance", response_model=APIResponse[FinancialAssuranceResponse])
+async def assurance(
+    current_company: Annotated[Company, Depends(get_current_company)],
+    svc: Annotated[ReportingService, Depends(service)],
+):
+    result = await FinancialAssuranceService(svc).assess(current_company.id)
+    return APIResponse(
+        message="Financial assurance checks completed.",
+        data=FinancialAssuranceResponse(**result),
+    )
+
+
+@router.get("/data-health", response_model=APIResponse[DataHealthResponse])
+async def data_health(
+    current_company: Annotated[Company, Depends(get_current_company)],
+    svc: Annotated[ReportingService, Depends(service)],
+):
+    result = await svc.data_health(current_company.id)
+    return APIResponse(
+        message="Finance data health retrieved.",
+        data=DataHealthResponse(**result),
     )
 
 

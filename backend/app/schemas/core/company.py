@@ -120,3 +120,6 @@ class CompanyPreferencesRequest(BaseModel):
 
 class CompanyPreferencesResponse(CompanyPreferencesRequest):
     company_id: UUID
+
+class CompanyMemberRoleUpdate(BaseModel):
+    role: str

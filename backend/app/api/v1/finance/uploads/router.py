@@ -27,6 +27,7 @@ from app.schemas.finance.uploads import (
     ValidationIssue,
 )
 from app.schemas.responses import APIResponse
+from app.services.audit_service import AuditService
 from app.services.finance.gl_upload_service import (
     GLUploadService,
 )
@@ -68,6 +69,7 @@ async def upload_general_ledger(
         Company,
         Depends(get_current_company),
     ],
+    session: Annotated[AsyncSession, Depends(get_db_session)],
     service: Annotated[
         GLUploadService,
         Depends(get_gl_upload_service),
@@ -90,6 +92,8 @@ async def upload_general_ledger(
             reporting_period_id=reporting_period_id,
         )
     )
+
+    await AuditService(session).record(company_id=current_company.id, user_id=current_user.id, action="upload", module="general_ledger", summary=f"Uploaded general ledger: {file.filename or 'general_ledger.csv'}", metadata={"inserted_transactions": inserted_count, "invalid_rows": validation.invalid_rows}, commit=True)
 
     validation_response = GLValidationSummary(
         required_columns=validation.required_columns,

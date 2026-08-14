@@ -7,6 +7,7 @@ import type {
   Branch,
   BranchComparison,
   BranchInput,
+  DataHealth,
   ForecastResult,
   GLUploadResult,
   MappingSuggestion,
@@ -111,6 +112,10 @@ export const financeService = {
     )).data.data;
   },
 
+  async getDataHealth(): Promise<DataHealth> {
+    return (await api.get<ApiResponse<DataHealth>>("/reports/data-health")).data.data;
+  },
+
   async getKpis(params?: {
     startDate?: string;
     endDate?: string;
@@ -163,5 +168,9 @@ export const financeService = {
     recent_months: number;
   }): Promise<ForecastResult> {
     return (await api.post<ApiResponse<ForecastResult>>("/forecasts", payload)).data.data;
+  },
+
+  async getFinancialAssurance() {
+    return (await api.get<ApiResponse<import("@/types/finance").FinancialAssurance>>("/reports/assurance")).data.data;
   },
 };

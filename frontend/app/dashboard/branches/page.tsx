@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { getApiErrorMessage } from "@/lib/api";
+import { ModuleResetButton } from "@/components/module-reset-button";
 import { financeService } from "@/services/finance-service";
 import type { Branch } from "@/types/finance";
 
@@ -88,12 +89,15 @@ export default function BranchesPage() {
 
   return (
     <div className="mx-auto max-w-7xl space-y-6">
-      <div>
-        <p className="text-sm font-medium text-muted-foreground">Company structure</p>
-        <h1 className="mt-1 text-3xl font-semibold tracking-tight">Branches and business units</h1>
-        <p className="mt-2 text-muted-foreground">
-          FinCruiz discovers unique branch values during upload. Review, rename and accept them here.
-        </p>
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+        <div>
+          <p className="text-sm font-medium text-muted-foreground">Company structure</p>
+          <h1 className="mt-1 text-3xl font-semibold tracking-tight">Branches and business units</h1>
+          <p className="mt-2 max-w-3xl text-muted-foreground">
+            FinCruiz discovers unique branch values during upload. Review, rename and accept them here. Resetting branches keeps your ledger and clears branch links only.
+          </p>
+        </div>
+        <ModuleResetButton scope="branches" label="Reset branches" description="Remove all saved branch records for this company. Your General Ledger and other financial data will remain; branch links on existing records will be cleared." onReset={() => void load()} />
       </div>
 
       {error ? <Alert variant="destructive"><AlertDescription>{error}</AlertDescription></Alert> : null}

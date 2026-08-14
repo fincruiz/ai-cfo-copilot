@@ -1,5 +1,6 @@
 "use client";
 import { useEffect, useState } from "react";
+import { ModuleResetButton } from "@/components/module-reset-button";
 import { BarChart3, FileUp, Loader2, RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -52,7 +53,7 @@ export default function PlanningPage() {
   return <div className="mx-auto max-w-7xl space-y-7">
     <div className="animate-rise">
       <p className="text-sm font-medium text-muted-foreground">Planning & intelligence</p>
-      <h1 className="mt-1 text-3xl font-semibold">Budgets, Forecasts & Variance</h1>
+      <div className="flex items-center justify-between gap-4"><h1 className="mt-1 text-3xl font-semibold">Budgets, Forecasts & Variance</h1><ModuleResetButton scope="planning" label="Reset planning data" description="This removes uploaded budgets, forecasts and saved planning lines. Actual GL data remains." /></div>
       <p className="mt-2 text-muted-foreground">Import existing plans now. The next phase enables native driver-based planning inside FinCruiz.</p>
     </div>
     {message ? <Alert><AlertDescription>{message}</AlertDescription></Alert> : null}

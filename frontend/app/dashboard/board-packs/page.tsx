@@ -1,10 +1,11 @@
 "use client";
+import { ModuleResetButton } from "@/components/module-reset-button";
 import Link from "next/link";
 import { FileBarChart, Presentation, Sparkles } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 export default function BoardpacksPage(){
- return <div className="mx-auto max-w-6xl space-y-7"><div className="animate-rise"><p className="text-sm text-muted-foreground">Board & exports</p><h1 className="mt-1 text-3xl font-semibold">Board Packs</h1><p className="mt-2 text-muted-foreground">Assemble financial statements, KPIs, analytics, forecasts and commentary.</p></div>
+ return <div className="mx-auto max-w-6xl space-y-7"><div className="animate-rise"><p className="text-sm text-muted-foreground">Board & exports</p><div className="flex items-center justify-between gap-4"><h1 className="mt-1 text-3xl font-semibold">Board Packs</h1><ModuleResetButton scope="board_packs" label="Clear board packs" description="This removes generated board-pack files and saved pack records. Your source finance data remains." /></div><p className="mt-2 text-muted-foreground">Assemble financial statements, KPIs, analytics, forecasts and commentary.</p></div>
  <div className="grid gap-5 md:grid-cols-3">{[
  ["Executive summary","Revenue, profitability, cash, working capital and key risks."],
  ["Performance visuals","Monthly trends, branch comparison and variance charts."],

@@ -1,6 +1,8 @@
 from collections import defaultdict
 from datetime import date
 from decimal import Decimal
+
+from sqlalchemy import text
 from uuid import UUID
 
 from app.domain.finance.kpis.ratio_engine import calculate_ratios
@@ -174,6 +176,131 @@ class ReportingService:
                 }
             )
         return result
+
+
+    async def data_health(self, company_id: UUID) -> dict:
+        session = self.repository.session
+        summary = (
+            await session.execute(
+                text(
+                    """
+                    SELECT
+                      COUNT(gt.id)::int AS transaction_count,
+                      COUNT(DISTINCT gt.source_account_code)::int AS account_count,
+                      MIN(gt.transaction_date) AS first_transaction_date,
+                      MAX(gt.transaction_date) AS last_transaction_date,
+                      COALESCE(SUM(gt.debit), 0) AS total_debit,
+                      COALESCE(SUM(gt.credit), 0) AS total_credit,
+                      COUNT(*) FILTER (WHERE gt.validation_status <> 'valid')::int AS invalid_transaction_count
+                    FROM public.gl_transactions gt
+                    JOIN public.file_uploads fu ON fu.id = gt.file_upload_id
+                    WHERE gt.company_id=:company_id
+                      AND fu.company_id=:company_id
+                      AND fu.is_active=true
+                    """
+                ),
+                {"company_id": company_id},
+            )
+        ).mappings().one()
+
+        upload_counts = (
+            await session.execute(
+                text(
+                    """
+                    SELECT COUNT(*)::int AS upload_count,
+                           COUNT(*) FILTER (WHERE is_active=true)::int AS active_upload_count
+                    FROM public.file_uploads WHERE company_id=:company_id
+                    """
+                ),
+                {"company_id": company_id},
+            )
+        ).mappings().one()
+
+        mapping_counts = (
+            await session.execute(
+                text(
+                    """
+                    WITH accounts AS (
+                      SELECT DISTINCT gt.source_account_code
+                      FROM public.gl_transactions gt
+                      JOIN public.file_uploads fu ON fu.id=gt.file_upload_id
+                      WHERE gt.company_id=:company_id AND fu.is_active=true
+                    )
+                    SELECT
+                      COUNT(*) FILTER (WHERE fam.source_account_code IS NOT NULL)::int AS mapped_account_count,
+                      COUNT(*) FILTER (WHERE fam.source_account_code IS NULL)::int AS unmapped_account_count
+                    FROM accounts a
+                    LEFT JOIN public.finance_account_mappings fam
+                      ON fam.company_id=:company_id
+                     AND fam.source_account_code=a.source_account_code
+                     AND fam.is_confirmed=true
+                    """
+                ),
+                {"company_id": company_id},
+            )
+        ).mappings().one()
+
+        duplicate_candidates = int(
+            (
+                await session.execute(
+                    text(
+                        """
+                        SELECT COALESCE(SUM(group_count - 1), 0)::int
+                        FROM (
+                          SELECT COUNT(*) AS group_count
+                          FROM public.gl_transactions gt
+                          JOIN public.file_uploads fu ON fu.id=gt.file_upload_id
+                          WHERE gt.company_id=:company_id AND fu.is_active=true
+                          GROUP BY gt.transaction_date, gt.source_account_code, gt.debit, gt.credit,
+                                   COALESCE(gt.document_number,''), COALESCE(gt.description,'')
+                          HAVING COUNT(*) > 1
+                        ) duplicates
+                        """
+                    ),
+                    {"company_id": company_id},
+                )
+            ).scalar_one()
+            or 0
+        )
+
+        bs = await self.balance_sheet(company_id)
+        total_debit = Decimal(summary["total_debit"] or 0)
+        total_credit = Decimal(summary["total_credit"] or 0)
+        tb_difference = total_debit - total_credit
+        bs_difference = Decimal(bs.balance_difference or 0)
+        tolerance = Decimal("0.01")
+        tb_balanced = abs(tb_difference) <= tolerance
+        bs_balanced = abs(bs_difference) <= tolerance
+        mapping_complete = int(mapping_counts["unmapped_account_count"] or 0) == 0
+        invalid_count = int(summary["invalid_transaction_count"] or 0)
+
+        if not int(summary["transaction_count"] or 0):
+            overall = "empty"
+        elif tb_balanced and bs_balanced and mapping_complete and invalid_count == 0:
+            overall = "healthy"
+        else:
+            overall = "attention_required"
+
+        return {
+            "transaction_count": int(summary["transaction_count"] or 0),
+            "upload_count": int(upload_counts["upload_count"] or 0),
+            "active_upload_count": int(upload_counts["active_upload_count"] or 0),
+            "account_count": int(summary["account_count"] or 0),
+            "mapped_account_count": int(mapping_counts["mapped_account_count"] or 0),
+            "unmapped_account_count": int(mapping_counts["unmapped_account_count"] or 0),
+            "invalid_transaction_count": invalid_count,
+            "duplicate_candidate_count": duplicate_candidates,
+            "first_transaction_date": summary["first_transaction_date"],
+            "last_transaction_date": summary["last_transaction_date"],
+            "total_debit": total_debit,
+            "total_credit": total_credit,
+            "trial_balance_difference": tb_difference,
+            "balance_sheet_difference": bs_difference,
+            "is_trial_balance_balanced": tb_balanced,
+            "is_balance_sheet_balanced": bs_balanced,
+            "is_mapping_complete": mapping_complete,
+            "overall_status": overall,
+        }
 
     async def branch_comparison(
         self,

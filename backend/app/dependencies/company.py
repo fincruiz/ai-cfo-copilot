@@ -51,3 +51,44 @@ async def get_current_company(
     return await company_context_service.get_current_company(
         user_id=current_user.id,
     )
+
+async def get_current_company_membership(
+    current_user: Annotated[CurrentUser, Depends(get_current_user)],
+    session: Annotated[AsyncSession, Depends(get_db_session)],
+):
+    """Return the active membership behind the current workspace."""
+    from app.core.exceptions import ApplicationError
+    from app.repositories.core.company_member_repository import CompanyMemberRepository
+
+    membership = await CompanyMemberRepository(session).get_active_membership_by_user(current_user.id)
+    if membership is None:
+        raise ApplicationError(
+            message="No active company membership was found for this user.",
+            error_code="COMPANY_MEMBERSHIP_NOT_FOUND",
+            status_code=404,
+        )
+    return membership
+
+
+def require_company_roles(*allowed_roles: str):
+    async def dependency(
+        membership=Depends(get_current_company_membership),
+    ):
+        from app.core.exceptions import ApplicationError
+
+        role = membership.role.value if hasattr(membership.role, "value") else str(membership.role)
+        if role not in allowed_roles:
+            raise ApplicationError(
+                message="Your company role does not allow this action.",
+                error_code="INSUFFICIENT_COMPANY_ROLE",
+                status_code=403,
+            )
+        return membership
+
+    return dependency
+
+
+require_finance_write = require_company_roles(
+    "owner", "admin", "cfo", "finance_manager", "accountant"
+)
+require_company_admin = require_company_roles("owner", "admin")

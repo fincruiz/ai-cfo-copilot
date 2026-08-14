@@ -7,11 +7,23 @@ const API_URL =
   process.env.NEXT_PUBLIC_API_URL ??
   "http://127.0.0.1:8000/api/v1";
 
-export const ACCESS_TOKEN_KEY =
-  "fincruiz_access_token";
+export const ACCESS_TOKEN_KEY = "fincruiz_access_token";
+export const REFRESH_TOKEN_KEY = "fincruiz_refresh_token";
 
-export const REFRESH_TOKEN_KEY =
-  "fincruiz_refresh_token";
+type RetryableRequestConfig = InternalAxiosRequestConfig & {
+  _retry?: boolean;
+};
+
+type TokenPayload = {
+  access_token: string;
+  refresh_token?: string | null;
+};
+
+type TokenApiResponse = {
+  success: boolean;
+  message: string;
+  data: TokenPayload;
+};
 
 export const api = axios.create({
   baseURL: API_URL,
@@ -21,6 +33,81 @@ export const api = axios.create({
   },
   timeout: 30000,
 });
+
+function clearStoredSession(): void {
+  if (typeof window === "undefined") return;
+  window.localStorage.removeItem(ACCESS_TOKEN_KEY);
+  window.localStorage.removeItem(REFRESH_TOKEN_KEY);
+}
+
+function storeTokens(tokens: TokenPayload): void {
+  if (typeof window === "undefined") return;
+
+  window.localStorage.setItem(
+    ACCESS_TOKEN_KEY,
+    tokens.access_token,
+  );
+
+  if (tokens.refresh_token) {
+    window.localStorage.setItem(
+      REFRESH_TOKEN_KEY,
+      tokens.refresh_token,
+    );
+  }
+}
+
+let refreshPromise: Promise<string> | null = null;
+
+async function refreshAccessToken(): Promise<string> {
+  if (typeof window === "undefined") {
+    throw new Error("Token refresh is only available in the browser.");
+  }
+
+  const refreshToken = window.localStorage.getItem(
+    REFRESH_TOKEN_KEY,
+  );
+
+  if (!refreshToken) {
+    throw new Error("No refresh token is available.");
+  }
+
+  if (!refreshPromise) {
+    refreshPromise = axios
+      .post<TokenApiResponse>(
+        `${API_URL}/auth/refresh`,
+        { refresh_token: refreshToken },
+        {
+          headers: {
+            "Content-Type": "application/json",
+            Accept: "application/json",
+          },
+          timeout: 15000,
+        },
+      )
+      .then((response) => {
+        const tokens = response.data.data;
+
+        if (!tokens?.access_token) {
+          throw new Error(
+            "The refresh response did not contain an access token.",
+          );
+        }
+
+        storeTokens(tokens);
+        return tokens.access_token;
+      })
+      .finally(() => {
+        refreshPromise = null;
+      });
+  }
+
+  const pendingRefresh = refreshPromise;
+  if (!pendingRefresh) {
+    throw new Error("Unable to start token refresh.");
+  }
+
+  return pendingRefresh;
+}
 
 api.interceptors.request.use(
   (
@@ -35,31 +122,59 @@ api.interceptors.request.use(
     );
 
     if (accessToken) {
-      config.headers.Authorization =
-        `Bearer ${accessToken}`;
+      config.headers.Authorization = `Bearer ${accessToken}`;
     }
 
     return config;
   },
-  (error: AxiosError) => {
-    return Promise.reject(error);
-  },
+  (error: AxiosError) => Promise.reject(error),
 );
 
 api.interceptors.response.use(
   (response) => response,
-  (error: AxiosError) => {
+  async (error: AxiosError) => {
+    const originalRequest = error.config as
+      | RetryableRequestConfig
+      | undefined;
+
+    const isUnauthorized = error.response?.status === 401;
+    const isRefreshRequest = originalRequest?.url?.includes(
+      "/auth/refresh",
+    );
+    const isLoginRequest = originalRequest?.url?.includes(
+      "/auth/login",
+    );
+
     if (
       typeof window !== "undefined" &&
-      error.response?.status === 401
+      isUnauthorized &&
+      originalRequest &&
+      !originalRequest._retry &&
+      !isRefreshRequest &&
+      !isLoginRequest
     ) {
-      window.localStorage.removeItem(
-        ACCESS_TOKEN_KEY,
-      );
+      originalRequest._retry = true;
 
-      window.localStorage.removeItem(
-        REFRESH_TOKEN_KEY,
-      );
+      try {
+        const newAccessToken = await refreshAccessToken();
+        originalRequest.headers.Authorization =
+          `Bearer ${newAccessToken}`;
+        return api(originalRequest);
+      } catch {
+        clearStoredSession();
+
+        if (window.location.pathname.startsWith("/dashboard")) {
+          window.location.replace("/login?reason=session-expired");
+        }
+      }
+    }
+
+    if (
+      typeof window !== "undefined" &&
+      isUnauthorized &&
+      (isRefreshRequest || originalRequest?._retry)
+    ) {
+      clearStoredSession();
     }
 
     return Promise.reject(error);

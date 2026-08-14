@@ -5,6 +5,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { analyticsService } from "@/services/analytics-service";
 import { formatMoney, toNumber } from "@/lib/finance-format";
 import type { WorkingCapitalSummary } from "@/types/analytics";
+import { ModuleResetButton } from "@/components/module-reset-button";
 
 export default function WorkingCapitalPage() {
   const [ar,setAr]=useState<WorkingCapitalSummary|null>(null);
@@ -13,7 +14,7 @@ export default function WorkingCapitalPage() {
   useEffect(()=>{Promise.all([analyticsService.getWorkingCapital("AR"),analyticsService.getWorkingCapital("AP")]).then(([a,p])=>{setAr(a);setAp(p)}).finally(()=>setLoading(false))},[]);
   if(loading)return <div className="flex min-h-[500px] items-center justify-center"><Loader2 className="size-5 animate-spin"/></div>;
   return <div className="mx-auto max-w-7xl space-y-7">
-    <div><p className="text-sm font-medium text-muted-foreground">Working capital</p><h1 className="mt-1 text-3xl font-semibold">Customer Collections & Vendor Payments</h1><p className="mt-2 text-muted-foreground">Invoice ageing, exposure concentration and payment-cycle analysis.</p></div>
+    <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between"><div><p className="text-sm font-medium text-muted-foreground">Working capital</p><h1 className="mt-1 text-3xl font-semibold">Customer Collections & Vendor Payments</h1><p className="mt-2 text-muted-foreground">Invoice ageing, exposure concentration and payment-cycle analysis.</p></div><div className="flex gap-2"><ModuleResetButton scope="ar_ageing" label="Reset AR" description="Remove only Accounts Receivable ageing data."/><ModuleResetButton scope="ap_ageing" label="Reset AP" description="Remove only Accounts Payable ageing data."/></div></div>
     <div className="grid gap-5 lg:grid-cols-2"><Panel title="Accounts receivable" icon={Users} data={ar}/><Panel title="Accounts payable" icon={WalletCards} data={ap}/></div>
   </div>
 }

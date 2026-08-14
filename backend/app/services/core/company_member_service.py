@@ -1,22 +1,13 @@
 from uuid import UUID
 
 from app.database.models.core.company_member import CompanyMember
-from app.repositories.core.company_member_repository import (
-    CompanyMemberRepository,
-)
+from app.repositories.core.company_member_repository import CompanyMemberRepository
 from app.services.base import BaseService
 
 
 class CompanyMemberService(BaseService[CompanyMember]):
-    def __init__(
-        self,
-        repository: CompanyMemberRepository,
-    ) -> None:
-        super().__init__(
-            repository=repository,
-            resource_name="Company member",
-        )
-
+    def __init__(self, repository: CompanyMemberRepository) -> None:
+        super().__init__(repository=repository, resource_name="Company member")
         self.company_member_repository = repository
 
     async def get_active_membership_by_user(
@@ -24,20 +15,32 @@ class CompanyMemberService(BaseService[CompanyMember]):
         *,
         user_id: UUID,
     ) -> CompanyMember | None:
-        return (
-            await self.company_member_repository
-            .get_active_membership_by_user(user_id)
+        return await self.company_member_repository.get_active_membership_by_user(user_id)
+
+    async def get_active_membership(
+        self,
+        *,
+        user_id: UUID,
+        company_id: UUID,
+    ) -> CompanyMember | None:
+        return await self.company_member_repository.get_active_membership(
+            user_id=user_id,
+            company_id=company_id,
         )
+
+    async def list_active_memberships_by_user(
+        self,
+        *,
+        user_id: UUID,
+    ) -> list[CompanyMember]:
+        return await self.company_member_repository.list_active_memberships_by_user(user_id)
 
     async def get_active_owner_membership(
         self,
         *,
         user_id: UUID,
     ) -> CompanyMember | None:
-        return (
-            await self.company_member_repository
-            .get_active_owner_membership(user_id)
-        )
+        return await self.company_member_repository.get_active_owner_membership(user_id)
 
     async def create_owner_membership(
         self,
@@ -45,7 +48,7 @@ class CompanyMemberService(BaseService[CompanyMember]):
         company_id: UUID,
         user_id: UUID,
     ) -> CompanyMember:
-        membership = await self.company_member_repository.create(
+        return await self.company_member_repository.create(
             {
                 "company_id": company_id,
                 "user_id": user_id,
@@ -54,5 +57,3 @@ class CompanyMemberService(BaseService[CompanyMember]):
                 "invited_by": None,
             }
         )
-
-        return membership

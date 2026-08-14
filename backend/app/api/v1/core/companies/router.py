@@ -3,12 +3,13 @@ from typing import Annotated
 from uuid import UUID, uuid4
 
 from fastapi import APIRouter, Depends, File, Query, UploadFile, status
+from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database.models.core.company import Company
 from app.database.session import get_db_session
 from app.dependencies.auth import get_current_user
-from app.dependencies.company import get_current_company
+from app.dependencies.company import get_current_company, get_current_company_membership, require_company_admin
 from app.repositories.core.company_member_repository import (
     CompanyMemberRepository,
 )
@@ -22,6 +23,7 @@ from app.schemas.core.company import (
     UpdateCompanyRequest,
     CompanyPreferencesRequest,
     CompanyPreferencesResponse,
+    CompanyMemberRoleUpdate,
 )
 from app.schemas.responses import (
     APIResponse,
@@ -51,6 +53,15 @@ def get_company_service(
     repository = CompanyRepository(session)
 
     return CompanyService(repository)
+
+
+def get_company_member_service(
+    session: Annotated[
+        AsyncSession,
+        Depends(get_db_session),
+    ],
+) -> CompanyMemberService:
+    return CompanyMemberService(CompanyMemberRepository(session))
 
 
 def get_onboarding_service(
@@ -127,21 +138,29 @@ async def get_my_company(
     response_model=PaginatedResponse[CompanyResponse],
 )
 async def list_companies(
+    current_user: Annotated[
+        CurrentUser,
+        Depends(get_current_user),
+    ],
     service: Annotated[
         CompanyService,
         Depends(get_company_service),
     ],
+    member_service: Annotated[
+        CompanyMemberService,
+        Depends(get_company_member_service),
+    ],
     active_only: bool = True,
-    limit: Annotated[
-        int,
-        Query(ge=1, le=200),
-    ] = 100,
-    offset: Annotated[
-        int,
-        Query(ge=0),
-    ] = 0,
+    limit: Annotated[int, Query(ge=1, le=200)] = 100,
+    offset: Annotated[int, Query(ge=0)] = 0,
 ) -> PaginatedResponse[CompanyResponse]:
-    companies, count = await service.list_companies(
+    memberships = await member_service.list_active_memberships_by_user(
+        user_id=current_user.id
+    )
+    company_ids = [membership.company_id for membership in memberships]
+
+    companies, count = await service.list_companies_by_ids(
+        company_ids=company_ids,
         active_only=active_only,
         limit=limit,
         offset=offset,
@@ -152,10 +171,7 @@ async def list_companies(
         count=count,
         limit=limit,
         offset=offset,
-        data=[
-            CompanyResponse.model_validate(company)
-            for company in companies
-        ],
+        data=[CompanyResponse.model_validate(company) for company in companies],
     )
 
 
@@ -165,15 +181,34 @@ async def list_companies(
 )
 async def get_company(
     company_id: UUID,
+    current_user: Annotated[
+        CurrentUser,
+        Depends(get_current_user),
+    ],
     service: Annotated[
         CompanyService,
         Depends(get_company_service),
     ],
+    member_service: Annotated[
+        CompanyMemberService,
+        Depends(get_company_member_service),
+    ],
 ) -> APIResponse[CompanyResponse]:
-    company = await service.get_company(
-        company_id
-    )
+    from app.core.exceptions import ApplicationError
 
+    membership = await member_service.get_active_membership(
+        user_id=current_user.id,
+        company_id=company_id,
+    )
+    if membership is None:
+        # Return 404 rather than revealing whether another tenant's company exists.
+        raise ApplicationError(
+            message="Company not found.",
+            error_code="COMPANY_NOT_FOUND",
+            status_code=404,
+        )
+
+    company = await service.get_company(company_id)
     return APIResponse[CompanyResponse](
         message="Company retrieved successfully.",
         data=CompanyResponse.model_validate(company),
@@ -324,3 +359,63 @@ async def update_preferences(
     """), {"company_id": current_company.id, **values})
     await session.commit()
     return APIResponse(message="Preferences updated.", data=CompanyPreferencesResponse(company_id=current_company.id, **values))
+
+
+@router.get("/me/access", response_model=APIResponse[dict])
+async def get_my_company_access(
+    membership=Depends(get_current_company_membership),
+):
+    role = membership.role.value if hasattr(membership.role, "value") else str(membership.role)
+    return APIResponse(
+        message="Company access retrieved.",
+        data={
+            "role": role,
+            "can_write_finance": role in {"owner", "admin", "cfo", "finance_manager", "accountant"},
+            "can_reset_all": role in {"owner", "admin"},
+            "can_manage_members": role in {"owner", "admin"},
+        },
+    )
+
+
+@router.get("/me/members", response_model=APIResponse[list[dict]])
+async def list_company_members(
+    current_company: Annotated[Company, Depends(get_current_company)],
+    session: Annotated[AsyncSession, Depends(get_db_session)],
+):
+    rows = (await session.execute(text("""
+        SELECT cm.id, cm.user_id, cm.role::text AS role, cm.is_active, cm.joined_at,
+               COALESCE(p.full_name, 'Workspace user') AS full_name, p.job_title
+        FROM public.company_members cm
+        LEFT JOIN public.profiles p ON p.id=cm.user_id
+        WHERE cm.company_id=:company_id AND cm.is_active=true
+        ORDER BY CASE WHEN cm.role::text='owner' THEN 0 WHEN cm.role::text='admin' THEN 1 ELSE 2 END, cm.joined_at
+    """), {"company_id": current_company.id})).mappings().all()
+    return APIResponse(message="Company members retrieved.", data=[dict(row) for row in rows])
+
+
+@router.patch("/me/members/{member_id}/role", response_model=APIResponse[dict])
+async def update_company_member_role(
+    member_id: UUID,
+    request: CompanyMemberRoleUpdate,
+    current_company: Annotated[Company, Depends(get_current_company)],
+    session: Annotated[AsyncSession, Depends(get_db_session)],
+    admin_membership=Depends(require_company_admin),
+):
+    from app.core.exceptions import ApplicationError
+    allowed = {"admin", "cfo", "finance_manager", "accountant", "board_member", "viewer"}
+    if request.role not in allowed:
+        raise ApplicationError(message="Unsupported company role.", error_code="INVALID_COMPANY_ROLE", status_code=422)
+    row = (await session.execute(text("""
+        SELECT id, user_id, role::text AS role FROM public.company_members
+        WHERE id=:member_id AND company_id=:company_id AND is_active=true
+    """), {"member_id": member_id, "company_id": current_company.id})).mappings().first()
+    if not row:
+        raise ApplicationError(message="Company member was not found.", error_code="COMPANY_MEMBER_NOT_FOUND", status_code=404)
+    if row["role"] == "owner":
+        raise ApplicationError(message="Owner role cannot be changed here. Transfer ownership explicitly first.", error_code="OWNER_ROLE_PROTECTED", status_code=409)
+    await session.execute(text("""
+        UPDATE public.company_members SET role=CAST(:role AS public.company_role), updated_at=now()
+        WHERE id=:member_id AND company_id=:company_id
+    """), {"role": request.role, "member_id": member_id, "company_id": current_company.id})
+    await session.commit()
+    return APIResponse(message="Member role updated.", data={"member_id": str(member_id), "role": request.role})

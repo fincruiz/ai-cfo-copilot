@@ -52,4 +52,16 @@ export const companyService = {
 
     return response.data.data;
   },
+
+  async getAccess(): Promise<{ role: string; can_write_finance: boolean; can_reset_all: boolean; can_manage_members: boolean }> {
+    return (await api.get<ApiResponse<{ role: string; can_write_finance: boolean; can_reset_all: boolean; can_manage_members: boolean }>>("/companies/me/access")).data.data;
+  },
+
+  async getMembers(): Promise<Array<{id:string;user_id:string;role:string;is_active:boolean;joined_at:string;full_name:string;job_title?:string|null}>> {
+    return (await api.get<ApiResponse<Array<{id:string;user_id:string;role:string;is_active:boolean;joined_at:string;full_name:string;job_title?:string|null}>>>("/companies/me/members")).data.data;
+  },
+
+  async updateMemberRole(memberId: string, role: string): Promise<void> {
+    await api.patch(`/companies/me/members/${memberId}/role`, { role });
+  },
 };

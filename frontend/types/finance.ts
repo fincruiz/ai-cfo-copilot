@@ -187,3 +187,41 @@ export interface ForecastResult {
   warning?: string | null;
   points: ForecastPoint[];
 }
+
+export interface DataHealth {
+  transaction_count: number;
+  upload_count: number;
+  active_upload_count: number;
+  account_count: number;
+  mapped_account_count: number;
+  unmapped_account_count: number;
+  invalid_transaction_count: number;
+  duplicate_candidate_count: number;
+  first_transaction_date?: string | null;
+  last_transaction_date?: string | null;
+  total_debit: string | number;
+  total_credit: string | number;
+  trial_balance_difference: string | number;
+  balance_sheet_difference: string | number;
+  is_trial_balance_balanced: boolean;
+  is_balance_sheet_balanced: boolean;
+  is_mapping_complete: boolean;
+  overall_status: "empty" | "healthy" | "attention_required" | string;
+}
+
+export interface FinancialAssuranceCheck {
+  key: string;
+  label: string;
+  status: "pass" | "warning" | "fail" | string;
+  score: number;
+  detail: string;
+  action?: string | null;
+}
+
+export interface FinancialAssurance {
+  score: number;
+  grade: string;
+  status: "ready" | "review" | "not_ready" | string;
+  checks: FinancialAssuranceCheck[];
+  caveat: string;
+}

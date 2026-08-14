@@ -23,15 +23,38 @@ function extractTokens(
   return response;
 }
 
-export const authService = {
+function persistTokens(tokens: AuthTokens): void {
+  window.localStorage.setItem(
+    ACCESS_TOKEN_KEY,
+    tokens.access_token,
+  );
 
-  async signup(payload: Record<string, unknown>): Promise<SignupResponse> {
-    const response = await api.post<ApiResponse<SignupResponse>>("/auth/signup", payload);
+  if (tokens.refresh_token) {
+    window.localStorage.setItem(
+      REFRESH_TOKEN_KEY,
+      tokens.refresh_token,
+    );
+  }
+}
+
+export const authService = {
+  async signup(
+    payload: Record<string, unknown>,
+  ): Promise<SignupResponse> {
+    const response = await api.post<
+      ApiResponse<SignupResponse>
+    >("/auth/signup", payload);
+
     const data = response.data.data;
+
     if (data.access_token) {
-      window.localStorage.setItem(ACCESS_TOKEN_KEY, data.access_token);
-      if (data.refresh_token) window.localStorage.setItem(REFRESH_TOKEN_KEY, data.refresh_token);
+      persistTokens({
+        access_token: data.access_token,
+        refresh_token: data.refresh_token,
+        expires_in: data.expires_in ?? undefined,
+      });
     }
+
     return data;
   },
 
@@ -40,10 +63,7 @@ export const authService = {
   ): Promise<AuthTokens> {
     const response = await api.post<
       ApiResponse<AuthTokens> | AuthTokens
-    >(
-      "/auth/login",
-      credentials,
-    );
+    >("/auth/login", credentials);
 
     const tokens = extractTokens(response.data);
 
@@ -53,18 +73,7 @@ export const authService = {
       );
     }
 
-    window.localStorage.setItem(
-      ACCESS_TOKEN_KEY,
-      tokens.access_token,
-    );
-
-    if (tokens.refresh_token) {
-      window.localStorage.setItem(
-        REFRESH_TOKEN_KEY,
-        tokens.refresh_token,
-      );
-    }
-
+    persistTokens(tokens);
     return tokens;
   },
 
@@ -85,10 +94,11 @@ export const authService = {
   },
 
   logout(): void {
+    if (typeof window === "undefined") return;
+
     window.localStorage.removeItem(
       ACCESS_TOKEN_KEY,
     );
-
     window.localStorage.removeItem(
       REFRESH_TOKEN_KEY,
     );

@@ -52,8 +52,34 @@ export interface AnalyticsOverview {
   insights: string[];
 }
 
+export interface AICFOSource {
+  title: string;
+  url: string;
+}
+
+export interface AICFOAction {
+  label: string;
+  route: string;
+}
+
 export interface AICFOAnswer {
   answer: string;
   mode: string;
   suggested_questions: string[];
+  sources: AICFOSource[];
+  action?: AICFOAction | null;
+  external_context_used: boolean;
+}
+
+
+export interface AICFOSignal {
+  severity: "high" | "medium" | "low" | "positive" | string;
+  title: string;
+  evidence: string;
+  action: string;
+}
+
+export interface AICFOSignalsResponse {
+  signals: AICFOSignal[];
+  generated_from_months: number;
 }

@@ -219,3 +219,18 @@ button, a, input, select, textarea, [role="button"] {
 
 @keyframes feature-marquee { from { transform: translateX(0); } to { transform: translateX(-50%); } }
 .animate-feature-marquee { animation: feature-marquee 28s linear infinite; }
+
+/* P5 experience polish */
+.demo-aurora {
+  background:
+    radial-gradient(circle at 12% 12%, rgba(56,189,248,.16), transparent 26%),
+    radial-gradient(circle at 82% 18%, rgba(99,102,241,.22), transparent 28%),
+    radial-gradient(circle at 48% 82%, rgba(139,92,246,.13), transparent 32%);
+}
+@keyframes demo-scene-in { from { opacity:0; transform:translateY(16px) scale(.99); } to { opacity:1; transform:none; } }
+@keyframes demo-dot { 0%,100%{opacity:.25; transform:translateY(0)} 50%{opacity:1; transform:translateY(-4px)} }
+.animate-scene-in { animation: demo-scene-in .55s cubic-bezier(.2,.8,.2,1) both; }
+.demo-dot { display:inline-block; width:7px; height:7px; border-radius:999px; background:#a5b4fc; animation:demo-dot 1.2s ease-in-out infinite; }
+.fincruiz-surface { background:linear-gradient(180deg,color-mix(in oklab,var(--card) 96%,transparent),color-mix(in oklab,var(--card) 90%,transparent)); border:1px solid var(--border); border-radius:1.25rem; }
+.fincruiz-hero { background:radial-gradient(circle at 80% 10%,rgba(99,102,241,.15),transparent 25%),linear-gradient(135deg,color-mix(in oklab,var(--card) 96%,transparent),color-mix(in oklab,var(--muted) 72%,transparent)); }
+@media (prefers-reduced-motion: reduce){ .animate-scene-in,.demo-dot{animation:none!important;} }

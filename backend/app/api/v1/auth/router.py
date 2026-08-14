@@ -6,6 +6,7 @@ from app.dependencies.auth import get_current_user
 from app.schemas.auth import (
     CurrentUser,
     LoginRequest,
+    RefreshTokenRequest,
     SignupRequest,
     SignupResponse,
     TokenResponse,
@@ -70,6 +71,31 @@ async def login(
 
     return APIResponse[TokenResponse](
         message="Login successful.",
+        data=token,
+    )
+
+
+@router.post(
+    "/refresh",
+    response_model=APIResponse[TokenResponse],
+)
+async def refresh_session(
+    request: RefreshTokenRequest,
+) -> APIResponse[TokenResponse]:
+    auth_service = AuthService()
+    token_data = await auth_service.refresh_session(
+        refresh_token=request.refresh_token,
+    )
+
+    token = TokenResponse(
+        access_token=token_data["access_token"],
+        token_type=token_data.get("token_type", "bearer"),
+        expires_in=token_data.get("expires_in"),
+        refresh_token=token_data.get("refresh_token") or request.refresh_token,
+    )
+
+    return APIResponse[TokenResponse](
+        message="Session refreshed successfully.",
         data=token,
     )
 

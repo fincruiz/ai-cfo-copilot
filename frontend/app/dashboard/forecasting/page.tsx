@@ -1,6 +1,7 @@
 "use client";
 
 import { FormEvent, useEffect, useState } from "react";
+import { ModuleResetButton } from "@/components/module-reset-button";
 import { Loader2, TrendingUp } from "lucide-react";
 
 import { Alert, AlertDescription } from "@/components/ui/alert";
@@ -51,7 +52,7 @@ export default function ForecastingPage() {
     <div className="mx-auto max-w-6xl space-y-6">
       <div>
         <p className="text-sm font-medium text-muted-foreground">Planning</p>
-        <h1 className="mt-1 text-3xl font-semibold tracking-tight">Forecasting</h1>
+        <div className="flex items-center justify-between gap-4"><h1 className="mt-1 text-3xl font-semibold tracking-tight">Forecasting</h1><ModuleResetButton scope="forecasts" label="Reset forecasts" description="This removes saved forecast and scenario runs. Your actual financial data remains." /></div>
         <p className="mt-2 text-muted-foreground">
           Run-rate and linear-trend forecasts using saved monthly actuals.
         </p>

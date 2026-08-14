@@ -86,3 +86,23 @@ class BranchComparisonResponse(BaseModel):
     net_profit: Decimal
     gross_margin_percent: Decimal | None
     net_margin_percent: Decimal | None
+
+class DataHealthResponse(BaseModel):
+    transaction_count: int
+    upload_count: int
+    active_upload_count: int
+    account_count: int
+    mapped_account_count: int
+    unmapped_account_count: int
+    invalid_transaction_count: int
+    duplicate_candidate_count: int
+    first_transaction_date: date | None
+    last_transaction_date: date | None
+    total_debit: Decimal
+    total_credit: Decimal
+    trial_balance_difference: Decimal
+    balance_sheet_difference: Decimal
+    is_trial_balance_balanced: bool
+    is_balance_sheet_balanced: bool
+    is_mapping_complete: bool
+    overall_status: str

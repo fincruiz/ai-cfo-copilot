@@ -14,12 +14,14 @@ import {
   FileText,
   Gauge,
   Handshake,
+  History,
   LayoutDashboard,
   LogOut,
   PanelLeftClose,
   PanelLeftOpen,
   Presentation,
   Settings,
+  ShieldCheck,
   SlidersHorizontal,
   TrendingUp,
   Upload,
@@ -31,6 +33,7 @@ import { Button } from "@/components/ui/button";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { AICFOFloating } from "@/components/ai-cfo-floating";
 import { authService } from "@/services/auth-service";
+import { companyService } from "@/services/company-service";
 
 const navigationGroups = [
   {
@@ -55,6 +58,7 @@ const navigationGroups = [
       { label: "Financial reports", href: "/dashboard/reports", icon: FileBarChart },
       { label: "KPIs", href: "/dashboard/kpis", icon: Gauge },
       { label: "Analytics", href: "/dashboard/analytics", icon: BarChart3 },
+      { label: "Industry benchmarking", href: "/dashboard/benchmarking", icon: BarChart3 },
       { label: "Working capital", href: "/dashboard/working-capital", icon: Handshake },
     ],
   },
@@ -81,7 +85,9 @@ const navigationGroups = [
     label: "Administration",
     items: [
       { label: "Profile", href: "/dashboard/profile", icon: UserRound },
-      { label: "Settings", href: "/dashboard/settings", icon: Settings },
+      { label: "Data & Privacy", href: "/dashboard/settings", icon: Settings },
+      { label: "Access & permissions", href: "/dashboard/access", icon: ShieldCheck },
+      { label: "Audit trail", href: "/dashboard/audit", icon: History },
     ],
   },
 ];
@@ -92,11 +98,61 @@ export default function DashboardLayout({
   const pathname = usePathname();
   const router = useRouter();
   const [collapsed, setCollapsed] = useState(false);
+  const [isAuthorizing, setIsAuthorizing] = useState(true);
+  const [companyRole, setCompanyRole] = useState("");
 
   useEffect(() => {
     const saved = window.localStorage.getItem("fincruiz_sidebar_collapsed");
     setCollapsed(saved === "true");
-  }, []);
+
+    let cancelled = false;
+
+    async function authorizeDashboard() {
+      if (!authService.hasAccessToken()) {
+        router.replace("/login");
+        return;
+      }
+
+      try {
+        await authService.getCurrentUser();
+        await authService.getCurrentCompany();
+        companyService.getAccess().then((access) => { if (!cancelled) setCompanyRole(access.role); }).catch(() => undefined);
+
+        if (!cancelled) {
+          setIsAuthorizing(false);
+        }
+      } catch (error: unknown) {
+        if (cancelled) return;
+
+        const apiError = error as {
+          response?: {
+            status?: number;
+            data?: { error_code?: string };
+          };
+        };
+
+        const status = apiError.response?.status;
+        const errorCode = apiError.response?.data?.error_code;
+
+        if (
+          status === 404 &&
+          errorCode === "COMPANY_MEMBERSHIP_NOT_FOUND"
+        ) {
+          router.replace("/onboarding");
+          return;
+        }
+
+        authService.logout();
+        router.replace("/login");
+      }
+    }
+
+    void authorizeDashboard();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [router]);
 
   function toggleSidebar() {
     setCollapsed((current) => {
@@ -109,6 +165,19 @@ export default function DashboardLayout({
   function handleLogout() {
     authService.logout();
     router.replace("/login");
+  }
+
+  if (isAuthorizing) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-background">
+        <div className="text-center">
+          <div className="mx-auto size-8 animate-spin rounded-full border-2 border-muted border-t-primary" />
+          <p className="mt-3 text-sm text-muted-foreground">
+            Securing your workspace…
+          </p>
+        </div>
+      </div>
+    );
   }
 
   return (
@@ -149,7 +218,7 @@ export default function DashboardLayout({
             <div className="rounded-xl border bg-muted/30 p-3">
               <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">Workspace</p>
               <p className="mt-1 text-sm font-semibold">Finance intelligence</p>
-              <p className="mt-1 text-xs text-muted-foreground">Live company dataset</p>
+              <p className="mt-1 text-xs text-muted-foreground">Live company dataset{companyRole ? ` · ${companyRole.replaceAll("_", " ")}` : ""}</p>
             </div>
           </div>
         ) : null}

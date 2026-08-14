@@ -12,6 +12,7 @@ import {
   ShieldCheck,
   Sparkles,
   UploadCloud,
+  PlayCircle,
 } from "lucide-react";
 
 const features = [
@@ -54,6 +55,9 @@ export default function HomePage() {
         </Link>
 
         <div className="flex items-center gap-3">
+          <Link href="/demo" className="hidden items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm font-semibold text-slate-800 shadow-sm transition hover:-translate-y-0.5 hover:shadow md:inline-flex">
+            <PlayCircle className="size-4" /> Try demo
+          </Link>
           <Link
             href="/login"
             className="hidden rounded-xl px-5 py-3 text-sm font-semibold text-slate-700 transition hover:bg-white hover:shadow-sm sm:block"
@@ -90,6 +94,13 @@ export default function HomePage() {
           </p>
 
           <div className="mt-9 flex flex-col gap-3 sm:flex-row">
+            <Link
+              href="/demo"
+              className="inline-flex min-h-14 items-center justify-center gap-2 rounded-2xl border border-slate-200 bg-white px-8 text-base font-bold text-slate-900 shadow-lg transition hover:-translate-y-1 hover:shadow-xl"
+            >
+              <PlayCircle className="size-5" />
+              Explore interactive demo
+            </Link>
             <Link
               href="/signup"
               className="inline-flex min-h-14 items-center justify-center gap-2 rounded-2xl bg-slate-950 px-8 text-base font-bold text-white shadow-2xl transition hover:-translate-y-1 hover:bg-slate-800"

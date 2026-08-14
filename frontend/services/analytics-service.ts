@@ -5,6 +5,7 @@ import type {
   AnalyticsOverview,
   FinanceImportResult,
   WorkingCapitalSummary,
+  AICFOSignalsResponse,
 } from "@/types/analytics";
 
 async function upload(
@@ -58,9 +59,24 @@ export const analyticsService = {
     ).data.data;
   },
 
-  async askAiCfo(question: string): Promise<AICFOAnswer> {
+  async getExecutiveBrief(): Promise<AICFOAnswer> {
+    return (await api.get<ApiResponse<AICFOAnswer>>("/ai-cfo/executive-brief")).data.data;
+  },
+
+  async getProactiveSignals(): Promise<AICFOSignalsResponse> {
+    return (await api.get<ApiResponse<AICFOSignalsResponse>>("/ai-cfo/signals")).data.data;
+  },
+
+  async getIndustryBenchmark(): Promise<AICFOAnswer> {
+    return (await api.get<ApiResponse<AICFOAnswer>>("/ai-cfo/industry-benchmark")).data.data;
+  },
+
+  async askAiCfo(question: string, includeExternalContext = true): Promise<AICFOAnswer> {
     return (
-      await api.post<ApiResponse<AICFOAnswer>>("/ai-cfo/ask", { question })
+      await api.post<ApiResponse<AICFOAnswer>>("/ai-cfo/ask", {
+        question,
+        include_external_context: includeExternalContext,
+      })
     ).data.data;
   },
 };
