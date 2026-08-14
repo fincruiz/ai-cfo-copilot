@@ -15,7 +15,7 @@ import Link from "next/link";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { formatMoney, toNumber } from "@/lib/finance-format";
+import { formatMoney, formatPercent, toNumber } from "@/lib/finance-format";
 import { getApiErrorMessage } from "@/lib/api";
 import { analyticsService } from "@/services/analytics-service";
 import type { AnalyticsOverview, WorkingCapitalSummary } from "@/types/analytics";
@@ -86,12 +86,12 @@ export default function AnalyticsPage() {
         <Metric
           label="Accounts receivable"
           value={data?.ar_summary?.total_outstanding}
-          note={data?.ar_summary ? `${toNumber(data.ar_summary.overdue_percent).toFixed(1)}% overdue` : "Upload AR ageing"}
+          note={data?.ar_summary ? `${formatPercent(data.ar_summary.overdue_percent)} overdue` : "Upload AR ageing"}
         />
         <Metric
           label="Accounts payable"
           value={data?.ap_summary?.total_outstanding}
-          note={data?.ap_summary ? `${toNumber(data.ap_summary.overdue_percent).toFixed(1)}% overdue` : "Upload AP ageing"}
+          note={data?.ap_summary ? `${formatPercent(data.ap_summary.overdue_percent)} overdue` : "Upload AP ageing"}
         />
       </div>
 
@@ -225,7 +225,7 @@ function WorkingCapitalCard({
             <div className="grid grid-cols-3 gap-3">
               <SmallMetric label="Outstanding" value={formatMoney(summary.total_outstanding)} />
               <SmallMetric label="Overdue" value={formatMoney(summary.overdue_amount)} />
-              <SmallMetric label="Overdue %" value={`${toNumber(summary.overdue_percent).toFixed(1)}%`} />
+              <SmallMetric label="Overdue %" value={formatPercent(summary.overdue_percent)} />
             </div>
 
             <div>

@@ -8,7 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { getApiErrorMessage } from "@/lib/api";
-import { formatMoney, toNumber } from "@/lib/finance-format";
+import { formatMoney, formatPercent, toNumber } from "@/lib/finance-format";
 import { financeService } from "@/services/finance-service";
 import type {
   BalanceSheet,
@@ -209,7 +209,7 @@ export default function ReportsPage() {
             formatMoney(row.gross_profit),
             formatMoney(row.ebit),
             formatMoney(row.net_profit),
-            row.net_margin_percent == null ? "—" : `${toNumber(row.net_margin_percent).toFixed(1)}%`,
+            row.net_margin_percent == null ? "—" : formatPercent(row.net_margin_percent),
           ])}
           isLoading={isLoading}
         />

@@ -60,6 +60,21 @@ class AICFOService:
                 ),
                 "action": {"label": "Review Account Mapping", "route": "/dashboard/mapping"},
             }
+        if any(term in q for term in (
+            "what if", "can we afford", "can i afford", "can we hire", "hire", "new employee",
+            "new staff", "increase salary", "raise salaries", "capex", "buy equipment", "new warehouse",
+            "open a branch", "price increase", "change price", "reduce price", "cash impact", "cash effect",
+            "scenario", "model this decision", "model the decision"
+        )):
+            return {
+                "answer": (
+                    "This is a decision-modelling question, so the best FinCruiz tool is the Integrated Three-Way Forecast. "
+                    "It links Profit & Loss, Balance Sheet and Cash Flow so you can test the decision against profit, working capital, "
+                    "closing cash and debt together rather than looking at one statement in isolation. Open the model, adjust the relevant "
+                    "drivers, then compare the resulting cash and profitability impact."
+                ),
+                "action": {"label": "Model it in Three-Way Forecast", "route": "/dashboard/three-way-forecast"},
+            }
         if any(term in q for term in ("reset data", "delete data", "privacy", "delete profile", "delete account", "wrong file")):
             route = "/dashboard/settings"
             label = "Open Data & Privacy"

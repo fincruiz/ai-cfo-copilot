@@ -3,7 +3,7 @@ import { useEffect, useState } from "react";
 import { Loader2, Users, WalletCards } from "lucide-react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { analyticsService } from "@/services/analytics-service";
-import { formatMoney, toNumber } from "@/lib/finance-format";
+import { formatMoney, formatPercent, toNumber } from "@/lib/finance-format";
 import type { WorkingCapitalSummary } from "@/types/analytics";
 import { ModuleResetButton } from "@/components/module-reset-button";
 
@@ -21,7 +21,7 @@ export default function WorkingCapitalPage() {
 function Panel({title,icon:Icon,data}:{title:string;icon:typeof Users;data:WorkingCapitalSummary|null}) {
   return <Card><CardHeader><CardTitle className="flex items-center gap-2"><Icon className="size-5"/>{title}</CardTitle><CardDescription>{data?`${data.document_count} invoices across ${data.party_count} parties`:"No ageing uploaded"}</CardDescription></CardHeader><CardContent>
     {!data?<div className="flex min-h-48 items-center justify-center text-muted-foreground">Upload the ageing report in Import Centre.</div>:<div className="space-y-5">
-      <div className="grid grid-cols-3 gap-3">{[["Outstanding",formatMoney(data.total_outstanding)],["Overdue",formatMoney(data.overdue_amount)],["Overdue %",`${toNumber(data.overdue_percent).toFixed(1)}%`]].map(([l,v])=><div key={l} className="rounded-xl border p-3"><p className="text-xs text-muted-foreground">{l}</p><p className="mt-1 font-semibold">{v}</p></div>)}</div>
+      <div className="grid grid-cols-3 gap-3">{[["Outstanding",formatMoney(data.total_outstanding)],["Overdue",formatMoney(data.overdue_amount)],["Overdue %",formatPercent(data.overdue_percent)]].map(([l,v])=><div key={l} className="rounded-xl border p-3"><p className="text-xs text-muted-foreground">{l}</p><p className="mt-1 font-semibold">{v}</p></div>)}</div>
       <div className="space-y-2">{data.buckets.map(b=><div key={b.bucket} className="flex justify-between rounded-xl bg-muted/40 p-3 text-sm"><span>{b.bucket}</span><b>{formatMoney(b.amount)}</b></div>)}</div>
       <div>{data.top_parties.slice(0,8).map(p=><div key={p.party_name} className="flex justify-between border-b py-3 text-sm"><span>{p.party_name}</span><b>{formatMoney(p.outstanding_amount)}</b></div>)}</div>
     </div>}

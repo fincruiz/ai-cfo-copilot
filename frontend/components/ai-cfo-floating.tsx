@@ -30,10 +30,11 @@ export function AICFOFloating() {
   const [loading, setLoading] = useState(false);
   const [liveContext, setLiveContext] = useState(true);
   const prompts = [
-    "Where should I upload my GL?",
     "What should management focus on?",
+    "Can we afford to hire 3 more people?",
+    "Why is profit up but cash down?",
+    "Where should I upload my GL?",
     "Check industry & economic risks",
-    "Explain revenue and margin movement",
   ];
   const [promptIndex, setPromptIndex] = useState(0);
 
@@ -46,7 +47,7 @@ export function AICFOFloating() {
     {
       role: "assistant",
       content:
-        "I can guide you around FinCruiz, tell you what to upload, analyse the finance data you have loaded, and connect it with relevant live industry or economic context.",
+        "Tell me what you are trying to decide in plain English. I can guide you to the right FinCruiz capability, analyse loaded company data, and use tools such as the three-way forecast when a decision needs modelling.",
     },
   ]);
 

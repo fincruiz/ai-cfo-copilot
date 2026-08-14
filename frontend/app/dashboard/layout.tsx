@@ -1,334 +1,156 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import {
-  BarChart3,
-  BrainCircuit,
-  PlugZap,
-  Bot,
-  Building2,
-  ChevronLeft,
-  ChevronRight,
-  FileBarChart,
-  FileInput,
-  FileText,
-  Gauge,
-  Handshake,
-  History,
-  LayoutDashboard,
-  LogOut,
-  PanelLeftClose,
-  PanelLeftOpen,
-  Presentation,
-  Settings,
-  ShieldCheck,
-  SlidersHorizontal,
-  TrendingUp,
-  Upload,
-  UserRound,
-  WandSparkles,
+  BarChart3, BrainCircuit, PlugZap, Building2, ChevronDown, ChevronLeft, ChevronRight,
+  FileBarChart, FileInput, FileText, Gauge, Handshake, History, LayoutDashboard, LogOut,
+  PanelLeftClose, PanelLeftOpen, Presentation, Settings, ShieldCheck, SlidersHorizontal,
+  TrendingUp, Upload, UserRound, WandSparkles, Search, Sparkles, Menu, X,
 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
+import { HelpTip } from "@/components/ui/help-tip";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { AICFOFloating } from "@/components/ai-cfo-floating";
+import { FeatureExplorer, type Capability } from "@/components/feature-explorer";
 import { authService } from "@/services/auth-service";
 import { companyService } from "@/services/company-service";
 
-const navigationGroups = [
-  {
-    label: "Executive",
-    items: [
-      { label: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
-      { label: "Intelligence Center", href: "/dashboard/intelligence", icon: BrainCircuit },
-      { label: "AI CFO Assistant", href: "/dashboard", icon: Bot, disabled: true },
-    ],
-  },
-  {
-    label: "Data & setup",
-    items: [
-      { label: "Integration Hub", href: "/dashboard/integrations", icon: PlugZap },
-      { label: "Upload GL", href: "/dashboard/uploads", icon: Upload },
-      { label: "Import Centre", href: "/dashboard/import-center", icon: FileInput },
-      { label: "Account mapping", href: "/dashboard/mapping", icon: WandSparkles },
-      { label: "Branches", href: "/dashboard/branches", icon: Building2 },
-    ],
-  },
-  {
-    label: "Reporting & analytics",
-    items: [
-      { label: "Financial reports", href: "/dashboard/reports", icon: FileBarChart },
-      { label: "KPIs", href: "/dashboard/kpis", icon: Gauge },
-      { label: "Analytics", href: "/dashboard/analytics", icon: BarChart3 },
-      { label: "Industry benchmarking", href: "/dashboard/benchmarking", icon: BarChart3 },
-      { label: "Working capital", href: "/dashboard/working-capital", icon: Handshake },
-    ],
-  },
-  {
-    label: "Planning & intelligence",
-    items: [
-      { label: "Forecasting", href: "/dashboard/forecasting", icon: TrendingUp },
-      { label: "Three-Way Forecast", href: "/dashboard/three-way-forecast", icon: TrendingUp },
-      { label: "Power of One", href: "/dashboard/power-of-one", icon: SlidersHorizontal },
-      { label: "Native Budget Builder", href: "/dashboard/native-planning", icon: SlidersHorizontal },
-      { label: "Budgets & scenarios", href: "/dashboard/planning", icon: SlidersHorizontal },
-    ],
-  },
-  {
-    label: "Board & exports",
-    items: [
-      { label: "Board reports", href: "/dashboard/board-reports", icon: FileText },
-      { label: "Board packs", href: "/dashboard/board-packs", icon: FileBarChart },
-      { label: "Board Pack Builder", href: "/dashboard/board-pack-builder", icon: Presentation },
-      { label: "PowerPoint export", href: "/dashboard/powerpoint", icon: Presentation },
-    ],
-  },
-  {
-    label: "Administration",
-    items: [
-      { label: "Profile", href: "/dashboard/profile", icon: UserRound },
-      { label: "Data & Privacy", href: "/dashboard/settings", icon: Settings },
-      { label: "Access & permissions", href: "/dashboard/access", icon: ShieldCheck },
-      { label: "Audit trail", href: "/dashboard/audit", icon: History },
-    ],
-  },
+type NavItem = { label: string; href: string; icon: typeof LayoutDashboard; description: string; keywords?: string };
+type NavGroup = { label: string; items: NavItem[]; defaultOpen?: boolean };
+
+const navigationGroups: NavGroup[] = [
+  { label: "Overview", defaultOpen: true, items: [
+    { label: "Home", href: "/dashboard", icon: LayoutDashboard, description: "Your management-first view of performance, priorities, risks and next actions.", keywords: "dashboard executive management" },
+    { label: "Intelligence Center", href: "/dashboard/intelligence", icon: BrainCircuit, description: "See what FinCruiz understands, the signals it is watching and the priorities it recommends.", keywords: "organizational brain insights ai" },
+  ]},
+  { label: "Finance & performance", defaultOpen: true, items: [
+    { label: "Financial reports", href: "/dashboard/reports", icon: FileBarChart, description: "Profit & Loss, Balance Sheet, trial balance and core financial statements.", keywords: "p&l pnl balance sheet statements" },
+    { label: "KPIs", href: "/dashboard/kpis", icon: Gauge, description: "Financial ratios and performance indicators with interpretation.", keywords: "ratios metrics margin liquidity" },
+    { label: "Analytics", href: "/dashboard/analytics", icon: BarChart3, description: "Explore monthly movements, branch drivers, trends and variance patterns.", keywords: "trends monthly variance" },
+    { label: "Working capital", href: "/dashboard/working-capital", icon: Handshake, description: "Understand receivables, payables, overdue exposure and cash tied up in operations.", keywords: "ar ap receivables payables cash collections" },
+    { label: "Industry benchmarking", href: "/dashboard/benchmarking", icon: BarChart3, description: "Compare company performance with relevant external industry and economic context.", keywords: "benchmark market industry economic" },
+  ]},
+  { label: "Planning & forecasting", items: [
+    { label: "Forecasting", href: "/dashboard/forecasting", icon: TrendingUp, description: "Project future revenue and financial performance from historical trends and assumptions.", keywords: "forecast projection" },
+    { label: "Three-Way Forecast", href: "/dashboard/three-way-forecast", icon: TrendingUp, description: "Model P&L, Balance Sheet and Cash Flow together to answer decisions such as hiring, pricing, capex and cash impact.", keywords: "what if hire employees cash scenario integrated forecast" },
+    { label: "Power of One", href: "/dashboard/power-of-one", icon: SlidersHorizontal, description: "Test the impact of small changes in price, volume, margin, working capital and costs.", keywords: "sensitivity driver scenario" },
+    { label: "Native Budget Builder", href: "/dashboard/native-planning", icon: SlidersHorizontal, description: "Build budgets directly in FinCruiz without relying on an external spreadsheet.", keywords: "budget plan" },
+    { label: "Budgets & scenarios", href: "/dashboard/planning", icon: SlidersHorizontal, description: "Compare plans, budgets and scenarios against actual performance.", keywords: "budget scenario actual variance" },
+  ]},
+  { label: "Management reporting", items: [
+    { label: "Board reports", href: "/dashboard/board-reports", icon: FileText, description: "Management and board-ready reporting views built from current company data.", keywords: "management report board" },
+    { label: "Board packs", href: "/dashboard/board-packs", icon: FileBarChart, description: "Review generated board-pack records and reporting outputs.", keywords: "board pack" },
+    { label: "Board Pack Builder", href: "/dashboard/board-pack-builder", icon: Presentation, description: "Create board packs with financials, outlook, risks, priorities and decisions required.", keywords: "ppt presentation board pack" },
+    { label: "PowerPoint export", href: "/dashboard/powerpoint", icon: Presentation, description: "Export presentation-ready financial and management reporting.", keywords: "pptx export slides" },
+  ]},
+  { label: "Data & organization", items: [
+    { label: "Integration Hub", href: "/dashboard/integrations", icon: PlugZap, description: "Connect systems such as Xero, Zoho Books and Tally to FinCruiz.", keywords: "xero zoho tally erp connection" },
+    { label: "Upload data", href: "/dashboard/uploads", icon: Upload, description: "Upload the General Ledger and validate its structure before analysis.", keywords: "gl general ledger csv" },
+    { label: "Import Centre", href: "/dashboard/import-center", icon: FileInput, description: "Load supporting finance datasets such as AR, AP and Chart of Accounts.", keywords: "ar ap coa import" },
+    { label: "Account mapping", href: "/dashboard/mapping", icon: WandSparkles, description: "Map source accounts into consistent reporting groups used by FinCruiz.", keywords: "coa mapping accounts" },
+    { label: "Branches", href: "/dashboard/branches", icon: Building2, description: "Manage branches or business units and analyse performance across them.", keywords: "branch division business unit" },
+  ]},
+  { label: "Governance & administration", items: [
+    { label: "Profile", href: "/dashboard/profile", icon: UserRound, description: "Maintain company details used across reports and intelligence.", keywords: "company profile" },
+    { label: "Data & Privacy", href: "/dashboard/settings", icon: Settings, description: "Control demo data, module resets, full data reset and permanent account deletion.", keywords: "privacy reset delete data" },
+    { label: "Access & permissions", href: "/dashboard/access", icon: ShieldCheck, description: "Manage workspace members, roles and access rights.", keywords: "roles users security permissions" },
+    { label: "Audit trail", href: "/dashboard/audit", icon: History, description: "Review important workspace actions such as uploads, resets and configuration changes.", keywords: "audit history activity" },
+  ]},
 ];
 
-export default function DashboardLayout({
-  children,
-}: Readonly<{ children: React.ReactNode }>) {
+const capabilities: Capability[] = navigationGroups.flatMap((group) => group.items.map((item) => ({
+  group: group.label, label: item.label, description: item.description, href: item.href, keywords: item.keywords,
+})));
+
+export default function DashboardLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   const pathname = usePathname();
   const router = useRouter();
   const [collapsed, setCollapsed] = useState(false);
+  const [mobileOpen, setMobileOpen] = useState(false);
+  const [explorerOpen, setExplorerOpen] = useState(false);
   const [isAuthorizing, setIsAuthorizing] = useState(true);
   const [companyRole, setCompanyRole] = useState("");
+  const activeGroup = useMemo(() => navigationGroups.find((group) => group.items.some((item) => item.href === "/dashboard" ? pathname === "/dashboard" : pathname === item.href || pathname.startsWith(`${item.href}/`)))?.label, [pathname]);
+  const [openGroups, setOpenGroups] = useState<Record<string, boolean>>(() => Object.fromEntries(navigationGroups.map((g) => [g.label, Boolean(g.defaultOpen)])));
 
   useEffect(() => {
     const saved = window.localStorage.getItem("fincruiz_sidebar_collapsed");
     setCollapsed(saved === "true");
-
+    if (activeGroup) setOpenGroups((current) => ({ ...current, [activeGroup]: true }));
     let cancelled = false;
-
     async function authorizeDashboard() {
-      if (!authService.hasAccessToken()) {
-        router.replace("/login");
-        return;
-      }
-
+      if (!authService.hasAccessToken()) { router.replace("/login"); return; }
       try {
         await authService.getCurrentUser();
         await authService.getCurrentCompany();
         companyService.getAccess().then((access) => { if (!cancelled) setCompanyRole(access.role); }).catch(() => undefined);
-
-        if (!cancelled) {
-          setIsAuthorizing(false);
-        }
+        if (!cancelled) setIsAuthorizing(false);
       } catch (error: unknown) {
         if (cancelled) return;
-
-        const apiError = error as {
-          response?: {
-            status?: number;
-            data?: { error_code?: string };
-          };
-        };
-
-        const status = apiError.response?.status;
-        const errorCode = apiError.response?.data?.error_code;
-
-        if (
-          status === 404 &&
-          errorCode === "COMPANY_MEMBERSHIP_NOT_FOUND"
-        ) {
-          router.replace("/onboarding");
-          return;
-        }
-
-        authService.logout();
-        router.replace("/login");
+        const apiError = error as { response?: { status?: number; data?: { error_code?: string } } };
+        if (apiError.response?.status === 404 && apiError.response?.data?.error_code === "COMPANY_MEMBERSHIP_NOT_FOUND") { router.replace("/onboarding"); return; }
+        authService.logout(); router.replace("/login");
       }
     }
-
     void authorizeDashboard();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [router]);
+    return () => { cancelled = true; };
+  }, [router, activeGroup]);
 
   function toggleSidebar() {
-    setCollapsed((current) => {
-      const next = !current;
-      window.localStorage.setItem("fincruiz_sidebar_collapsed", String(next));
-      return next;
-    });
+    setCollapsed((current) => { const next = !current; window.localStorage.setItem("fincruiz_sidebar_collapsed", String(next)); return next; });
   }
+  function handleLogout() { authService.logout(); router.replace("/login"); }
 
-  function handleLogout() {
-    authService.logout();
-    router.replace("/login");
-  }
+  if (isAuthorizing) return <div className="flex min-h-screen items-center justify-center bg-background"><div className="text-center"><div className="mx-auto size-8 animate-spin rounded-full border-2 border-muted border-t-primary"/><p className="mt-3 text-sm text-muted-foreground">Securing your workspace…</p></div></div>;
 
-  if (isAuthorizing) {
-    return (
-      <div className="flex min-h-screen items-center justify-center bg-background">
-        <div className="text-center">
-          <div className="mx-auto size-8 animate-spin rounded-full border-2 border-muted border-t-primary" />
-          <p className="mt-3 text-sm text-muted-foreground">
-            Securing your workspace…
-          </p>
-        </div>
+  const SidebarContent = ({ mobile = false }: { mobile?: boolean }) => (
+    <>
+      <div className="flex h-16 items-center border-b px-4">
+        <div className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-primary text-primary-foreground"><BarChart3 className="size-5" /></div>
+        {!collapsed || mobile ? <div className="ml-3 min-w-0"><p className="truncate font-semibold tracking-tight">FinCruiz</p><p className="truncate text-xs text-muted-foreground">Business intelligence brain</p></div> : null}
+        {mobile ? <button type="button" onClick={() => setMobileOpen(false)} className="ml-auto flex size-9 items-center justify-center rounded-lg hover:bg-muted"><X className="size-4"/></button> : <button type="button" onClick={toggleSidebar} className={["ml-auto flex size-9 items-center justify-center rounded-lg border bg-background text-muted-foreground transition hover:bg-muted hover:text-foreground", collapsed ? "absolute -right-4 top-4 shadow-md" : ""].join(" ")} title={collapsed ? "Expand sidebar" : "Collapse sidebar"}>{collapsed ? <ChevronRight className="size-4"/> : <ChevronLeft className="size-4"/>}</button>}
       </div>
-    );
-  }
 
-  return (
-    <div className="min-h-screen bg-muted/30">
-      <aside
-        className={[
-          "fixed inset-y-0 left-0 z-30 hidden border-r bg-background transition-all duration-300 lg:flex lg:flex-col",
-          collapsed ? "w-20" : "w-72",
-        ].join(" ")}
-      >
-        <div className="flex h-16 items-center border-b px-4">
-          <div className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-primary text-primary-foreground">
-            <BarChart3 className="size-5" />
-          </div>
+      {(!collapsed || mobile) ? <div className="border-b p-3"><button type="button" onClick={() => { setExplorerOpen(true); setMobileOpen(false); }} className="flex w-full items-center gap-3 rounded-xl border bg-muted/30 px-3 py-3 text-left transition hover:bg-muted"><Search className="size-4 text-primary"/><div className="min-w-0 flex-1"><p className="text-sm font-semibold">Explore FinCruiz</p><p className="truncate text-xs text-muted-foreground">Search every capability</p></div><Sparkles className="size-4 text-muted-foreground"/></button></div> : <div className="border-b p-3"><button type="button" onClick={() => setExplorerOpen(true)} title="Explore all FinCruiz capabilities" className="mx-auto flex size-10 items-center justify-center rounded-xl border hover:bg-muted"><Search className="size-4"/></button></div>}
 
-          {!collapsed ? (
-            <div className="ml-3 min-w-0">
-              <p className="truncate font-semibold tracking-tight">FinCruiz</p>
-              <p className="truncate text-xs text-muted-foreground">AI CFO Platform</p>
-            </div>
-          ) : null}
-
-          <button
-            type="button"
-            onClick={toggleSidebar}
-            className={[
-              "ml-auto flex size-9 items-center justify-center rounded-lg border bg-background text-muted-foreground transition hover:bg-muted hover:text-foreground",
-              collapsed ? "absolute -right-4 top-4 shadow-md" : "",
-            ].join(" ")}
-            title={collapsed ? "Expand sidebar" : "Collapse sidebar"}
-          >
-            {collapsed ? <ChevronRight className="size-4" /> : <ChevronLeft className="size-4" />}
-          </button>
-        </div>
-
-        {!collapsed ? (
-          <div className="border-b px-4 py-4">
-            <div className="rounded-xl border bg-muted/30 p-3">
-              <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">Workspace</p>
-              <p className="mt-1 text-sm font-semibold">Finance intelligence</p>
-              <p className="mt-1 text-xs text-muted-foreground">Live company dataset{companyRole ? ` · ${companyRole.replaceAll("_", " ")}` : ""}</p>
-            </div>
-          </div>
-        ) : null}
-
-        <nav className="flex-1 overflow-y-auto px-3 py-4">
-          {navigationGroups.map((group) => (
-            <div key={group.label} className="mb-5">
-              {!collapsed ? (
-                <p className="mb-2 px-3 text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
-                  {group.label}
-                </p>
-              ) : (
-                <div className="mx-auto mb-2 h-px w-8 bg-border" />
-              )}
-
-              <div className="space-y-1">
-                {group.items.map((item) => {
-                  const Icon = item.icon;
-                  const active =
-                    item.href === "/dashboard"
-                      ? pathname === "/dashboard"
-                      : pathname === item.href || pathname.startsWith(`${item.href}/`);
-
-                  const classes = [
-                    "group relative flex items-center rounded-lg text-sm font-medium transition-colors",
-                    collapsed ? "justify-center px-2 py-2.5" : "gap-3 px-3 py-2.5",
-                    active
-                      ? "bg-primary text-primary-foreground"
-                      : "text-muted-foreground hover:bg-muted hover:text-foreground",
-                    item.disabled ? "cursor-not-allowed opacity-45" : "",
-                  ].join(" ");
-
-                  const content = (
-                    <>
-                      <Icon className="size-4 shrink-0" />
-                      {!collapsed ? <span className="flex-1">{item.label}</span> : null}
-                      {!collapsed && item.disabled ? (
-                        <span className="text-[10px] uppercase">Soon</span>
-                      ) : null}
-                      {collapsed ? (
-                        <span className="pointer-events-none absolute left-[calc(100%+12px)] z-50 hidden whitespace-nowrap rounded-md bg-slate-950 px-3 py-2 text-xs font-semibold text-white shadow-lg group-hover:block">
-                          {item.label}
-                          {item.disabled ? " · Soon" : ""}
-                        </span>
-                      ) : null}
-                    </>
-                  );
-
-                  return item.disabled ? (
-                    <div key={`${group.label}-${item.label}-${item.href}`} className={classes} title="Coming soon">
-                      {content}
-                    </div>
-                  ) : (
-                    <Link key={`${group.label}-${item.label}-${item.href}`} href={item.href} className={classes}>
-                      {content}
-                    </Link>
-                  );
-                })}
-              </div>
-            </div>
-          ))}
-        </nav>
-
-        <div className="border-t p-3">
-          <Button
-            type="button"
-            variant="ghost"
-            className={collapsed ? "w-full justify-center px-0" : "w-full justify-start"}
-            onClick={handleLogout}
-            title="Sign out"
-          >
-            <LogOut className="size-4" />
-            {!collapsed ? "Sign out" : null}
-          </Button>
-        </div>
-      </aside>
-
-      <div className={collapsed ? "transition-all duration-300 lg:pl-20" : "transition-all duration-300 lg:pl-72"}>
-        <header className="sticky top-0 z-20 flex h-16 items-center justify-between border-b bg-background/95 px-6 backdrop-blur">
-          <div className="flex items-center gap-3">
-            <button
-              type="button"
-              onClick={toggleSidebar}
-              className="hidden size-9 items-center justify-center rounded-lg border text-muted-foreground hover:bg-muted lg:flex"
-              title={collapsed ? "Expand sidebar" : "Collapse sidebar"}
-            >
-              {collapsed ? <PanelLeftOpen className="size-4" /> : <PanelLeftClose className="size-4" />}
-            </button>
-            <div>
-              <p className="text-sm font-medium">FinCruiz Workspace</p>
-              <p className="text-xs text-muted-foreground">Financial intelligence and reporting</p>
-            </div>
-          </div>
-
-          <div className="flex items-center gap-2">
-            <ThemeToggle />
-            <Button type="button" variant="outline" size="sm" onClick={handleLogout} className="lg:hidden">
-              <LogOut className="size-4" />
-              Sign out
-            </Button>
-          </div>
-        </header>
-
-        <main className="p-6 lg:p-8">{children}</main>
-      </div>
-      <AICFOFloating />
-    </div>
+      <nav className="flex-1 overflow-y-auto px-3 py-3">
+        {navigationGroups.map((group) => {
+          const isOpen = Boolean(openGroups[group.label]);
+          return <div key={group.label} className="mb-2">
+            {(!collapsed || mobile) ? <button type="button" onClick={() => setOpenGroups((current) => ({ ...current, [group.label]: !isOpen }))} className="flex w-full items-center justify-between rounded-lg px-3 py-2 text-[11px] font-semibold uppercase tracking-[.14em] text-muted-foreground hover:bg-muted/60"><span>{group.label}</span><ChevronDown className={`size-3.5 transition ${isOpen ? "rotate-180" : ""}`}/></button> : <div className="mx-auto my-3 h-px w-8 bg-border"/>}
+            {(collapsed && !mobile) || isOpen ? <div className="space-y-1">{group.items.map((item) => {
+              const Icon = item.icon;
+              const active = item.href === "/dashboard" ? pathname === "/dashboard" : pathname === item.href || pathname.startsWith(`${item.href}/`);
+              return <Link key={`${group.label}-${item.label}`} href={item.href} onClick={() => setMobileOpen(false)} className={["group/nav relative flex items-center rounded-xl text-sm font-medium transition-colors", collapsed && !mobile ? "justify-center px-2 py-2.5" : "gap-3 px-3 py-2.5", active ? "bg-primary text-primary-foreground shadow-sm" : "text-muted-foreground hover:bg-muted hover:text-foreground"].join(" ")}>
+                <Icon className="size-4 shrink-0"/>{(!collapsed || mobile) ? <><span className="min-w-0 flex-1 truncate">{item.label}</span><HelpTip text={item.description} side="left"/></> : <span className="pointer-events-none absolute left-[calc(100%+12px)] z-50 hidden w-64 rounded-xl border bg-popover p-3 text-left text-xs font-normal leading-5 text-popover-foreground shadow-xl group-hover/nav:block"><b className="block text-sm">{item.label}</b><span className="mt-1 block text-muted-foreground">{item.description}</span></span>}
+              </Link>;
+            })}</div> : null}
+          </div>;
+        })}
+      </nav>
+      <div className="border-t p-3"><Button type="button" variant="ghost" className={collapsed && !mobile ? "w-full justify-center px-0" : "w-full justify-start"} onClick={handleLogout}><LogOut className="size-4"/>{(!collapsed || mobile) ? "Sign out" : null}</Button></div>
+    </>
   );
+
+  return <div className="min-h-screen bg-muted/25">
+    <aside className={["fixed inset-y-0 left-0 z-30 hidden border-r bg-background transition-all duration-300 lg:flex lg:flex-col", collapsed ? "w-20" : "w-72"].join(" ")}><SidebarContent/></aside>
+    {mobileOpen ? <div className="fixed inset-0 z-[90] bg-slate-950/45 backdrop-blur-sm lg:hidden" onMouseDown={(e) => e.target === e.currentTarget && setMobileOpen(false)}><aside className="flex h-full w-[min(88vw,320px)] flex-col bg-background shadow-2xl"><SidebarContent mobile/></aside></div> : null}
+
+    <div className={collapsed ? "transition-all duration-300 lg:pl-20" : "transition-all duration-300 lg:pl-72"}>
+      <header className="sticky top-0 z-20 flex h-16 items-center justify-between border-b bg-background/95 px-4 backdrop-blur sm:px-6">
+        <div className="flex items-center gap-3">
+          <button type="button" onClick={() => setMobileOpen(true)} className="flex size-9 items-center justify-center rounded-lg border text-muted-foreground hover:bg-muted lg:hidden"><Menu className="size-4"/></button>
+          <button type="button" onClick={toggleSidebar} className="hidden size-9 items-center justify-center rounded-lg border text-muted-foreground hover:bg-muted lg:flex" title={collapsed ? "Expand sidebar" : "Collapse sidebar"}>{collapsed ? <PanelLeftOpen className="size-4"/> : <PanelLeftClose className="size-4"/>}</button>
+          <div><p className="text-sm font-medium">FinCruiz Workspace</p><p className="text-xs text-muted-foreground">{companyRole ? `${companyRole.replaceAll("_", " ")} · ` : ""}Management intelligence</p></div>
+        </div>
+        <div className="flex items-center gap-2"><Button type="button" variant="outline" size="sm" className="hidden sm:flex" onClick={() => setExplorerOpen(true)}><Search className="size-4"/>Explore</Button><ThemeToggle/></div>
+      </header>
+      <main className="p-4 sm:p-6 lg:p-8">{children}</main>
+    </div>
+    <AICFOFloating/>
+    {explorerOpen ? <FeatureExplorer capabilities={capabilities} onClose={() => setExplorerOpen(false)}/> : null}
+  </div>;
 }
