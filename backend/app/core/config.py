@@ -20,6 +20,20 @@ class Settings(BaseSettings):
     openai_api_key: str | None = None
     openai_model: str = "gpt-5.6"
 
+    # Integration platform
+    integration_encryption_key: str | None = None
+    integration_frontend_url: str = "http://localhost:3000"
+
+    xero_client_id: str | None = None
+    xero_client_secret: str | None = None
+    xero_redirect_uri: str | None = None
+
+    zoho_client_id: str | None = None
+    zoho_client_secret: str | None = None
+    zoho_redirect_uri: str | None = None
+    zoho_accounts_base_url: str = "https://accounts.zoho.com"
+    zoho_api_base_url: str = "https://www.zohoapis.com/books/v3"
+
     # Comma-separated list, e.g.:
     # CORS_ORIGINS=http://localhost:3000,https://app.example.com
     cors_origins: str = (

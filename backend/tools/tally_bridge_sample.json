@@ -1,0 +1,6 @@
+{
+  "records": [
+    {"entity_type":"ledger","external_id":"Sales","name":"Sales","payload":{"parent":"Sales Accounts"}},
+    {"entity_type":"voucher","external_id":"VCH-10001","name":"Sales Invoice VCH-10001","amount":125000,"currency_code":"INR","occurred_at":"2026-08-14T00:00:00+05:30","payload":{"voucher_type":"Sales"}}
+  ]
+}

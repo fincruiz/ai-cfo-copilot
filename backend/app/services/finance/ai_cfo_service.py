@@ -114,6 +114,24 @@ class AICFOService:
         kpis = await self.reporting.kpis(company_id)
         monthly = overview.get("monthly_actuals", [])[-12:]
         assurance = await self.assurance.assess(company_id)
+        integration_rows = (await self.session.execute(
+            __import__("sqlalchemy").text(
+                "SELECT provider,status,external_tenant_name,last_synced_at FROM public.integration_connections WHERE company_id=:company_id"
+            ),
+            {"company_id": company_id},
+        )).mappings().all()
+        memory_rows = (await self.session.execute(
+            __import__("sqlalchemy").text(
+                "SELECT title,content,memory_type,importance FROM public.organizational_memory WHERE company_id=:company_id AND is_active=true ORDER BY created_at DESC LIMIT 20"
+            ),
+            {"company_id": company_id},
+        )).mappings().all()
+        source_counts = (await self.session.execute(
+            __import__("sqlalchemy").text(
+                "SELECT provider,entity_type,count(*) AS count FROM public.integration_records WHERE company_id=:company_id GROUP BY provider,entity_type"
+            ),
+            {"company_id": company_id},
+        )).mappings().all()
 
         context = {
             "company": {
@@ -132,6 +150,9 @@ class AICFOService:
             "ap_summary": self._jsonable(overview.get("ap_summary")),
             "existing_insights": overview.get("insights", []),
             "financial_assurance": self._jsonable(assurance),
+            "connected_systems": self._jsonable([dict(row) for row in integration_rows]),
+            "organizational_memory": self._jsonable([dict(row) for row in memory_rows]),
+            "integration_source_counts": self._jsonable([dict(row) for row in source_counts]),
         }
         return company, context
 

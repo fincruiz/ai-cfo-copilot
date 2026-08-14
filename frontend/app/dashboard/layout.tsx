@@ -5,6 +5,8 @@ import { useEffect, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import {
   BarChart3,
+  BrainCircuit,
+  PlugZap,
   Bot,
   Building2,
   ChevronLeft,
@@ -40,12 +42,14 @@ const navigationGroups = [
     label: "Executive",
     items: [
       { label: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
+      { label: "Intelligence Center", href: "/dashboard/intelligence", icon: BrainCircuit },
       { label: "AI CFO Assistant", href: "/dashboard", icon: Bot, disabled: true },
     ],
   },
   {
     label: "Data & setup",
     items: [
+      { label: "Integration Hub", href: "/dashboard/integrations", icon: PlugZap },
       { label: "Upload GL", href: "/dashboard/uploads", icon: Upload },
       { label: "Import Centre", href: "/dashboard/import-center", icon: FileInput },
       { label: "Account mapping", href: "/dashboard/mapping", icon: WandSparkles },

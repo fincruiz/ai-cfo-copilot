@@ -1,0 +1,3 @@
+export type Provider = "xero" | "zoho" | "tally";
+export type IntegrationConnection = { provider: Provider; status: string; configured?: boolean; external_tenant_id?: string|null; external_tenant_name?: string|null; last_synced_at?: string|null; last_sync_status?: string|null; last_sync_message?: string|null; metadata?: Record<string, any>; };
+export type BrainOverview = { connections: IntegrationConnection[]; source_counts: Array<{provider:string;entity_type:string;count:number}>; memories:Array<{id:string;title:string;content:string;memory_type:string;importance:string;created_at:string}>; signals:Array<{severity:string;title:string;evidence:string;action:string}>; financial_assurance:any; };
