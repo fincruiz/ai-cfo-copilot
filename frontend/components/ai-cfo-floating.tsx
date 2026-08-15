@@ -1,7 +1,8 @@
 "use client";
 
 import { FormEvent, useEffect, useState } from "react";
-import { usePathname, useRouter } from "next/navigation";
+import { createPortal } from "react-dom";
+import { useRouter } from "next/navigation";
 import {
   Bot,
   ExternalLink,
@@ -16,6 +17,7 @@ import {
 
 import { analyticsService } from "@/services/analytics-service";
 import { usageService } from "@/services/usage-service";
+import { InsightChart } from "@/components/insight-chart";
 import type { AICFOAnswer } from "@/types/analytics";
 
 interface Message {
@@ -26,8 +28,8 @@ interface Message {
 
 export function AICFOFloating() {
   const router = useRouter();
-  const pathname = usePathname();
   const [open, setOpen] = useState(false);
+  const [mounted, setMounted] = useState(false);
   const [question, setQuestion] = useState("");
   const [loading, setLoading] = useState(false);
   const [liveContext, setLiveContext] = useState(true);
@@ -39,6 +41,8 @@ export function AICFOFloating() {
     "Check industry & economic risks",
   ];
   const [promptIndex, setPromptIndex] = useState(0);
+
+  useEffect(() => { setMounted(true); }, []);
 
   useEffect(() => {
     const timer = window.setInterval(() => setPromptIndex((value) => (value + 1) % prompts.length), 2800);
@@ -82,14 +86,12 @@ export function AICFOFloating() {
     await ask(question);
   }
 
-  // The home dashboard has a full Ask FinCruiz panel, so the floating
-  // shortcut stays out of the way there. It remains available everywhere else.
-  if (pathname === "/dashboard") return null;
+  if (!mounted) return null;
 
-  return (
+  return createPortal(
     <>
       {open ? (
-        <section className="fixed bottom-24 right-5 z-[80] flex h-[min(700px,calc(100vh-120px))] w-[min(460px,calc(100vw-32px))] animate-ai-drawer flex-col overflow-hidden rounded-[26px] border border-indigo-400/20 bg-slate-950 text-white shadow-[0_30px_100px_rgba(15,23,42,0.45)]">
+        <section className="fixed bottom-24 right-5 z-[9997] flex h-[min(700px,calc(100vh-120px))] w-[min(460px,calc(100vw-32px))] animate-ai-drawer flex-col overflow-hidden rounded-[26px] border border-indigo-400/20 bg-slate-950 text-white shadow-[0_30px_100px_rgba(15,23,42,0.45)]">
           <header className="border-b border-white/10 bg-gradient-to-r from-indigo-600/25 to-sky-500/10 p-5">
             <div className="flex items-center gap-3">
               <div className="flex size-11 items-center justify-center rounded-2xl bg-white/10">
@@ -118,6 +120,7 @@ export function AICFOFloating() {
                 ].join(" ")}>
                   {message.content}
                 </div>
+                {message.role === "assistant" && message.result?.visualization ? <InsightChart visualization={message.result.visualization} /> : null}
 
                 {message.result?.action ? (
                   <button
@@ -186,7 +189,7 @@ export function AICFOFloating() {
         </section>
       ) : null}
 
-      <div className="fixed bottom-6 right-6 z-[79] flex items-center gap-3">
+      <div className="fixed bottom-5 right-5 z-[9997] flex items-center gap-3 sm:bottom-7 sm:right-7">
         {!open ? (
           <div className="hidden animate-soft-bob rounded-2xl border bg-background/95 px-4 py-3 text-sm font-semibold shadow-xl backdrop-blur sm:block">
             <span className="inline-block min-w-52 animate-prompt-swap">{prompts[promptIndex]}</span>
@@ -202,6 +205,7 @@ export function AICFOFloating() {
           ) : null}
         </button>
       </div>
-    </>
+    </>,
+    document.body,
   );
 }

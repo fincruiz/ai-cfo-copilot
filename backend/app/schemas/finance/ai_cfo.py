@@ -1,3 +1,4 @@
+from typing import Literal
 from pydantic import BaseModel, Field
 
 
@@ -16,6 +17,21 @@ class AICFOAction(BaseModel):
     route: str
 
 
+class AIChartSeries(BaseModel):
+    name: str
+    data: list[float]
+
+
+class AIVisualization(BaseModel):
+    type: Literal["line", "area", "bar", "donut"]
+    title: str
+    subtitle: str | None = None
+    labels: list[str]
+    series: list[AIChartSeries]
+    value_format: Literal["number", "currency", "percent"] = "number"
+    currency: str | None = None
+
+
 class AICFOAnswerResponse(BaseModel):
     answer: str
     mode: str
@@ -23,6 +39,7 @@ class AICFOAnswerResponse(BaseModel):
     sources: list[AICFOSource] = []
     action: AICFOAction | None = None
     external_context_used: bool = False
+    visualization: AIVisualization | None = None
 
 
 class AICFOSignal(BaseModel):

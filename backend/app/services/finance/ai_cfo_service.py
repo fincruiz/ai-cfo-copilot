@@ -231,6 +231,65 @@ MANAGEMENT_QUESTION:
         answer = "\n".join(text_parts).strip() or str(data.get("output_text") or "").strip()
         return (answer, sources[:8]) if answer else None
 
+    @staticmethod
+    def _visualization_for_question(question: str, context: dict) -> dict | None:
+        """Build chart specs only from deterministic company context.
+
+        The LLM never chooses or fabricates chart values. The question only selects
+        which already-grounded dataset is most useful to visualize.
+        """
+        q = question.lower()
+        currency = (context.get("company") or {}).get("currency") or "AUD"
+        monthly = context.get("monthly_actuals") or []
+
+        def number(row: dict, key: str) -> float:
+            try:
+                return float(row.get(key) or 0)
+            except (TypeError, ValueError):
+                return 0.0
+
+        def label(row: dict, index: int) -> str:
+            return str(row.get("month") or row.get("period") or row.get("label") or f"P{index + 1}")
+
+        # Working-capital composition is easiest to read as a donut.
+        if any(term in q for term in ("receivable", "collection", "ar ")):
+            ar = context.get("ar_summary")
+            if ar:
+                total = float(ar.get("total_outstanding") or 0) if isinstance(ar, dict) else float(getattr(ar, "total_outstanding", 0) or 0)
+                overdue = float(ar.get("overdue_amount") or 0) if isinstance(ar, dict) else float(getattr(ar, "overdue_amount", 0) or 0)
+                current = max(total - overdue, 0)
+                return {"type":"donut","title":"Receivables exposure","subtitle":"Current versus overdue AR","labels":["Current","Overdue"],"series":[{"name":"Receivables","data":[current,overdue]}],"value_format":"currency","currency":currency}
+        if any(term in q for term in ("payable", "supplier", "vendor", "ap ")):
+            ap = context.get("ap_summary")
+            if ap:
+                total = float(ap.get("total_outstanding") or 0) if isinstance(ap, dict) else float(getattr(ap, "total_outstanding", 0) or 0)
+                overdue = float(ap.get("overdue_amount") or 0) if isinstance(ap, dict) else float(getattr(ap, "overdue_amount", 0) or 0)
+                current = max(total - overdue, 0)
+                return {"type":"donut","title":"Payables exposure","subtitle":"Current versus overdue AP","labels":["Current","Overdue"],"series":[{"name":"Payables","data":[current,overdue]}],"value_format":"currency","currency":currency}
+
+        # Balance-sheet questions are better as a direct comparison.
+        if any(term in q for term in ("balance", "asset", "liability", "equity")):
+            bs = context.get("balance_sheet") or {}
+            values = [float(bs.get("total_assets") or 0), float(bs.get("total_liabilities") or 0), float(bs.get("equity") or 0)] if isinstance(bs, dict) else []
+            if any(values):
+                return {"type":"bar","title":"Balance sheet structure","subtitle":"Assets, liabilities and equity","labels":["Assets","Liabilities","Equity"],"series":[{"name":"Value","data":values}],"value_format":"currency","currency":currency}
+
+        if monthly:
+            labels = [label(row, i) for i, row in enumerate(monthly)]
+            revenue = [number(row, "revenue") for row in monthly]
+            profit = [number(row, "net_profit") for row in monthly]
+            gross_profit = [number(row, "gross_profit") for row in monthly]
+
+            if "margin" in q:
+                margins = [(gross_profit[i] / revenue[i] * 100) if revenue[i] else 0 for i in range(len(monthly))]
+                return {"type":"area","title":"Gross margin trend","subtitle":"Margin by reporting period","labels":labels,"series":[{"name":"Gross margin","data":margins}],"value_format":"percent","currency":currency}
+            if any(term in q for term in ("revenue", "sales", "growth", "trend")):
+                return {"type":"line","title":"Revenue trend","subtitle":"Revenue across recent reporting periods","labels":labels,"series":[{"name":"Revenue","data":revenue}],"value_format":"currency","currency":currency}
+            if any(term in q for term in ("profit", "performance", "management", "focus", "brief", "risk")):
+                return {"type":"line","title":"Revenue & net profit trend","subtitle":"Management performance view","labels":labels,"series":[{"name":"Revenue","data":revenue},{"name":"Net profit","data":profit}],"value_format":"currency","currency":currency}
+
+        return None
+
     async def proactive_signals(self, company_id: UUID) -> dict:
         monthly = await self.reporting.monthly_actuals(company_id)
         if len(monthly) < 2:
@@ -305,10 +364,12 @@ MANAGEMENT_QUESTION:
                 ],
                 "sources": [],
                 "external_context_used": False,
+                "visualization": None,
             }
 
         company, context = await self._company_context(company_id)
         q = question.lower()
+        visualization = self._visualization_for_question(question, context)
         overview = await self.analytics.overview(company_id)
         pnl = await self.reporting.pnl(company_id)
         bs = await self.reporting.balance_sheet(company_id)
@@ -332,6 +393,7 @@ MANAGEMENT_QUESTION:
                     "sources": sources,
                     "action": None,
                     "external_context_used": True,
+                    "visualization": visualization,
                 }
 
         if any(word in q for word in ("receivable", "customer", "collection", "ar ")):
@@ -395,4 +457,5 @@ MANAGEMENT_QUESTION:
             "sources": [],
             "action": action,
             "external_context_used": False,
+            "visualization": visualization,
         }

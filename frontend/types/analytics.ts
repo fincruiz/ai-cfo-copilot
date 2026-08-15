@@ -62,6 +62,24 @@ export interface AICFOAction {
   route: string;
 }
 
+
+export type AIChartType = "line" | "area" | "bar" | "donut";
+
+export interface AIChartSeries {
+  name: string;
+  data: number[];
+}
+
+export interface AIVisualization {
+  type: AIChartType;
+  title: string;
+  subtitle?: string | null;
+  labels: string[];
+  series: AIChartSeries[];
+  value_format?: "number" | "currency" | "percent";
+  currency?: string | null;
+}
+
 export interface AICFOAnswer {
   answer: string;
   mode: string;
@@ -69,6 +87,7 @@ export interface AICFOAnswer {
   sources: AICFOSource[];
   action?: AICFOAction | null;
   external_context_used: boolean;
+  visualization?: AIVisualization | null;
 }
 
 

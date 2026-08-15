@@ -14,6 +14,7 @@ import {
 
 import { analyticsService } from "@/services/analytics-service";
 import { usageService } from "@/services/usage-service";
+import { InsightChart } from "@/components/insight-chart";
 import type { AICFOAnswer } from "@/types/analytics";
 
 const prompts = [
@@ -117,6 +118,7 @@ export function AskFinCruizDashboard() {
               <div className="animate-step-in">
                 <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-[.14em] text-indigo-700 dark:text-indigo-300"><Sparkles className="size-3.5" /> FinCruiz response</div>
                 <p className="mt-3 whitespace-pre-wrap text-sm leading-7">{result.answer}</p>
+                {result.visualization ? <InsightChart visualization={result.visualization} /> : null}
                 {result.action ? (
                   <button
                     type="button"
