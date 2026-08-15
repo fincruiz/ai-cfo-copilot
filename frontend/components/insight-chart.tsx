@@ -4,7 +4,11 @@ import type { AIVisualization } from "@/types/analytics";
 
 const palette = ["#4f46e5", "#0ea5e9", "#10b981", "#f59e0b", "#ef4444", "#8b5cf6"];
 
-function compact(value: number, format?: string, currency?: string) {
+function compact(
+  value: number,
+  format?: string,
+  currency?: string | null
+) {
   if (format === "percent") return `${value.toFixed(2)}%`;
   if (format === "currency") {
     return new Intl.NumberFormat("en-US", { style: "currency", currency: currency || "AUD", notation: "compact", maximumFractionDigits: 2 }).format(value);
