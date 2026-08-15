@@ -1,249 +1,82 @@
 "use client";
 
 import Link from "next/link";
+import { useEffect, useState } from "react";
 import {
-  ArrowRight,
-  BarChart3,
-  BrainCircuit,
-  Building2,
-  CheckCircle2,
-  FileBarChart2,
-  LineChart,
-  ShieldCheck,
-  Sparkles,
-  UploadCloud,
-  PlayCircle,
+  ArrowRight, BarChart3, BrainCircuit, CheckCircle2, CircleDollarSign, Database,
+  LineChart, LockKeyhole, PlayCircle, ShieldCheck, Sparkles, TrendingUp, WandSparkles,
 } from "lucide-react";
 
-const features = [
-  {
-    icon: UploadCloud,
-    title: "Upload once. Keep the history.",
-    text: "Validate ledgers, preserve versions and build a reusable finance data layer.",
-  },
-  {
-    icon: FileBarChart2,
-    title: "Reports that reconcile",
-    text: "Generate Trial Balance, P&L, Balance Sheet, KPIs and branch views from one source.",
-  },
-  {
-    icon: LineChart,
-    title: "Plan forward",
-    text: "Turn monthly actuals into scenarios, forecasts and board-ready insights.",
-  },
-  {
-    icon: BrainCircuit,
-    title: "AI CFO intelligence",
-    text: "Surface trends, risks, anomalies and management commentary without rebuilding spreadsheets.",
-  },
+const ticker = ["Executive intelligence", "Financial statements", "Working capital", "Three-way forecasting", "Industry benchmarking", "Board reporting", "Xero integration", "AI management briefing"];
+const briefing = [
+  { tone: "amber", title: "Cash conversion needs attention", body: "Receivables are growing faster than revenue. Five customers explain most of the movement." },
+  { tone: "emerald", title: "Revenue momentum remains positive", body: "Revenue is tracking 9.4% above the prior period while operating cost growth remains contained." },
+  { tone: "sky", title: "Decision ready", body: "Ask whether you can hire, invest or expand and FinCruiz can route the question into the three-way model." },
 ];
 
 export default function HomePage() {
+  const [active, setActive] = useState(0);
+  useEffect(() => { const id = window.setInterval(() => setActive((v) => (v + 1) % briefing.length), 3600); return () => window.clearInterval(id); }, []);
+
   return (
-    <main className="min-h-screen overflow-hidden bg-[#f7f8fb] text-slate-950">
-      <div className="absolute inset-x-0 top-0 h-[720px] bg-[radial-gradient(circle_at_20%_20%,rgba(99,102,241,0.16),transparent_34%),radial-gradient(circle_at_82%_18%,rgba(14,165,233,0.16),transparent_30%)]" />
-
-      <header className="relative z-10 mx-auto flex max-w-7xl items-center justify-between px-6 py-6 lg:px-8">
-        <Link href="/" className="flex items-center gap-3">
-          <div className="flex size-11 items-center justify-center rounded-2xl bg-slate-950 text-white shadow-lg">
-            <BarChart3 className="size-5" />
+    <main className="min-h-screen overflow-hidden bg-[#f6f8fc] text-slate-950">
+      <div className="pointer-events-none fixed inset-0 landing-aurora" />
+      <header className="sticky top-0 z-50 border-b border-white/60 bg-white/75 backdrop-blur-xl">
+        <div className="mx-auto flex max-w-7xl items-center justify-between px-5 py-4 lg:px-8">
+          <Link href="/" className="flex items-center gap-3">
+            <div className="flex size-11 items-center justify-center rounded-2xl bg-slate-950 text-white shadow-lg"><BarChart3 className="size-5" /></div>
+            <div><p className="text-lg font-bold tracking-tight">FinCruiz</p><p className="text-xs text-slate-500">Organizational intelligence</p></div>
+          </Link>
+          <div className="flex items-center gap-2 sm:gap-3">
+            <Link href="/demo" className="inline-flex items-center gap-2 rounded-xl border border-indigo-200 bg-indigo-50 px-3 py-2.5 text-sm font-bold text-indigo-700 shadow-sm hover:-translate-y-0.5 hover:shadow-md sm:px-5"><PlayCircle className="size-4"/><span className="hidden sm:inline">Try interactive demo</span><span className="sm:hidden">Demo</span></Link>
+            <Link href="/login" className="rounded-xl px-3 py-2.5 text-sm font-semibold text-slate-700 hover:bg-white sm:px-5">Sign in</Link>
+            <Link href="/signup" className="hidden items-center gap-2 rounded-xl bg-slate-950 px-5 py-2.5 text-sm font-bold text-white shadow-lg hover:-translate-y-0.5 hover:bg-slate-800 md:inline-flex">Create workspace<ArrowRight className="size-4"/></Link>
           </div>
-          <div>
-            <p className="text-lg font-bold tracking-tight">FinCruiz</p>
-            <p className="text-xs text-slate-500">Finance intelligence platform</p>
-          </div>
-        </Link>
-
-        <div className="flex items-center gap-3">
-          <Link href="/demo" className="hidden items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm font-semibold text-slate-800 shadow-sm transition hover:-translate-y-0.5 hover:shadow md:inline-flex">
-            <PlayCircle className="size-4" /> Try demo
-          </Link>
-          <Link
-            href="/login"
-            className="hidden rounded-xl px-5 py-3 text-sm font-semibold text-slate-700 transition hover:bg-white hover:shadow-sm sm:block"
-          >
-            Sign in
-          </Link>
-          <Link
-            href="/signup"
-            className="inline-flex items-center gap-2 rounded-xl bg-slate-950 px-6 py-3 text-sm font-semibold text-white shadow-xl transition hover:-translate-y-0.5 hover:bg-slate-800"
-          >
-            Start free setup
-            <ArrowRight className="size-4" />
-          </Link>
         </div>
       </header>
 
-      <section className="relative z-10 mx-auto grid max-w-7xl items-center gap-14 px-6 pb-24 pt-16 lg:grid-cols-[0.9fr_1.1fr] lg:px-8 lg:pt-24">
+      <section className="relative z-10 mx-auto grid max-w-7xl items-center gap-12 px-5 pb-20 pt-16 lg:grid-cols-[.92fr_1.08fr] lg:px-8 lg:pb-28 lg:pt-24">
         <div className="animate-rise">
-          <div className="mb-6 inline-flex items-center gap-2 rounded-full border border-white/70 bg-white/80 px-4 py-2 text-sm font-medium text-slate-700 shadow-sm backdrop-blur">
-            <Sparkles className="size-4" />
-            Built for finance teams that have outgrown manual reporting
-          </div>
-
-          <h1 className="max-w-3xl text-5xl font-black leading-[1.02] tracking-[-0.045em] sm:text-6xl lg:text-7xl">
-            Turn finance data into
-            <span className="block bg-gradient-to-r from-indigo-600 via-violet-600 to-sky-500 bg-clip-text text-transparent">
-              confident decisions.
-            </span>
-          </h1>
-
-          <p className="mt-7 max-w-2xl text-lg leading-8 text-slate-600">
-            FinCruiz brings reporting, branch consolidation, KPIs, forecasting,
-            AI commentary and board reporting into one secure workspace.
-          </p>
-
+          <div className="inline-flex items-center gap-2 rounded-full border border-indigo-100 bg-white/85 px-4 py-2 text-sm font-semibold text-slate-700 shadow-sm"><Sparkles className="size-4 text-indigo-600"/>Your business already has the answers. FinCruiz connects them.</div>
+          <h1 className="mt-7 max-w-3xl text-5xl font-black leading-[1.01] tracking-[-.055em] sm:text-6xl lg:text-7xl">Know what is happening. <span className="block bg-gradient-to-r from-indigo-600 via-violet-600 to-sky-500 bg-clip-text text-transparent">Know what to do next.</span></h1>
+          <p className="mt-7 max-w-2xl text-lg leading-8 text-slate-600">FinCruiz turns finance and connected business data into a management briefing: what changed, why it matters, what needs attention, and which decision model to use next.</p>
           <div className="mt-9 flex flex-col gap-3 sm:flex-row">
-            <Link
-              href="/demo"
-              className="inline-flex min-h-14 items-center justify-center gap-2 rounded-2xl border border-slate-200 bg-white px-8 text-base font-bold text-slate-900 shadow-lg transition hover:-translate-y-1 hover:shadow-xl"
-            >
-              <PlayCircle className="size-5" />
-              Explore interactive demo
-            </Link>
-            <Link
-              href="/signup"
-              className="inline-flex min-h-14 items-center justify-center gap-2 rounded-2xl bg-slate-950 px-8 text-base font-bold text-white shadow-2xl transition hover:-translate-y-1 hover:bg-slate-800"
-            >
-              Create your workspace
-              <ArrowRight className="size-5" />
-            </Link>
-            <Link
-              href="/login"
-              className="inline-flex min-h-14 items-center justify-center rounded-2xl border border-slate-200 bg-white px-8 text-base font-bold text-slate-800 shadow-sm transition hover:-translate-y-1 hover:shadow-lg"
-            >
-              Sign in to FinCruiz
-            </Link>
+            <Link href="/demo" className="group inline-flex min-h-14 items-center justify-center gap-2 rounded-2xl bg-indigo-600 px-7 text-base font-bold text-white shadow-[0_18px_45px_rgba(79,70,229,.28)] hover:-translate-y-1 hover:bg-indigo-500"><PlayCircle className="size-5"/>Experience the demo<ArrowRight className="size-4 transition group-hover:translate-x-1"/></Link>
+            <Link href="/signup" className="inline-flex min-h-14 items-center justify-center gap-2 rounded-2xl bg-slate-950 px-7 text-base font-bold text-white shadow-xl hover:-translate-y-1 hover:bg-slate-800">Use my own business data<ArrowRight className="size-4"/></Link>
           </div>
-
-          <div className="mt-9 grid gap-3 text-sm text-slate-600 sm:grid-cols-3">
-            {["Email-verified accounts", "Saved finance history", "Branch-ready reporting"].map((item) => (
-              <div key={item} className="flex items-center gap-2">
-                <CheckCircle2 className="size-4 text-emerald-600" />
-                {item}
-              </div>
-            ))}
-          </div>
+          <div className="mt-7 flex flex-wrap gap-x-5 gap-y-2 text-sm text-slate-600">{["No data needed for demo", "Evidence before AI narrative", "Reset or delete your data"].map((item) => <span key={item} className="flex items-center gap-2"><CheckCircle2 className="size-4 text-emerald-600"/>{item}</span>)}</div>
         </div>
 
-        <div className="relative min-h-[560px] animate-float-in">
-          <div className="absolute left-4 top-14 w-[88%] rotate-[-4deg] rounded-[28px] border border-white/80 bg-white/70 p-5 shadow-2xl backdrop-blur-md">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">Management dashboard</p>
-                <p className="mt-1 text-xl font-bold">Executive overview</p>
-              </div>
-              <div className="rounded-full bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-700">Live</div>
-            </div>
-            <div className="mt-5 grid grid-cols-3 gap-3">
-              {[
-                ["Revenue", "$4.84M", "+18.4%"],
-                ["EBITDA", "$786K", "+9.2%"],
-                ["Cash", "$1.12M", "Healthy"],
-              ].map(([label, value, note]) => (
-                <div key={label} className="rounded-2xl border bg-white p-4">
-                  <p className="text-xs text-slate-500">{label}</p>
-                  <p className="mt-2 text-xl font-bold">{value}</p>
-                  <p className="mt-1 text-xs text-emerald-600">{note}</p>
-                </div>
-              ))}
-            </div>
-            <div className="mt-4 flex h-44 items-end gap-2 rounded-2xl bg-slate-950 p-5">
-              {[42, 58, 47, 70, 64, 78, 88, 82, 96, 91, 108, 118].map((height, index) => (
-                <div
-                  key={index}
-                  className="flex-1 rounded-t-md bg-gradient-to-t from-indigo-500 to-sky-300"
-                  style={{ height: `${Math.min(height, 120)}px` }}
-                />
-              ))}
-            </div>
+        <div className="relative min-h-[610px] animate-float-in">
+          <div className="absolute inset-x-0 top-4 mx-auto w-[94%] overflow-hidden rounded-[32px] border border-white/80 bg-white/86 p-5 shadow-[0_35px_100px_rgba(31,41,55,.14)] backdrop-blur-xl sm:p-6">
+            <div className="flex items-center justify-between"><div><p className="text-xs font-semibold uppercase tracking-[.18em] text-slate-400">Monday executive briefing</p><p className="mt-1 text-xl font-bold">Here is what management should know</p></div><span className="flex items-center gap-2 rounded-full bg-emerald-50 px-3 py-1 text-xs font-bold text-emerald-700"><span className="size-2 animate-pulse rounded-full bg-emerald-500"/>Live</span></div>
+            <div className="mt-5 grid grid-cols-3 gap-3">{[["Revenue","₹24.80M","+9.4%"],["Net profit","₹4.21M","+4.1%"],["Cash","₹6.32M","Watch AR"]].map(([label,value,note]) => <div key={label} className="rounded-2xl border bg-white p-4"><p className="text-xs text-slate-500">{label}</p><p className="mt-2 text-lg font-bold sm:text-xl">{value}</p><p className="mt-1 text-xs text-indigo-600">{note}</p></div>)}</div>
+            <div className="mt-4 h-44 rounded-2xl bg-slate-950 p-5"><div className="flex h-full items-end gap-2">{[42,48,51,57,62,68,66,74,81,88,95,104].map((height,index)=><div key={index} className="flex-1 rounded-t-md bg-gradient-to-t from-indigo-600 to-sky-300 transition-all duration-700" style={{height:`${height}px`,animationDelay:`${index*55}ms`}}/>)}</div></div>
           </div>
-
-          <div className="absolute bottom-8 right-0 w-[72%] rotate-[3deg] rounded-[26px] border border-white/80 bg-white p-5 shadow-2xl">
-            <div className="flex items-center gap-3">
-              <div className="flex size-11 items-center justify-center rounded-2xl bg-indigo-50 text-indigo-600">
-                <BrainCircuit className="size-5" />
-              </div>
-              <div>
-                <p className="font-bold">AI CFO Brief</p>
-                <p className="text-xs text-slate-500">Updated from the latest actuals</p>
-              </div>
-            </div>
-            <div className="mt-4 space-y-3">
-              <div className="rounded-xl bg-amber-50 p-3 text-sm text-amber-900">
-                Gross margin reduced by 2.8 percentage points in the latest month.
-              </div>
-              <div className="rounded-xl bg-emerald-50 p-3 text-sm text-emerald-900">
-                Receivable collection improved by 6 days against the prior quarter.
-              </div>
-            </div>
+          <div className="absolute bottom-8 right-0 w-[78%] rounded-[28px] border border-indigo-100 bg-white p-5 shadow-[0_28px_80px_rgba(79,70,229,.18)] sm:p-6">
+            <div className="flex items-center gap-3"><div className="flex size-11 items-center justify-center rounded-2xl bg-indigo-50 text-indigo-600"><BrainCircuit className="size-5"/></div><div><p className="font-bold">FinCruiz Intelligence</p><p className="text-xs text-slate-500">Evidence → meaning → action</p></div></div>
+            <div key={active} className="mt-4 animate-scene-in"><p className="font-semibold">{briefing[active].title}</p><p className="mt-2 text-sm leading-6 text-slate-600">{briefing[active].body}</p></div>
+            <div className="mt-4 flex gap-1.5">{briefing.map((_,i)=><button key={i} onClick={()=>setActive(i)} className={`h-1.5 flex-1 rounded-full ${i===active?"bg-indigo-500":"bg-slate-200"}`} aria-label={`Insight ${i+1}`}/>)}</div>
           </div>
-
-          <div className="absolute right-8 top-0 flex items-center gap-2 rounded-2xl border bg-white px-4 py-3 shadow-xl animate-soft-bob">
-            <ShieldCheck className="size-5 text-indigo-600" />
-            <div>
-              <p className="text-sm font-semibold">Controlled finance data</p>
-              <p className="text-xs text-slate-500">Validated and traceable</p>
-            </div>
-          </div>
+          <div className="absolute left-0 top-[390px] rounded-2xl border bg-slate-950 px-4 py-3 text-white shadow-xl animate-soft-bob"><div className="flex items-center gap-3"><WandSparkles className="size-5 text-sky-300"/><div><p className="text-sm font-semibold">Ask a decision, not a report</p><p className="text-xs text-slate-400">“Can we afford to hire 3 people?”</p></div></div></div>
         </div>
       </section>
 
-      
-      <section className="relative z-10 overflow-hidden border-y border-slate-200/70 bg-slate-950 py-5 text-white">
-        <div className="animate-feature-marquee flex min-w-max gap-10 whitespace-nowrap text-sm font-semibold tracking-wide text-slate-200">
-          {["Financial Statements","Branch Consolidation","Business Analytics","Working Capital","Budgets & Forecasts","AI CFO","Board Reports","Board Packs","PowerPoint Export","Audit-ready History"].concat(["Financial Statements","Branch Consolidation","Business Analytics","Working Capital","Budgets & Forecasts","AI CFO","Board Reports","Board Packs","PowerPoint Export","Audit-ready History"]).map((item,index)=><span key={`${item}-${index}`} className="flex items-center gap-2"><Sparkles className="size-3 text-indigo-300"/>{item}</span>)}
-        </div>
+      <section className="relative z-10 overflow-hidden border-y border-slate-200/70 bg-slate-950 py-5 text-white"><div className="animate-feature-marquee flex min-w-max gap-10 whitespace-nowrap text-sm font-semibold tracking-wide text-slate-200">{ticker.concat(ticker).map((item,index)=><span key={`${item}-${index}`} className="flex items-center gap-2"><Sparkles className="size-3 text-indigo-300"/>{item}</span>)}</div></section>
+
+      <section className="relative z-10 mx-auto max-w-7xl px-5 py-24 lg:px-8">
+        <div className="max-w-3xl"><p className="text-xs font-bold uppercase tracking-[.2em] text-indigo-600">One organizational brain</p><h2 className="mt-3 text-4xl font-black tracking-tight sm:text-5xl">From scattered systems to one management conversation.</h2><p className="mt-5 text-lg leading-8 text-slate-600">The customer does not need to know which finance module answers the question. FinCruiz can guide them to the right capability.</p></div>
+        <div className="mt-10 grid gap-4 md:grid-cols-4">{[
+          [Database,"Connect","ERP, uploads and supporting data enter a governed workspace."],
+          [LineChart,"Understand","Financial statements, KPIs, working capital and trends are calculated first."],
+          [BrainCircuit,"Explain","FinCruiz translates the evidence into management language."],
+          [TrendingUp,"Decide","Questions such as hiring or expansion can flow into scenario and three-way modelling."],
+        ].map(([Icon,title,text]) => { const C=Icon as typeof Database; return <div key={String(title)} className="group rounded-[24px] border bg-white/80 p-6 shadow-sm transition duration-300 hover:-translate-y-1 hover:shadow-xl"><C className="size-5 text-indigo-600"/><p className="mt-5 text-lg font-bold">{String(title)}</p><p className="mt-2 text-sm leading-6 text-slate-600">{String(text)}</p></div>; })}</div>
       </section>
 
-<section className="relative z-10 border-y bg-white/80 py-20 backdrop-blur">
-        <div className="mx-auto max-w-7xl px-6 lg:px-8">
-          <div className="mx-auto max-w-3xl text-center">
-            <p className="text-sm font-bold uppercase tracking-[0.2em] text-indigo-600">One finance operating system</p>
-            <h2 className="mt-4 text-4xl font-black tracking-tight">From ledger upload to board conversation</h2>
-            <p className="mt-5 text-lg text-slate-600">
-              Replace disconnected spreadsheets with a repeatable reporting and planning workflow.
-            </p>
-          </div>
+      <section className="relative z-10 mx-auto mb-20 max-w-7xl px-5 lg:px-8"><div className="overflow-hidden rounded-[34px] bg-slate-950 p-8 text-white shadow-2xl sm:p-12"><div className="grid gap-8 lg:grid-cols-[1fr_auto] lg:items-center"><div><div className="flex items-center gap-2 text-indigo-300"><PlayCircle className="size-5"/><span className="text-sm font-bold uppercase tracking-[.18em]">No login required</span></div><h2 className="mt-4 text-3xl font-black sm:text-4xl">See FinCruiz think before you trust it with your data.</h2><p className="mt-4 max-w-2xl text-slate-300">The guided demo uses synthetic company data and shows the full path from raw finance information to an executive insight and a modelled decision.</p></div><Link href="/demo" className="inline-flex min-h-14 items-center justify-center gap-2 rounded-2xl bg-white px-7 font-bold text-slate-950 hover:-translate-y-1">Start interactive demo<ArrowRight className="size-4"/></Link></div></div></section>
 
-          <div className="mt-14 grid gap-5 md:grid-cols-2 lg:grid-cols-4">
-            {features.map(({ icon: Icon, title, text }, index) => (
-              <article
-                key={title}
-                className="group rounded-3xl border bg-white p-6 shadow-sm transition duration-300 hover:-translate-y-2 hover:shadow-2xl"
-                style={{ animationDelay: `${index * 90}ms` }}
-              >
-                <div className="flex size-12 items-center justify-center rounded-2xl bg-slate-950 text-white transition group-hover:rotate-3 group-hover:scale-110">
-                  <Icon className="size-5" />
-                </div>
-                <h3 className="mt-6 text-lg font-bold">{title}</h3>
-                <p className="mt-3 leading-7 text-slate-600">{text}</p>
-              </article>
-            ))}
-          </div>
-        </div>
-      </section>
-
-      <section className="relative z-10 mx-auto max-w-7xl px-6 py-24 lg:px-8">
-        <div className="overflow-hidden rounded-[36px] bg-slate-950 px-7 py-12 text-white shadow-2xl sm:px-12 lg:flex lg:items-center lg:justify-between">
-          <div>
-            <div className="flex items-center gap-2 text-indigo-300">
-              <Building2 className="size-5" />
-              Built for growing multi-entity and branch-based businesses
-            </div>
-            <h2 className="mt-4 max-w-3xl text-3xl font-black tracking-tight sm:text-4xl">
-              Set up the company once. Keep reporting, forecasting and board packs moving every month.
-            </h2>
-          </div>
-          <Link
-            href="/signup"
-            className="mt-8 inline-flex min-h-14 items-center justify-center gap-2 rounded-2xl bg-white px-8 font-bold text-slate-950 transition hover:-translate-y-1 lg:mt-0"
-          >
-            Start company setup
-            <ArrowRight className="size-5" />
-          </Link>
-        </div>
-      </section>
+      <footer className="relative z-10 border-t bg-white/75"><div className="mx-auto flex max-w-7xl flex-col gap-4 px-5 py-8 text-sm text-slate-500 sm:flex-row sm:items-center sm:justify-between lg:px-8"><span>FinCruiz · Financial and organizational intelligence</span><div className="flex gap-4"><Link href="/demo">Demo</Link><Link href="/login">Sign in</Link><Link href="/signup">Create workspace</Link></div></div></footer>
     </main>
   );
 }

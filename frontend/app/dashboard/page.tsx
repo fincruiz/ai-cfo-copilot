@@ -18,6 +18,7 @@ import { authService } from "@/services/auth-service";
 import { financeService } from "@/services/finance-service";
 import { workspaceService, type WorkspaceStatus } from "@/services/workspace-service";
 import { analyticsService } from "@/services/analytics-service";
+import { usageService } from "@/services/usage-service";
 import type { AICFOAnswer, AICFOSignal } from "@/types/analytics";
 import type { Company } from "@/types/auth";
 import type { BalanceSheet, DataHealth, FinancialAssurance, ProfitAndLoss, Ratio, TrialBalance } from "@/types/finance";
@@ -99,6 +100,7 @@ export default function DashboardPage() {
 
   function chooseView(view: DashboardView) {
     setDashboardView(view); window.localStorage.setItem("fincruiz_dashboard_view", view);
+    usageService.track("dashboard_role_view_changed", { view });
     if (view !== "custom") setCustomizeOpen(false);
   }
   function toggleWidget(widget: WidgetKey) {
@@ -106,6 +108,7 @@ export default function DashboardPage() {
     setCustomWidgets((current) => {
       const next = current.includes(widget) ? current.filter((x) => x !== widget) : [...current, widget];
       window.localStorage.setItem("fincruiz_dashboard_widgets", JSON.stringify(next));
+      usageService.track("dashboard_customized", { widgets: next });
       return next;
     });
   }
@@ -124,7 +127,7 @@ export default function DashboardPage() {
   const managementKpiHelp = managementKpi?.interpretation || "A management-relevant liquidity or working-capital indicator from the latest data.";
   const greeting = new Date().getHours() < 12 ? "morning" : new Date().getHours() < 18 ? "afternoon" : "evening";
 
-  return <div className="mx-auto max-w-7xl space-y-6">
+  return <div className="mx-auto max-w-7xl space-y-6 animate-content-ready">
     <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
       <div><p className="text-xs font-semibold uppercase tracking-[.18em] text-muted-foreground">Dashboard view</p><div className="mt-2 flex flex-wrap gap-2">{([
         ["owner", "Owner / CEO"], ["cfo", "CFO"], ["finance", "Finance team"], ["custom", "Custom"],
@@ -141,7 +144,7 @@ export default function DashboardPage() {
 
     {error ? <Card className="border-destructive/30"><CardContent className="py-4 text-sm text-destructive">{error}</CardContent></Card> : null}
 
-    {visible.has("metrics") ? <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+    {visible.has("metrics") ? <div className="stagger-grid grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
       <MetricCard title="Revenue" help="Total income generated in the current reporting data." description="Current reporting period" value={formatMoney(pnl?.revenue, currency)} icon={TrendingUp}/>
       <MetricCard title="Net profit" help="Profit remaining after operating expenses, finance costs and tax." description="After tax" value={formatMoney(pnl?.net_profit, currency)} icon={CircleDollarSign}/>
       <MetricCard title="Gross margin" help="Gross profit as a percentage of revenue. Useful for understanding pricing, product mix and direct-cost pressure." description="Revenue retained after direct costs" value={formatPercent(grossMargin)} icon={Gauge}/>
@@ -183,7 +186,7 @@ function formatKpi(kpi: Ratio): string {
 }
 
 function MetricCard({ title, description, value, icon: Icon, help }: { title: string; description: string; value: string; icon: typeof TrendingUp; help: string }) {
-  return <Card className="overflow-hidden"><CardHeader className="pb-2"><div className="flex items-start justify-between gap-3"><div className="flex items-center gap-1.5"><CardTitle className="text-base">{title}</CardTitle><HelpTip text={help} side="top"/></div><Icon className="size-5 text-muted-foreground"/></div><CardDescription>{description}</CardDescription></CardHeader><CardContent><p className="truncate text-2xl font-semibold tabular-nums">{value}</p></CardContent></Card>;
+  return <Card className="group overflow-hidden transition duration-300 hover:-translate-y-1 hover:shadow-lg"><CardHeader className="pb-2"><div className="flex items-start justify-between gap-3"><div className="flex items-center gap-1.5"><CardTitle className="text-base">{title}</CardTitle><HelpTip title={title} text={help} side="bottom"/></div><Icon className="size-5 text-muted-foreground"/></div><CardDescription>{description}</CardDescription></CardHeader><CardContent><p className="truncate text-2xl font-semibold tabular-nums">{value}</p></CardContent></Card>;
 }
 
 function Status({ label, value, good }: { label: string; value: string; good: boolean }) {

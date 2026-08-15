@@ -15,6 +15,7 @@ import {
 } from "lucide-react";
 
 import { analyticsService } from "@/services/analytics-service";
+import { usageService } from "@/services/usage-service";
 import type { AICFOAnswer } from "@/types/analytics";
 
 interface Message {
@@ -57,6 +58,7 @@ export function AICFOFloating() {
     setMessages((current) => [...current, { role: "user", content: cleaned }]);
     setQuestion("");
     setLoading(true);
+    usageService.track("ai_question_submitted", { source: "floating_assistant" }); // question text deliberately excluded
     try {
       const response = await analyticsService.askAiCfo(cleaned, liveContext);
       setMessages((current) => [...current, { role: "assistant", content: response.answer, result: response }]);
@@ -115,7 +117,7 @@ export function AICFOFloating() {
                 {message.result?.action ? (
                   <button
                     type="button"
-                    onClick={() => { setOpen(false); router.push(message.result!.action!.route); }}
+                    onClick={() => { usageService.track("ai_recommended_tool_opened", { source: "floating_assistant", feature: message.result!.action!.label }); setOpen(false); router.push(message.result!.action!.route); }}
                     className="mt-2 inline-flex items-center gap-2 rounded-xl bg-indigo-500/20 px-3 py-2 text-xs font-semibold text-indigo-100 hover:bg-indigo-500/30"
                   >
                     <Navigation className="size-3.5" /> {message.result.action.label}
