@@ -1,7 +1,7 @@
 "use client";
 
 import { FormEvent, useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import {
   Bot,
   ExternalLink,
@@ -26,6 +26,7 @@ interface Message {
 
 export function AICFOFloating() {
   const router = useRouter();
+  const pathname = usePathname();
   const [open, setOpen] = useState(false);
   const [question, setQuestion] = useState("");
   const [loading, setLoading] = useState(false);
@@ -80,6 +81,10 @@ export function AICFOFloating() {
     event.preventDefault();
     await ask(question);
   }
+
+  // The home dashboard has a full Ask FinCruiz panel, so the floating
+  // shortcut stays out of the way there. It remains available everywhere else.
+  if (pathname === "/dashboard") return null;
 
   return (
     <>

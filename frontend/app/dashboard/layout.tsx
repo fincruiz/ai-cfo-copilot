@@ -130,7 +130,7 @@ export default function DashboardLayout({ children }: Readonly<{ children: React
         </div>
       ) : <div className="border-b p-3"><button type="button" onClick={() => openExplorer("collapsed_sidebar")} title="Explore all FinCruiz capabilities" className="mx-auto flex size-10 items-center justify-center rounded-xl border hover:bg-muted"><Search className="size-4"/></button></div>}
 
-      <nav className="flex-1 overflow-y-auto px-3 py-3">
+      <nav className="fincruiz-scroll-stable flex-1 overflow-y-auto px-3 py-3">
         {navigationGroups.map((group) => {
           const isOpen = Boolean(openGroups[group.label]);
           return <div key={group.label} className="mb-2">
@@ -155,7 +155,7 @@ export default function DashboardLayout({ children }: Readonly<{ children: React
     <div className={collapsed ? "transition-all duration-300 lg:pl-20" : "transition-all duration-300 lg:pl-72"}>
       <header className="sticky top-0 z-20 flex h-16 items-center justify-between border-b bg-background/90 px-4 backdrop-blur-xl sm:px-6">
         <div className="flex items-center gap-3"><button type="button" onClick={() => setMobileOpen(true)} className="flex size-9 items-center justify-center rounded-lg border text-muted-foreground hover:bg-muted lg:hidden"><Menu className="size-4"/></button><button type="button" onClick={toggleSidebar} className="hidden size-9 items-center justify-center rounded-lg border text-muted-foreground hover:bg-muted lg:flex" title={collapsed ? "Expand sidebar" : "Collapse sidebar"}>{collapsed ? <PanelLeftOpen className="size-4"/> : <PanelLeftClose className="size-4"/>}</button><div><p className="text-sm font-medium">FinCruiz Workspace</p><p className="text-xs capitalize text-muted-foreground">{companyRole ? `${companyRole.replaceAll("_", " ")} · ` : ""}Management intelligence</p></div></div>
-        <div className="flex items-center gap-2"><Button type="button" variant="outline" size="sm" className="hidden sm:flex" onClick={() => openExplorer("top_bar")}><Search className="size-4"/>Explore</Button><ThemeToggle/></div>
+        <div className="flex items-center gap-2"><button type="button" onClick={() => openExplorer("top_bar")} className="group hidden min-w-[190px] items-center gap-3 rounded-2xl border border-indigo-200/80 bg-gradient-to-r from-indigo-50 via-background to-sky-50 px-4 py-2 text-left shadow-sm transition hover:-translate-y-0.5 hover:border-indigo-300 hover:shadow-md dark:border-indigo-500/20 dark:from-indigo-950/30 dark:via-background dark:to-sky-950/20 sm:flex"><span className="flex size-9 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-indigo-600 to-sky-500 text-white"><Compass className="size-4"/></span><span className="min-w-0 flex-1"><span className="block text-sm font-semibold leading-4">Explore FinCruiz</span><span className="mt-1 block text-[10px] leading-3 text-muted-foreground">Find every capability</span></span><ChevronRight className="size-4 shrink-0 text-muted-foreground transition group-hover:translate-x-0.5"/></button><button type="button" onClick={() => openExplorer("top_bar_mobile")} className="flex size-10 items-center justify-center rounded-xl border bg-background sm:hidden" aria-label="Explore FinCruiz"><Compass className="size-4"/></button><ThemeToggle/></div>
       </header>
       <main className="p-4 sm:p-6 lg:p-8">{children}</main>
     </div>

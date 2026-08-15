@@ -12,6 +12,8 @@ import {
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { HelpTip } from "@/components/ui/help-tip";
+import { AskFinCruizDashboard } from "@/components/ask-fincruiz-dashboard";
+import { DailyBusinessPulse } from "@/components/daily-business-pulse";
 import { getApiErrorMessage } from "@/lib/api";
 import { formatDays, formatMoney, formatNumber, formatPercent, formatRatio, toNumber } from "@/lib/finance-format";
 import { authService } from "@/services/auth-service";
@@ -61,6 +63,7 @@ export default function DashboardPage() {
   const [dashboardView, setDashboardView] = useState<DashboardView>("owner");
   const [customWidgets, setCustomWidgets] = useState<WidgetKey[]>(presets.owner);
   const [customizeOpen, setCustomizeOpen] = useState(false);
+  const [pulseOpen, setPulseOpen] = useState(false);
 
   useEffect(() => {
     const storedView = window.localStorage.getItem("fincruiz_dashboard_view") as DashboardView | null;
@@ -91,6 +94,19 @@ export default function DashboardPage() {
     }
     void load();
   }, [router]);
+
+  useEffect(() => {
+    if (isLoading || !trialBalance?.lines?.length) return;
+    const today = new Date().toISOString().slice(0, 10);
+    const key = `fincruiz_daily_pulse_seen_${today}`;
+    if (window.localStorage.getItem(key) === "true") return;
+    const timer = window.setTimeout(() => {
+      setPulseOpen(true);
+      window.localStorage.setItem(key, "true");
+      usageService.track("daily_business_pulse_opened", { source: "automatic" });
+    }, 650);
+    return () => window.clearTimeout(timer);
+  }, [isLoading, trialBalance]);
 
   async function loadDemoWorkspace() {
     setLoadingDemo(true); setError("");
@@ -138,7 +154,7 @@ export default function DashboardPage() {
     {visible.has("headline") ? <section className="fincruiz-hero overflow-hidden rounded-[28px] border p-6 sm:p-8">
       <div className="flex flex-col gap-6 lg:flex-row lg:items-center lg:justify-between">
         <div className="max-w-3xl"><p className="flex items-center gap-2 text-sm font-semibold text-primary"><Sparkles className="size-4"/>Your business, in plain English</p><h1 className="mt-2 text-3xl font-bold tracking-tight sm:text-4xl">Good {greeting}. Here is what matters for {companyName}.</h1><p className="mt-3 text-muted-foreground">Start with business outcomes. Drill into the finance mechanics only when you need the evidence.</p></div>
-        <div className="flex flex-wrap gap-2"><Link href="/dashboard/intelligence" className={buttonVariants()}><BriefcaseBusiness className="size-4"/>What needs attention?</Link><Link href="/dashboard/reports" className={buttonVariants({variant:"outline"})}>See financials<ArrowRight className="size-4"/></Link></div>
+        <div className="flex flex-wrap gap-2"><Button type="button" onClick={() => { setPulseOpen(true); usageService.track("daily_business_pulse_opened", { source: "dashboard_button" }); }} className="bg-gradient-to-r from-indigo-600 to-sky-500 text-white hover:opacity-90"><Sparkles className="size-4"/>Quick business pulse</Button><Link href="/dashboard/intelligence" className={buttonVariants({variant:"outline"})}><BriefcaseBusiness className="size-4"/>What needs attention?</Link><Link href="/dashboard/reports" className={buttonVariants({variant:"outline"})}>See financials<ArrowRight className="size-4"/></Link></div>
       </div>
     </section> : null}
 
@@ -150,6 +166,8 @@ export default function DashboardPage() {
       <MetricCard title="Gross margin" help="Gross profit as a percentage of revenue. Useful for understanding pricing, product mix and direct-cost pressure." description="Revenue retained after direct costs" value={formatPercent(grossMargin)} icon={Gauge}/>
       <MetricCard title={managementKpiLabel} help={managementKpiHelp} description={managementKpi?.category || "Liquidity / working capital"} value={managementKpiValue} icon={WalletCards}/>
     </div> : null}
+
+    <AskFinCruizDashboard />
 
     {workspace?.demo_data_active ? <Card className="border-sky-200 bg-sky-50/50"><CardContent className="flex items-center gap-3 py-4"><FlaskConical className="size-5 text-sky-700"/><div><p className="font-semibold">Demo workspace active</p><p className="text-sm text-muted-foreground">Synthetic company data is active. You can reset it without affecting your profile.</p></div></CardContent></Card> : null}
 
@@ -172,6 +190,17 @@ export default function DashboardPage() {
     {visible.has("dataHealth") ? <Card><CardHeader><div className="flex items-start justify-between"><div><CardTitle>Data health</CardTitle><CardDescription>Technical checks for the finance team.</CardDescription></div><HelpTip text="Executives usually do not need this on their default dashboard. Finance users can keep it visible as a control panel." side="left"/></div></CardHeader><CardContent className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5"><Status label="Trial balance difference" value={formatMoney(dataHealth?.trial_balance_difference ?? trialBalance?.difference, currency, 2)} good={Boolean(dataHealth?.is_trial_balance_balanced)}/><Status label="Balance sheet difference" value={formatMoney(dataHealth?.balance_sheet_difference, currency, 2)} good={Boolean(dataHealth?.is_balance_sheet_balanced)}/><Status label="Mapped accounts" value={`${dataHealth?.mapped_account_count ?? 0}/${dataHealth?.account_count ?? 0}`} good={Boolean(dataHealth?.is_mapping_complete && dataHealth?.account_count)}/><Status label="Invalid transactions" value={String(dataHealth?.invalid_transaction_count ?? 0)} good={(dataHealth?.invalid_transaction_count ?? 0) === 0}/><Status label="Potential duplicates" value={String(dataHealth?.duplicate_candidate_count ?? 0)} good={(dataHealth?.duplicate_candidate_count ?? 0) === 0}/></CardContent></Card> : null}
 
     <Card className="border-dashed"><CardContent className="flex flex-col gap-4 py-5 sm:flex-row sm:items-center sm:justify-between"><div><p className="font-semibold">Need a feature you cannot see here?</p><p className="mt-1 text-sm text-muted-foreground">Use <b>Explore FinCruiz</b> in the sidebar. Simplified navigation never removes capabilities.</p></div><Button variant="outline" onClick={() => setCustomizeOpen(true)}><LayoutGrid className="size-4"/>Adjust this dashboard</Button></CardContent></Card>
+
+    <DailyBusinessPulse
+      open={pulseOpen}
+      onClose={() => setPulseOpen(false)}
+      signals={signals}
+      revenue={toNumber(pnl?.revenue)}
+      netProfit={toNumber(pnl?.net_profit)}
+      grossMargin={grossMargin}
+      currency={currency}
+      companyName={companyName}
+    />
 
     {customizeOpen ? <div className="fixed inset-0 z-[130] flex items-center justify-center bg-slate-950/45 p-4 backdrop-blur-sm" onMouseDown={(e) => e.target === e.currentTarget && setCustomizeOpen(false)}><div className="w-full max-w-2xl rounded-[26px] border bg-background p-5 shadow-2xl sm:p-6"><div className="flex items-start justify-between gap-4"><div><h2 className="text-xl font-semibold">Customize your dashboard</h2><p className="mt-1 text-sm text-muted-foreground">Role presets change what is emphasized, not what you are allowed to access.</p></div><button type="button" onClick={() => setCustomizeOpen(false)} className="flex size-9 items-center justify-center rounded-xl hover:bg-muted"><X className="size-4"/></button></div><div className="mt-5 grid gap-3">{(Object.keys(widgetMeta) as WidgetKey[]).map((key) => { const checked = visible.has(key); return <label key={key} className="flex cursor-pointer items-start gap-3 rounded-2xl border p-4 hover:bg-muted/40"><input type="checkbox" className="mt-1" checked={checked} onChange={() => toggleWidget(key)}/><div><p className="font-medium">{widgetMeta[key].label}</p><p className="mt-1 text-sm leading-6 text-muted-foreground">{widgetMeta[key].description}</p></div></label>; })}</div><div className="mt-5 flex justify-end"><Button onClick={() => setCustomizeOpen(false)}>Done</Button></div></div></div> : null}
   </div>;

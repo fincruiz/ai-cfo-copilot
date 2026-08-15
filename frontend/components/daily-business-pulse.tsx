@@ -1,0 +1,112 @@
+"use client";
+
+import { AlertTriangle, ArrowRight, CheckCircle2, ShieldAlert, Sparkles, X } from "lucide-react";
+import type { ReactNode } from "react";
+import Link from "next/link";
+
+import { Button, buttonVariants } from "@/components/ui/button";
+import { formatMoney, formatPercent } from "@/lib/finance-format";
+import type { AICFOSignal } from "@/types/analytics";
+
+export function DailyBusinessPulse({
+  open,
+  onClose,
+  signals,
+  revenue,
+  netProfit,
+  grossMargin,
+  currency,
+  companyName,
+}: {
+  open: boolean;
+  onClose: () => void;
+  signals: AICFOSignal[];
+  revenue: number;
+  netProfit: number;
+  grossMargin: number;
+  currency: string;
+  companyName: string;
+}) {
+  if (!open) return null;
+
+  const positives = signals.filter((signal) => signal.severity === "positive").slice(0, 2);
+  const redFlags = signals.filter((signal) => signal.severity === "high").slice(0, 2);
+  const watch = signals.filter((signal) => signal.severity !== "positive" && signal.severity !== "high").slice(0, 2);
+
+  return (
+    <div className="fixed inset-0 z-[150] flex items-center justify-center bg-slate-950/55 p-4 backdrop-blur-md" onMouseDown={(event) => event.target === event.currentTarget && onClose()}>
+      <section className="max-h-[90vh] w-full max-w-4xl overflow-y-auto rounded-[30px] border bg-background shadow-[0_40px_120px_rgba(15,23,42,.42)] animate-modal-in">
+        <header className="relative overflow-hidden border-b bg-gradient-to-br from-indigo-600 via-violet-600 to-sky-500 p-6 text-white sm:p-8">
+          <div className="absolute -right-20 -top-20 size-60 rounded-full bg-white/10 blur-2xl" />
+          <div className="relative flex items-start gap-4">
+            <div className="flex size-12 shrink-0 items-center justify-center rounded-2xl bg-white/15 backdrop-blur"><Sparkles className="size-5" /></div>
+            <div className="min-w-0 flex-1">
+              <p className="text-xs font-semibold uppercase tracking-[.2em] text-indigo-100">Daily Business Pulse</p>
+              <h2 className="mt-1 text-2xl font-bold sm:text-3xl">A 60-second overview of {companyName}</h2>
+              <p className="mt-2 max-w-2xl text-sm leading-6 text-indigo-50/90">Start with what is moving in the right direction, what needs attention and the red flags worth investigating first.</p>
+            </div>
+            <button type="button" onClick={onClose} className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-white/10 hover:bg-white/20"><X className="size-4" /></button>
+          </div>
+          <div className="relative mt-6 grid gap-3 sm:grid-cols-3">
+            <MiniMetric label="Revenue" value={formatMoney(revenue, currency)} />
+            <MiniMetric label="Net profit" value={formatMoney(netProfit, currency)} />
+            <MiniMetric label="Gross margin" value={formatPercent(grossMargin)} />
+          </div>
+        </header>
+
+        <div className="grid gap-4 p-5 sm:p-7 lg:grid-cols-3">
+          <PulseColumn
+            title="Moving well"
+            subtitle="Positive momentum"
+            icon={<CheckCircle2 className="size-5" />}
+            className="border-emerald-200 bg-emerald-50/70 dark:border-emerald-500/20 dark:bg-emerald-950/20"
+            iconClass="bg-emerald-500 text-white"
+            items={positives.length ? positives : netProfit > 0 ? [{ title: "The business is currently profitable", evidence: `Net profit is ${formatMoney(netProfit, currency)} in the current reporting data.`, action: "Protect the drivers supporting profitability.", severity: "positive" } as AICFOSignal] : []}
+            empty="No strong positive trend has been identified yet."
+          />
+          <PulseColumn
+            title="Watch closely"
+            subtitle="Needs management attention"
+            icon={<AlertTriangle className="size-5" />}
+            className="border-amber-200 bg-amber-50/70 dark:border-amber-500/20 dark:bg-amber-950/20"
+            iconClass="bg-amber-500 text-white"
+            items={watch}
+            empty="No additional watch item is currently material."
+          />
+          <PulseColumn
+            title="Red flags"
+            subtitle="Investigate first"
+            icon={<ShieldAlert className="size-5" />}
+            className="border-red-200 bg-red-50/70 dark:border-red-500/20 dark:bg-red-950/20"
+            iconClass="bg-red-500 text-white"
+            items={redFlags}
+            empty="No critical red flag has been identified from the available data."
+          />
+        </div>
+
+        <footer className="flex flex-col gap-3 border-t bg-muted/25 p-5 sm:flex-row sm:items-center sm:justify-between sm:px-7">
+          <p className="text-sm text-muted-foreground">This is a management summary, not an audit opinion. Open the evidence before making a material decision.</p>
+          <div className="flex flex-wrap gap-2">
+            <Link href="/dashboard/intelligence" onClick={onClose} className={buttonVariants({ variant: "outline" })}>Open Intelligence Center</Link>
+            <Button onClick={onClose}>Continue to dashboard <ArrowRight className="size-4" /></Button>
+          </div>
+        </footer>
+      </section>
+    </div>
+  );
+}
+
+function MiniMetric({ label, value }: { label: string; value: string }) {
+  return <div className="rounded-2xl border border-white/15 bg-white/10 p-3 backdrop-blur"><p className="text-xs text-indigo-100">{label}</p><p className="mt-1 text-lg font-semibold tabular-nums">{value}</p></div>;
+}
+
+function PulseColumn({ title, subtitle, icon, className, iconClass, items, empty }: { title: string; subtitle: string; icon: ReactNode; className: string; iconClass: string; items: AICFOSignal[]; empty: string }) {
+  return (
+    <section className={`rounded-[24px] border p-4 ${className}`}>
+      <div className="flex items-center gap-3"><div className={`flex size-10 items-center justify-center rounded-xl ${iconClass}`}>{icon}</div><div><h3 className="font-semibold">{title}</h3><p className="text-xs text-muted-foreground">{subtitle}</p></div></div>
+      <div className="mt-4 space-y-3">
+        {items.length ? items.map((item, index) => <article key={`${item.title}-${index}`} className="rounded-2xl border bg-background/80 p-3.5 shadow-sm"><p className="text-sm font-semibold leading-5">{item.title}</p><p className="mt-2 text-xs leading-5 text-muted-foreground">{item.evidence}</p><p className="mt-2 text-xs leading-5"><b>Next:</b> {item.action}</p></article>) : <div className="rounded-2xl border border-dashed bg-background/50 p-4 text-xs leading-5 text-muted-foreground">{empty}</div>}
+      </div>
+    </section>
+  );
+}
