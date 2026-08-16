@@ -23,7 +23,7 @@ class AIChartSeries(BaseModel):
 
 
 class AIVisualization(BaseModel):
-    type: Literal["line", "area", "bar", "donut"]
+    type: Literal["line", "area", "bar", "stacked_bar", "donut", "waterfall"]
     title: str
     subtitle: str | None = None
     labels: list[str]

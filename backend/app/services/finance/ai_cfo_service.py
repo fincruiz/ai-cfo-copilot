@@ -161,6 +161,7 @@ class AICFOService:
             "balance_sheet": self._jsonable(bs),
             "kpis": self._jsonable(kpis),
             "monthly_actuals": self._jsonable(monthly),
+            "branch_comparison": self._jsonable(overview.get("branch_comparison", [])),
             "ar_summary": self._jsonable(overview.get("ar_summary")),
             "ap_summary": self._jsonable(overview.get("ap_summary")),
             "existing_insights": overview.get("insights", []),
@@ -273,6 +274,54 @@ MANAGEMENT_QUESTION:
             values = [float(bs.get("total_assets") or 0), float(bs.get("total_liabilities") or 0), float(bs.get("equity") or 0)] if isinstance(bs, dict) else []
             if any(values):
                 return {"type":"bar","title":"Balance sheet structure","subtitle":"Assets, liabilities and equity","labels":["Assets","Liabilities","Equity"],"series":[{"name":"Value","data":values}],"value_format":"currency","currency":currency}
+
+        # Branch questions compare management units directly.
+        if any(term in q for term in ("branch", "location", "site performance")):
+            branches = context.get("branch_comparison") or []
+            if branches:
+                labels = [str(row.get("branch_name") or row.get("branch_code") or f"Branch {i+1}") for i, row in enumerate(branches[:10])]
+                revenue = [number(row, "revenue") for row in branches[:10]]
+                profit = [number(row, "net_profit") for row in branches[:10]]
+                return {"type":"bar","title":"Branch performance","subtitle":"Revenue and net profit by branch","labels":labels,"series":[{"name":"Revenue","data":revenue},{"name":"Net profit","data":profit}],"value_format":"currency","currency":currency}
+
+        # Profit-driver questions work well as a deterministic bridge from revenue to net profit.
+        if monthly and any(term in q for term in ("why did profit", "profit change", "profit bridge", "what drove profit", "profit up", "profit down")):
+            latest = monthly[-1]
+            return {
+                "type":"waterfall",
+                "title":"Latest-period profit bridge",
+                "subtitle":"How revenue flows through direct costs and expenses to net profit",
+                "labels":["Revenue","Cost of sales","Operating expenses","Depreciation","Finance costs","Tax","Other net"],
+                "series":[{"name":"Profit bridge","data":[
+                    number(latest,"revenue"),
+                    -number(latest,"cost_of_sales"),
+                    -number(latest,"operating_expenses"),
+                    -number(latest,"depreciation"),
+                    -number(latest,"finance_costs"),
+                    -number(latest,"tax"),
+                    number(latest,"net_profit")-(number(latest,"revenue")-number(latest,"cost_of_sales")-number(latest,"operating_expenses")-number(latest,"depreciation")-number(latest,"finance_costs")-number(latest,"tax")),
+                ]}],
+                "value_format":"currency",
+                "currency":currency,
+            }
+
+        # Cost-mix questions use a stacked view across periods.
+        if monthly and any(term in q for term in ("cost mix", "expense mix", "cost trend", "expense trend")):
+            labels = [label(row, i) for i, row in enumerate(monthly)]
+            return {
+                "type":"stacked_bar",
+                "title":"Cost and expense mix",
+                "subtitle":"Direct costs and operating expense categories by reporting period",
+                "labels":labels,
+                "series":[
+                    {"name":"Cost of sales","data":[number(row,"cost_of_sales") for row in monthly]},
+                    {"name":"Operating expenses","data":[number(row,"operating_expenses") for row in monthly]},
+                    {"name":"Depreciation","data":[number(row,"depreciation") for row in monthly]},
+                    {"name":"Finance costs","data":[number(row,"finance_costs") for row in monthly]},
+                ],
+                "value_format":"currency",
+                "currency":currency,
+            }
 
         if monthly:
             labels = [label(row, i) for i, row in enumerate(monthly)]

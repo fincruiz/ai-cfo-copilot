@@ -16,6 +16,7 @@ import { ViewportModal } from "@/components/ui/viewport-modal";
 import { AskFinCruizDashboard } from "@/components/ask-fincruiz-dashboard";
 import { DailyBusinessPulse } from "@/components/daily-business-pulse";
 import { InsightChart } from "@/components/insight-chart";
+import { ManagementPerformanceBoard } from "@/components/management-performance-board";
 import { getApiErrorMessage } from "@/lib/api";
 import { formatDays, formatMoney, formatNumber, formatPercent, formatRatio, toNumber } from "@/lib/finance-format";
 import { authService } from "@/services/auth-service";
@@ -23,16 +24,17 @@ import { financeService } from "@/services/finance-service";
 import { workspaceService, type WorkspaceStatus } from "@/services/workspace-service";
 import { analyticsService } from "@/services/analytics-service";
 import { usageService } from "@/services/usage-service";
-import type { AICFOAnswer, AICFOSignal } from "@/types/analytics";
+import type { AICFOAnswer, AICFOSignal, AnalyticsOverview } from "@/types/analytics";
 import type { Company } from "@/types/auth";
 import type { BalanceSheet, DataHealth, FinancialAssurance, ProfitAndLoss, Ratio, TrialBalance } from "@/types/finance";
 
 type DashboardView = "owner" | "cfo" | "finance" | "custom";
-type WidgetKey = "headline" | "metrics" | "priorities" | "briefing" | "profitability" | "confidence" | "dataHealth";
+type WidgetKey = "headline" | "metrics" | "performance" | "priorities" | "briefing" | "profitability" | "confidence" | "dataHealth";
 
 const widgetMeta: Record<WidgetKey, { label: string; description: string }> = {
   headline: { label: "Executive headline", description: "A plain-English opening view of what matters in the business." },
   metrics: { label: "Business pulse", description: "Revenue, profit, margin and a management-relevant cash/working-capital metric." },
+  performance: { label: "Performance trends", description: "Management trends, period comparisons, sparklines and working-capital direction." },
   priorities: { label: "Management priorities", description: "Ranked positive, attention and high-priority signals with evidence and actions." },
   briefing: { label: "AI executive briefing", description: "A management narrative grounded in your company data, with external context when relevant." },
   profitability: { label: "Profitability snapshot", description: "Current P&L totals for a quicker finance review." },
@@ -41,9 +43,9 @@ const widgetMeta: Record<WidgetKey, { label: string; description: string }> = {
 };
 
 const presets: Record<Exclude<DashboardView, "custom">, WidgetKey[]> = {
-  owner: ["headline", "metrics", "priorities", "briefing"],
-  cfo: ["headline", "metrics", "priorities", "briefing", "profitability", "confidence"],
-  finance: ["metrics", "profitability", "confidence", "dataHealth", "priorities"],
+  owner: ["headline", "metrics", "performance", "priorities", "briefing"],
+  cfo: ["headline", "metrics", "performance", "priorities", "briefing", "profitability", "confidence"],
+  finance: ["metrics", "performance", "profitability", "confidence", "dataHealth", "priorities"],
 };
 
 export default function DashboardPage() {
@@ -62,6 +64,7 @@ export default function DashboardPage() {
   const [executiveBrief, setExecutiveBrief] = useState<AICFOAnswer | null>(null);
   const [signals, setSignals] = useState<AICFOSignal[]>([]);
   const [assurance, setAssurance] = useState<FinancialAssurance | null>(null);
+  const [analyticsOverview, setAnalyticsOverview] = useState<AnalyticsOverview | null>(null);
   const [dashboardView, setDashboardView] = useState<DashboardView>("owner");
   const [customWidgets, setCustomWidgets] = useState<WidgetKey[]>(presets.owner);
   const [customizeOpen, setCustomizeOpen] = useState(false);
@@ -80,13 +83,13 @@ export default function DashboardPage() {
       try {
         const currentCompany = await authService.getCurrentCompany();
         setCompany(currentCompany);
-        const [profitLoss, bs, tb, ratios, suggestions, workspaceStatus, health, assuranceResult] = await Promise.all([
+        const [profitLoss, bs, tb, ratios, suggestions, workspaceStatus, health, assuranceResult, overviewResult] = await Promise.all([
           financeService.getProfitAndLoss(), financeService.getBalanceSheet(), financeService.getTrialBalance(),
           financeService.getKpis(), financeService.getMappingSuggestions(), workspaceService.getStatus(),
-          financeService.getDataHealth(), financeService.getFinancialAssurance(),
+          financeService.getDataHealth(), financeService.getFinancialAssurance(), analyticsService.getOverview(),
         ]);
         setPnl(profitLoss); setBalanceSheet(bs); setTrialBalance(tb); setKpis(ratios);
-        setUnmappedCount(suggestions.length); setWorkspace(workspaceStatus); setDataHealth(health); setAssurance(assuranceResult);
+        setUnmappedCount(suggestions.length); setWorkspace(workspaceStatus); setDataHealth(health); setAssurance(assuranceResult); setAnalyticsOverview(overviewResult);
         if (workspaceStatus.has_financial_data) {
           analyticsService.getExecutiveBrief().then(setExecutiveBrief).catch(() => undefined);
           analyticsService.getProactiveSignals().then((r) => setSignals(r.signals)).catch(() => undefined);
@@ -168,6 +171,8 @@ export default function DashboardPage() {
       <MetricCard title="Gross margin" help="Gross profit as a percentage of revenue. Useful for understanding pricing, product mix and direct-cost pressure." description="Revenue retained after direct costs" value={formatPercent(grossMargin)} icon={Gauge}/>
       <MetricCard title={managementKpiLabel} help={managementKpiHelp} description={managementKpi?.category || "Liquidity / working capital"} value={managementKpiValue} icon={WalletCards}/>
     </div> : null}
+
+    {visible.has("performance") && hasFinancials ? <ManagementPerformanceBoard overview={analyticsOverview} currency={currency} /> : null}
 
     <AskFinCruizDashboard />
 

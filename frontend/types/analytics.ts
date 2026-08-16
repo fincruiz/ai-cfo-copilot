@@ -63,7 +63,7 @@ export interface AICFOAction {
 }
 
 
-export type AIChartType = "line" | "area" | "bar" | "donut";
+export type AIChartType = "line" | "area" | "bar" | "stacked_bar" | "donut" | "waterfall";
 
 export interface AIChartSeries {
   name: string;
