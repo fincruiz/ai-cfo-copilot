@@ -1,6 +1,7 @@
-import { api } from '@/lib/api'; import type {ApiResponse} from '@/types/finance'; import type {ForecastRun,PlanningVersion,Artifact} from '@/types/advanced-forecasting';
+import { api } from '@/lib/api'; import type {ApiResponse} from '@/types/finance'; import type {ForecastRun,PlanningVersion,Artifact,DecisionSimulation} from '@/types/advanced-forecasting';
 export const advancedFinanceService={
  async runForecast(payload:Record<string,unknown>):Promise<ForecastRun>{return (await api.post<ApiResponse<ForecastRun>>('/advanced-forecast/run',payload)).data.data},
+ async simulateDecision(payload:Record<string,unknown>):Promise<DecisionSimulation>{return (await api.post<ApiResponse<DecisionSimulation>>('/advanced-forecast/decision-simulator',payload,{timeout:120000})).data.data},
  async powerOfOne(payload:Record<string,unknown>){return (await api.post<ApiResponse<any>>('/advanced-forecast/power-of-one',payload)).data.data},
  async versions():Promise<PlanningVersion[]>{return (await api.get<ApiResponse<PlanningVersion[]>>('/native-planning/versions')).data.data},
  async createVersion(payload:Record<string,unknown>):Promise<PlanningVersion>{return (await api.post<ApiResponse<PlanningVersion>>('/native-planning/versions',payload)).data.data},

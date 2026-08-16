@@ -37,6 +37,7 @@ const navigationGroups: NavGroup[] = [
   { label: "Planning & forecasting", items: [
     { label: "Forecasting", href: "/dashboard/forecasting", icon: TrendingUp, description: "Project future revenue and financial performance from historical trends and assumptions.", keywords: "forecast projection" },
     { label: "Three-Way Forecast", href: "/dashboard/three-way-forecast", icon: TrendingUp, description: "Model P&L, Balance Sheet and Cash Flow together to answer decisions such as hiring, pricing, capex and cash impact.", keywords: "what if hire employees cash scenario integrated forecast" },
+    { label: "Decision Simulator", href: "/dashboard/decision-simulator", icon: Sparkles, description: "Test hiring, pricing, revenue, working-capital and capex decisions through the integrated three-way financial model.", keywords: "what if decision scenario hire pricing cash simulator" },
     { label: "Power of One", href: "/dashboard/power-of-one", icon: SlidersHorizontal, description: "Test the impact of small changes in price, volume, margin, working capital and costs.", keywords: "sensitivity driver scenario" },
     { label: "Native Budget Builder", href: "/dashboard/native-planning", icon: SlidersHorizontal, description: "Build budgets directly in FinCruiz without relying on an external spreadsheet.", keywords: "budget plan" },
     { label: "Budgets & scenarios", href: "/dashboard/planning", icon: SlidersHorizontal, description: "Compare plans, budgets and scenarios against actual performance.", keywords: "budget scenario actual variance" },

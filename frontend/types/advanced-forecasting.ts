@@ -1,3 +1,15 @@
 export interface ForecastRun { run_id:string; run_name:string; summary:Record<string,number|boolean>; profit_and_loss:Array<Record<string,unknown>>; balance_sheet:Array<Record<string,unknown>>; cash_flow:Array<Record<string,unknown>>; ratios:Array<Record<string,unknown>>; checks:Array<Record<string,unknown>>; scenarios:Array<Record<string,unknown>>; diagnostics:Array<Record<string,unknown>>; }
 export interface PlanningVersion {id:string;plan_type:string;version_name:string;financial_year_start:string;financial_year_end:string;status:string;assumptions:Record<string,unknown>;lines?:Array<Record<string,any>>}
 export interface Artifact {id:string;artifact_type:string;file_name:string;download_url:string;file_size_bytes:number}
+
+export interface DecisionSimulation {
+  scenario_name: string;
+  assumptions: Record<string, number>;
+  base_summary: Record<string, number | boolean | string | null>;
+  scenario_summary: Record<string, number | boolean | string | null>;
+  impact: Record<string, number>;
+  assessment: { level: 'green' | 'amber' | 'red'; title: string; message: string; minimum_cash_target: number };
+  comparison_series: Array<{ period: string; base_revenue: number; scenario_revenue: number; base_net_income: number; scenario_net_income: number; base_cash: number; scenario_cash: number }>;
+  base_checks: Array<Record<string, unknown>>;
+  scenario_checks: Array<Record<string, unknown>>;
+}

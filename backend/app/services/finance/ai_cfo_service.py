@@ -73,7 +73,7 @@ class AICFOService:
                     "closing cash and debt together rather than looking at one statement in isolation. Open the model, adjust the relevant "
                     "drivers, then compare the resulting cash and profitability impact."
                 ),
-                "action": {"label": "Model it in Three-Way Forecast", "route": "/dashboard/three-way-forecast"},
+                "action": {"label": "Model it in Decision Simulator", "route": "/dashboard/decision-simulator"},
             }
         if any(term in q for term in ("reset data", "delete data", "privacy", "delete profile", "delete account", "wrong file")):
             route = "/dashboard/settings"
@@ -393,7 +393,7 @@ MANAGEMENT_QUESTION:
         if not scenario: return None
         from urllib.parse import urlencode
         params={"from_ai":"1","scenario":scenario, **assumptions}
-        return {"scenario_type": scenario.lower().replace(" / ","_").replace(" ","_"), "title": scenario, "assumptions": assumptions, "route": "/dashboard/three-way-forecast?"+urlencode(params)}
+        return {"scenario_type": scenario.lower().replace(" / ","_").replace(" ","_"), "title": scenario, "assumptions": assumptions, "route": "/dashboard/decision-simulator?"+urlencode(params)}
 
     async def proactive_signals(self, company_id: UUID) -> dict:
         monthly = await self.reporting.monthly_actuals(company_id)

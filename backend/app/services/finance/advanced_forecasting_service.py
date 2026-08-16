@@ -132,3 +132,128 @@ class AdvancedForecastingService:
              'closing_debt':float(result.balance_sheet['Current Debt'].iloc[-1]+result.balance_sheet['Non-current Debt'].iloc[-1])}
         impact={k:adj[k]-base['summary'][k] for k in adj}
         return {'base':base['summary'],'adjusted':adj,'impact':impact}
+
+    async def simulate_decision(self, company_id: UUID, request):
+        """Run a management what-if through the deterministic three-way model.
+
+        AI may infer which assumptions the user intends, but this method alone
+        calculates the financial impact. It never calls an LLM.
+        """
+        history = await self._history(company_id, request.branch_id)
+        budget = await self._budget(company_id, request.budget_version_id)
+        base_request = AdvancedForecastRequest(**request.model_dump(exclude={
+            'revenue_change_percent','price_change_percent','volume_change_percent',
+            'gross_margin_points','headcount_change','monthly_cost_per_hire',
+            'payroll_change_percent','other_opex_change_percent','dso_change_days',
+            'dpo_change_days','inventory_change_days','capex_change_percent'
+        }))
+        base_config = self._config(base_request)
+        base_build = TrendBudgetForecastBuilder(HistoricalData(history), budget, base_config).build()
+        base_result = ThreeWayForecastEngine(base_build.forecast, base_config).run()
+
+        scenario_forecast = base_build.forecast.copy()
+        revenue_factor = (
+            (1 + float(request.revenue_change_percent) / 100)
+            * (1 + float(request.price_change_percent) / 100)
+            * (1 + float(request.volume_change_percent) / 100)
+        )
+        scenario_forecast['Revenue'] = scenario_forecast['Revenue'] * revenue_factor
+
+        if float(request.gross_margin_points):
+            base_revenue = base_build.forecast['Revenue'].replace(0, pd.NA)
+            base_margin = ((base_build.forecast['Revenue'] - base_build.forecast['COGS']) / base_revenue).fillna(0.0)
+            target_margin = (base_margin + float(request.gross_margin_points) / 100).clip(lower=0.0, upper=1.0)
+            scenario_forecast['COGS'] = scenario_forecast['Revenue'] * (1 - target_margin)
+        else:
+            # Preserve the baseline COGS ratio when revenue changes.
+            scenario_forecast['COGS'] = base_build.forecast['COGS'] * revenue_factor
+
+        scenario_forecast['Payroll'] = (
+            base_build.forecast['Payroll'] * (1 + float(request.payroll_change_percent) / 100)
+            + float(request.headcount_change) * float(request.monthly_cost_per_hire)
+        ).clip(lower=0.0)
+        scenario_forecast['Other Opex'] = (
+            base_build.forecast['Other Opex'] * (1 + float(request.other_opex_change_percent) / 100)
+        ).clip(lower=0.0)
+
+        scenario_request = deepcopy(base_request)
+        scenario_request.drivers.dso_days += request.dso_change_days
+        scenario_request.drivers.dpo_days += request.dpo_change_days
+        scenario_request.drivers.inventory_days += request.inventory_change_days
+        scenario_request.drivers.capex_pct_revenue *= Decimal('1') + request.capex_change_percent / 100
+        scenario_config = self._config(scenario_request)
+        scenario_result = ThreeWayForecastEngine(scenario_forecast, scenario_config).run()
+
+        def summarize(result):
+            pl, bs = result.profit_and_loss, result.balance_sheet
+            minimum_cash = float(bs['Cash'].min())
+            breach = bs.index[bs['Cash'] < scenario_config.drivers.minimum_cash]
+            return {
+                'forecast_revenue': float(pl['Revenue'].sum()),
+                'forecast_ebitda': float(pl['EBITDA'].sum()),
+                'forecast_net_income': float(pl['Net Income'].sum()),
+                'closing_cash': float(bs['Cash'].iloc[-1]),
+                'minimum_cash': minimum_cash,
+                'closing_debt': float(bs['Current Debt'].iloc[-1] + bs['Non-current Debt'].iloc[-1]),
+                'first_cash_pressure_month': breach[0].strftime('%Y-%m-%d') if len(breach) else None,
+                'balanced': bool(result.checks['Balanced'].all()),
+            }
+
+        base_summary = summarize(base_result)
+        scenario_summary = summarize(scenario_result)
+        numeric_keys = ['forecast_revenue','forecast_ebitda','forecast_net_income','closing_cash','minimum_cash','closing_debt']
+        impact = {key: scenario_summary[key] - base_summary[key] for key in numeric_keys}
+        min_cash_target = float(scenario_config.drivers.minimum_cash)
+        if not scenario_summary['balanced']:
+            level, title = 'red', 'Model integrity requires attention'
+        elif scenario_summary['minimum_cash'] < min_cash_target:
+            level, title = 'red', 'Cash buffer falls below the management minimum'
+        elif impact['closing_cash'] < 0 or impact['forecast_net_income'] < 0:
+            level, title = 'amber', 'Decision is financially possible but weakens the outlook'
+        else:
+            level, title = 'green', 'Decision remains within the current financial guardrails'
+        assessment = {
+            'level': level,
+            'title': title,
+            'message': (
+                f"Scenario closing cash changes by {impact['closing_cash']:.2f} and forecast net income by "
+                f"{impact['forecast_net_income']:.2f}."
+            ),
+            'minimum_cash_target': min_cash_target,
+        }
+
+        comparison = []
+        for period in base_result.profit_and_loss.index:
+            comparison.append({
+                'period': period.strftime('%Y-%m-%d'),
+                'base_revenue': float(base_result.profit_and_loss.loc[period, 'Revenue']),
+                'scenario_revenue': float(scenario_result.profit_and_loss.loc[period, 'Revenue']),
+                'base_net_income': float(base_result.profit_and_loss.loc[period, 'Net Income']),
+                'scenario_net_income': float(scenario_result.profit_and_loss.loc[period, 'Net Income']),
+                'base_cash': float(base_result.balance_sheet.loc[period, 'Cash']),
+                'scenario_cash': float(scenario_result.balance_sheet.loc[period, 'Cash']),
+            })
+        return {
+            'scenario_name': request.run_name,
+            'assumptions': {
+                'revenue_change_percent': float(request.revenue_change_percent),
+                'price_change_percent': float(request.price_change_percent),
+                'volume_change_percent': float(request.volume_change_percent),
+                'gross_margin_points': float(request.gross_margin_points),
+                'headcount_change': request.headcount_change,
+                'monthly_cost_per_hire': float(request.monthly_cost_per_hire),
+                'payroll_change_percent': float(request.payroll_change_percent),
+                'other_opex_change_percent': float(request.other_opex_change_percent),
+                'dso_change_days': float(request.dso_change_days),
+                'dpo_change_days': float(request.dpo_change_days),
+                'inventory_change_days': float(request.inventory_change_days),
+                'capex_change_percent': float(request.capex_change_percent),
+            },
+            'base_summary': base_summary,
+            'scenario_summary': scenario_summary,
+            'impact': impact,
+            'assessment': assessment,
+            'comparison_series': comparison,
+            'base_checks': records(base_result.checks),
+            'scenario_checks': records(scenario_result.checks),
+        }

@@ -129,3 +129,28 @@ class ArtifactResponse(BaseModel):
     file_name: str
     download_url: str
     file_size_bytes: int
+
+class DecisionSimulatorRequest(AdvancedForecastRequest):
+    revenue_change_percent: Decimal = Decimal('0')
+    price_change_percent: Decimal = Decimal('0')
+    volume_change_percent: Decimal = Decimal('0')
+    gross_margin_points: Decimal = Decimal('0')
+    headcount_change: int = 0
+    monthly_cost_per_hire: Decimal = Decimal('0')
+    payroll_change_percent: Decimal = Decimal('0')
+    other_opex_change_percent: Decimal = Decimal('0')
+    dso_change_days: Decimal = Decimal('0')
+    dpo_change_days: Decimal = Decimal('0')
+    inventory_change_days: Decimal = Decimal('0')
+    capex_change_percent: Decimal = Decimal('0')
+
+class DecisionSimulatorResponse(BaseModel):
+    scenario_name: str
+    assumptions: dict[str, Any]
+    base_summary: dict[str, Any]
+    scenario_summary: dict[str, Any]
+    impact: dict[str, Any]
+    assessment: dict[str, Any]
+    comparison_series: list[dict[str, Any]]
+    base_checks: list[dict[str, Any]]
+    scenario_checks: list[dict[str, Any]]
