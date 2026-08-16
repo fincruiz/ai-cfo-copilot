@@ -17,6 +17,20 @@ class AICFOAction(BaseModel):
     route: str
 
 
+class AICFOEvidence(BaseModel):
+    label: str
+    value: str
+    source: str
+    period: str | None = None
+
+
+class AICFODecisionHandoff(BaseModel):
+    scenario_type: str
+    title: str
+    assumptions: dict[str, float | int | str] = {}
+    route: str
+
+
 class AIChartSeries(BaseModel):
     name: str
     data: list[float]
@@ -40,6 +54,10 @@ class AICFOAnswerResponse(BaseModel):
     action: AICFOAction | None = None
     external_context_used: bool = False
     visualization: AIVisualization | None = None
+    evidence: list[AICFOEvidence] = []
+    confidence: Literal["high", "medium", "low"] = "medium"
+    confidence_reason: str | None = None
+    decision_handoff: AICFODecisionHandoff | None = None
 
 
 class AICFOSignal(BaseModel):

@@ -2,7 +2,7 @@
 
 import { FormEvent, useState } from "react";
 import { useRouter } from "next/navigation";
-import { ArrowRight, Bot, ExternalLink, Globe2, Loader2, Navigation, Send, Sparkles } from "lucide-react";
+import { ArrowRight, Bot, ExternalLink, FileCheck2, Gauge, Globe2, Loader2, Navigation, Send, Sparkles } from "lucide-react";
 
 import { analyticsService } from "@/services/analytics-service";
 import { usageService } from "@/services/usage-service";
@@ -83,8 +83,14 @@ export function AskFinCruizDashboard() {
                 <p className="mt-3 whitespace-pre-wrap text-sm leading-7">{result.answer}</p>
                 {result.visualization ? <InsightChart visualization={result.visualization} /> : null}
 
+                {(result.evidence?.length || result.confidence) ? <div className="mt-4 rounded-2xl border bg-white/70 p-4 dark:bg-white/[.03]">
+                  <div className="flex flex-wrap items-center justify-between gap-2"><p className="flex items-center gap-2 text-xs font-semibold uppercase tracking-[.12em] text-muted-foreground"><FileCheck2 className="size-3.5"/>Evidence used</p>{result.confidence ? <span className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[10px] font-semibold uppercase ${result.confidence === "high" ? "bg-emerald-100 text-emerald-700" : result.confidence === "low" ? "bg-rose-100 text-rose-700" : "bg-amber-100 text-amber-700"}`}><Gauge className="size-3"/>{result.confidence} confidence</span> : null}</div>
+                  {result.evidence?.length ? <div className="mt-3 grid gap-2 sm:grid-cols-2">{result.evidence.map((item, index) => <div key={`${item.label}-${index}`} className="rounded-xl border bg-background px-3 py-2.5"><div className="flex items-start justify-between gap-3"><span className="text-xs text-muted-foreground">{item.label}</span><span className="text-sm font-semibold tabular-nums">{item.value}</span></div><p className="mt-1 text-[10px] text-muted-foreground">{item.source}{item.period ? ` · ${item.period}` : ""}</p></div>)}</div> : null}
+                  {result.confidence_reason ? <p className="mt-3 text-[11px] leading-5 text-muted-foreground">{result.confidence_reason}</p> : null}
+                </div> : null}
+
                 <div className="mt-4 flex flex-wrap gap-2">
-                  {result.action ? <button type="button" onClick={() => { usageService.track("ai_recommended_tool_opened", { source: "dashboard_ask_fincruiz", feature: result.action!.label }); router.push(result.action!.route); }} className="inline-flex items-center gap-2 rounded-xl bg-indigo-600 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-indigo-500"><Navigation className="size-4" /> {result.action.label} <ArrowRight className="size-4" /></button> : null}
+                  {result.decision_handoff ? <button type="button" onClick={() => { usageService.track("ai_decision_handoff_opened", { source: "dashboard_ask_fincruiz", feature: result.decision_handoff!.title }); router.push(result.decision_handoff!.route); }} className="inline-flex items-center gap-2 rounded-xl bg-gradient-to-r from-violet-600 to-indigo-600 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:brightness-110"><Sparkles className="size-4"/> Model this decision <ArrowRight className="size-4"/></button> : result.action ? <button type="button" onClick={() => { usageService.track("ai_recommended_tool_opened", { source: "dashboard_ask_fincruiz", feature: result.action!.label }); router.push(result.action!.route); }} className="inline-flex items-center gap-2 rounded-xl bg-indigo-600 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-indigo-500"><Navigation className="size-4" /> {result.action.label} <ArrowRight className="size-4" /></button> : null}
                   {result.external_context_used ? <span className="inline-flex items-center gap-1.5 rounded-xl border bg-background px-3 py-2 text-xs text-muted-foreground"><Globe2 className="size-3.5"/>External context used</span> : null}
                 </div>
 

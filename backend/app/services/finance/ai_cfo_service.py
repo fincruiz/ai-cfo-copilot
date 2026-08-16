@@ -339,6 +339,62 @@ MANAGEMENT_QUESTION:
 
         return None
 
+
+    @staticmethod
+    def _evidence(context: dict, question: str) -> list[dict]:
+        q = question.lower()
+        currency = (context.get("company") or {}).get("currency") or ""
+        pnl = context.get("pnl") or {}
+        bs = context.get("balance_sheet") or {}
+        monthly = context.get("monthly_actuals") or []
+        evidence: list[dict] = []
+        def add(label, value, source, period=None):
+            evidence.append({"label": label, "value": str(value), "source": source, "period": period})
+        if any(x in q for x in ("profit","margin","revenue","sales","performance","focus","management")):
+            if pnl.get("revenue") is not None: add("Revenue", f"{currency} {float(pnl['revenue']):,.2f}", "Profit & Loss")
+            if pnl.get("net_profit") is not None: add("Net profit", f"{currency} {float(pnl['net_profit']):,.2f}", "Profit & Loss")
+        if any(x in q for x in ("cash","balance","asset","liability","debt")):
+            for key,label in (("total_assets","Total assets"),("total_liabilities","Total liabilities"),("equity","Equity")):
+                if bs.get(key) is not None: add(label, f"{currency} {float(bs[key]):,.2f}", "Balance Sheet")
+        if any(x in q for x in ("receivable","collection","ar ")) and context.get("ar_summary"):
+            ar=context["ar_summary"]; add("Total receivables", f"{currency} {float(ar.get('total_outstanding') or 0):,.2f}", "AR ageing"); add("Overdue AR", f"{float(ar.get('overdue_percent') or 0):.2f}%", "AR ageing")
+        if any(x in q for x in ("payable","supplier","vendor","ap ")) and context.get("ap_summary"):
+            ap=context["ap_summary"]; add("Total payables", f"{currency} {float(ap.get('total_outstanding') or 0):,.2f}", "AP ageing"); add("Overdue AP", f"{float(ap.get('overdue_percent') or 0):.2f}%", "AP ageing")
+        if monthly and any(x in q for x in ("trend","month","change","why","forecast")):
+            row=monthly[-1]; period=str(row.get("month") or row.get("period") or "Latest period")
+            if row.get("revenue") is not None: add("Latest revenue", f"{currency} {float(row.get('revenue') or 0):,.2f}", "Monthly actuals", period)
+            if row.get("net_profit") is not None: add("Latest net profit", f"{currency} {float(row.get('net_profit') or 0):,.2f}", "Monthly actuals", period)
+        return evidence[:6]
+
+    @staticmethod
+    def _confidence(context: dict) -> tuple[str, str]:
+        assurance = context.get("financial_assurance") or {}
+        score = assurance.get("score") or assurance.get("confidence_score") or assurance.get("overall_score")
+        try: score = float(score)
+        except (TypeError, ValueError): score = None
+        if score is not None and score >= 90: return "high", f"Financial assurance score is {score:.0f}/100 and the answer uses prepared company finance data."
+        if score is not None and score >= 70: return "medium", f"Financial assurance score is {score:.0f}/100; review flagged checks before relying on the answer for a material decision."
+        if score is not None: return "low", f"Financial assurance score is {score:.0f}/100; the underlying finance data needs review."
+        return "medium", "The answer is grounded in prepared company finance data, but no numeric assurance score was available."
+
+    @staticmethod
+    def _decision_handoff(question: str) -> dict | None:
+        q=question.lower()
+        assumptions: dict[str, float | int | str] = {}
+        scenario=None
+        if any(x in q for x in ("hire","employee","staff","salary","payroll")):
+            scenario="Hiring / payroll decision"
+            import re
+            m=re.search(r"(?:hire|add)\s+(\d+)", q)
+            if m: assumptions["headcount_change"]=int(m.group(1))
+        elif any(x in q for x in ("price increase","increase price","reduce price","change price")): scenario="Pricing decision"
+        elif any(x in q for x in ("capex","equipment","warehouse","open a branch")): scenario="Investment / capex decision"
+        elif any(x in q for x in ("dso","collection days","receivable days")): scenario="Working-capital decision"
+        if not scenario: return None
+        from urllib.parse import urlencode
+        params={"from_ai":"1","scenario":scenario, **assumptions}
+        return {"scenario_type": scenario.lower().replace(" / ","_").replace(" ","_"), "title": scenario, "assumptions": assumptions, "route": "/dashboard/three-way-forecast?"+urlencode(params)}
+
     async def proactive_signals(self, company_id: UUID) -> dict:
         monthly = await self.reporting.monthly_actuals(company_id)
         if len(monthly) < 2:
@@ -413,10 +469,13 @@ MANAGEMENT_QUESTION:
                 ],
                 "sources": [],
                 "external_context_used": False,
-                "visualization": None,
+                "visualization": None, "evidence": [], "confidence": "high", "confidence_reason": "Platform guidance does not depend on financial estimates.", "decision_handoff": self._decision_handoff(question),
             }
 
         company, context = await self._company_context(company_id)
+        evidence = self._evidence(context, question)
+        confidence, confidence_reason = self._confidence(context)
+        decision_handoff = self._decision_handoff(question)
         q = question.lower()
         visualization = self._visualization_for_question(question, context)
         overview = await self.analytics.overview(company_id)
@@ -443,6 +502,7 @@ MANAGEMENT_QUESTION:
                     "action": None,
                     "external_context_used": True,
                     "visualization": visualization,
+                    "evidence": evidence, "confidence": confidence, "confidence_reason": confidence_reason, "decision_handoff": decision_handoff,
                 }
 
         if any(word in q for word in ("receivable", "customer", "collection", "ar ")):
@@ -507,4 +567,5 @@ MANAGEMENT_QUESTION:
             "action": action,
             "external_context_used": False,
             "visualization": visualization,
+            "evidence": evidence, "confidence": confidence, "confidence_reason": confidence_reason, "decision_handoff": decision_handoff,
         }

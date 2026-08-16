@@ -62,6 +62,9 @@ export interface AICFOAction {
   route: string;
 }
 
+export interface AICFOEvidence { label: string; value: string; source: string; period?: string | null; }
+export interface AICFODecisionHandoff { scenario_type: string; title: string; assumptions: Record<string, string | number>; route: string; }
+
 
 export type AIChartType = "line" | "area" | "bar" | "stacked_bar" | "donut" | "waterfall";
 
@@ -88,6 +91,10 @@ export interface AICFOAnswer {
   action?: AICFOAction | null;
   external_context_used: boolean;
   visualization?: AIVisualization | null;
+  evidence?: AICFOEvidence[];
+  confidence?: "high" | "medium" | "low";
+  confidence_reason?: string | null;
+  decision_handoff?: AICFODecisionHandoff | null;
 }
 
 
