@@ -6,12 +6,13 @@ import { useRouter } from "next/navigation";
 import {
   ArrowRight, Bot, BriefcaseBusiness, CheckCircle2, CircleDollarSign, Eye, FlaskConical,
   Gauge, Info, LayoutGrid, Loader2, Settings2, ShieldCheck, TrendingUp, Upload,
-  WalletCards, WandSparkles, X, Sparkles,
+  WalletCards, WandSparkles, Sparkles,
 } from "lucide-react";
 
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { HelpTip } from "@/components/ui/help-tip";
+import { ViewportModal } from "@/components/ui/viewport-modal";
 import { AskFinCruizDashboard } from "@/components/ask-fincruiz-dashboard";
 import { DailyBusinessPulse } from "@/components/daily-business-pulse";
 import { InsightChart } from "@/components/insight-chart";
@@ -203,7 +204,20 @@ export default function DashboardPage() {
       companyName={companyName}
     />
 
-    {customizeOpen ? <div className="fixed inset-0 z-[130] flex items-center justify-center bg-slate-950/45 p-4 backdrop-blur-sm" onMouseDown={(e) => e.target === e.currentTarget && setCustomizeOpen(false)}><div className="w-full max-w-2xl rounded-[26px] border bg-background p-5 shadow-2xl sm:p-6"><div className="flex items-start justify-between gap-4"><div><h2 className="text-xl font-semibold">Customize your dashboard</h2><p className="mt-1 text-sm text-muted-foreground">Role presets change what is emphasized, not what you are allowed to access.</p></div><button type="button" onClick={() => setCustomizeOpen(false)} className="flex size-9 items-center justify-center rounded-xl hover:bg-muted"><X className="size-4"/></button></div><div className="mt-5 grid gap-3">{(Object.keys(widgetMeta) as WidgetKey[]).map((key) => { const checked = visible.has(key); return <label key={key} className="flex cursor-pointer items-start gap-3 rounded-2xl border p-4 hover:bg-muted/40"><input type="checkbox" className="mt-1" checked={checked} onChange={() => toggleWidget(key)}/><div><p className="font-medium">{widgetMeta[key].label}</p><p className="mt-1 text-sm leading-6 text-muted-foreground">{widgetMeta[key].description}</p></div></label>; })}</div><div className="mt-5 flex justify-end"><Button onClick={() => setCustomizeOpen(false)}>Done</Button></div></div></div> : null}
+    <ViewportModal
+      open={customizeOpen}
+      onClose={() => setCustomizeOpen(false)}
+      title="Customize your dashboard"
+      description="Role presets change what is emphasized, not what you are allowed to access."
+      footer={<div className="flex justify-end"><Button onClick={() => setCustomizeOpen(false)}>Done</Button></div>}
+    >
+      <div className="grid gap-3">
+        {(Object.keys(widgetMeta) as WidgetKey[]).map((key) => {
+          const checked = visible.has(key);
+          return <label key={key} className="flex cursor-pointer items-start gap-3 rounded-2xl border p-4 transition hover:bg-muted/40"><input type="checkbox" className="mt-1" checked={checked} onChange={() => toggleWidget(key)}/><div><p className="font-medium">{widgetMeta[key].label}</p><p className="mt-1 text-sm leading-6 text-muted-foreground">{widgetMeta[key].description}</p></div></label>;
+        })}
+      </div>
+    </ViewportModal>
   </div>;
 }
 
