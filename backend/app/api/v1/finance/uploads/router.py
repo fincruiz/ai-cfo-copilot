@@ -14,7 +14,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.database.models.core.company import Company
 from app.database.session import get_db_session
 from app.dependencies.auth import get_current_user
-from app.dependencies.company import get_current_company
+from app.dependencies.company import get_current_company, require_finance_write
 from app.repositories.finance.file_upload_repository import (
     FileUploadRepository,
 )
@@ -69,6 +69,7 @@ async def upload_general_ledger(
         Company,
         Depends(get_current_company),
     ],
+    _membership: Annotated[object, Depends(require_finance_write)],
     session: Annotated[AsyncSession, Depends(get_db_session)],
     service: Annotated[
         GLUploadService,

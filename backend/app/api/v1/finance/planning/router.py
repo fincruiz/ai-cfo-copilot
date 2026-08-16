@@ -4,7 +4,7 @@ from fastapi import APIRouter, Depends, File, Form, UploadFile
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.database.models.core.company import Company
 from app.database.session import get_db_session
-from app.dependencies.company import get_current_company
+from app.dependencies.company import get_current_company, require_finance_write
 from app.schemas.finance.planning import PlanImportResponse, VarianceLineResponse
 from app.schemas.responses import APIResponse
 from app.services.finance.planning_service import PlanningService
@@ -31,6 +31,7 @@ async def upload_plan(kind, file, version_name, replace_existing, company, svc):
 async def budget(
     file: Annotated[UploadFile, File(...)],
     current_company: Annotated[Company, Depends(get_current_company)],
+    _membership: Annotated[object, Depends(require_finance_write)],
     svc: Annotated[PlanningService, Depends(service)],
     version_name: Annotated[str, Form()] = "Default",
     replace_existing: Annotated[bool, Form()] = True,
@@ -41,6 +42,7 @@ async def budget(
 async def forecast(
     file: Annotated[UploadFile, File(...)],
     current_company: Annotated[Company, Depends(get_current_company)],
+    _membership: Annotated[object, Depends(require_finance_write)],
     svc: Annotated[PlanningService, Depends(service)],
     version_name: Annotated[str, Form()] = "Default",
     replace_existing: Annotated[bool, Form()] = True,

@@ -39,3 +39,9 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# P9 generated/local artifacts
+*.tmp
+tsconfig.tsbuildinfo
+.next/
+node_modules/

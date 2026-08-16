@@ -6,7 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.exceptions import ApplicationError
 from app.database.models.core.company import Company
 from app.database.session import get_db_session
-from app.dependencies.company import get_current_company
+from app.dependencies.company import get_current_company, require_finance_write
 from app.repositories.finance.gl_transaction_repository import GLTransactionRepository
 from app.schemas.finance.forecasts import (
     ForecastPointResponse,
@@ -29,6 +29,7 @@ def get_service(
 async def create_forecast(
     request: ForecastRequest,
     current_company: Annotated[Company, Depends(get_current_company)],
+    _membership: Annotated[object, Depends(require_finance_write)],
     service: Annotated[ForecastingService, Depends(get_service)],
 ):
     try:

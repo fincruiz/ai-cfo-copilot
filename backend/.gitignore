@@ -18,3 +18,10 @@ build/
 # Python build artifacts
 __pycache__/
 *.py[cod]
+
+# P9 generated/local artifacts
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.venv/
+.env

@@ -5,7 +5,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database.models.core.company import Company
 from app.database.session import get_db_session
-from app.dependencies.company import get_current_company
+from app.dependencies.company import get_current_company, require_finance_write
 from app.dependencies.auth import get_current_user
 from app.schemas.auth import CurrentUser
 from app.services.audit_service import AuditService
@@ -37,6 +37,7 @@ async def _read_csv(file: UploadFile) -> bytes:
 async def upload_coa(
     file: Annotated[UploadFile, File(...)],
     current_company: Annotated[Company, Depends(get_current_company)],
+    _membership: Annotated[object, Depends(require_finance_write)],
     current_user: Annotated[CurrentUser, Depends(get_current_user)],
     session: Annotated[AsyncSession, Depends(get_db_session)],
     service: Annotated[FinanceImportService, Depends(get_service)],
@@ -59,6 +60,7 @@ async def upload_coa(
 async def upload_ar_ageing(
     file: Annotated[UploadFile, File(...)],
     current_company: Annotated[Company, Depends(get_current_company)],
+    _membership: Annotated[object, Depends(require_finance_write)],
     current_user: Annotated[CurrentUser, Depends(get_current_user)],
     session: Annotated[AsyncSession, Depends(get_db_session)],
     service: Annotated[FinanceImportService, Depends(get_service)],
@@ -84,6 +86,7 @@ async def upload_ar_ageing(
 async def upload_ap_ageing(
     file: Annotated[UploadFile, File(...)],
     current_company: Annotated[Company, Depends(get_current_company)],
+    _membership: Annotated[object, Depends(require_finance_write)],
     current_user: Annotated[CurrentUser, Depends(get_current_user)],
     session: Annotated[AsyncSession, Depends(get_db_session)],
     service: Annotated[FinanceImportService, Depends(get_service)],

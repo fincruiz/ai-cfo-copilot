@@ -20,6 +20,7 @@ from app.services.core.company_member_service import (
     CompanyMemberService,
 )
 from app.services.core.company_service import CompanyService
+from app.security.company_roles import COMPANY_ADMIN_ROLES, FINANCE_WRITE_ROLES, role_value
 
 
 async def get_current_company(
@@ -76,7 +77,7 @@ def require_company_roles(*allowed_roles: str):
     ):
         from app.core.exceptions import ApplicationError
 
-        role = membership.role.value if hasattr(membership.role, "value") else str(membership.role)
+        role = role_value(membership.role)
         if role not in allowed_roles:
             raise ApplicationError(
                 message="Your company role does not allow this action.",
@@ -88,7 +89,5 @@ def require_company_roles(*allowed_roles: str):
     return dependency
 
 
-require_finance_write = require_company_roles(
-    "owner", "admin", "cfo", "finance_manager", "accountant"
-)
-require_company_admin = require_company_roles("owner", "admin")
+require_finance_write = require_company_roles(*sorted(FINANCE_WRITE_ROLES))
+require_company_admin = require_company_roles(*sorted(COMPANY_ADMIN_ROLES))
