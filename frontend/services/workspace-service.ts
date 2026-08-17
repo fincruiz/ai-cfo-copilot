@@ -9,6 +9,10 @@ export interface WorkspaceStatus {
   mapping_count: number;
 }
 
+
+export interface LaunchReadinessCheck { key: string; label: string; ready: boolean; detail: string; path: string; }
+export interface LaunchReadiness { score: number; completed_steps: number; total_steps: number; checks: LaunchReadinessCheck[]; next_path: string; next_label: string; connected_sources: number; healthy_sources: number; ready_for_management_use: boolean; }
+
 export interface DemoDataResult {
   upload_id: string;
   months: number;
@@ -32,6 +36,10 @@ export interface AccountDeletionResult {
 export const workspaceService = {
   async getStatus(): Promise<WorkspaceStatus> {
     return (await api.get<ApiResponse<WorkspaceStatus>>("/workspace/status")).data.data;
+  },
+
+  async getLaunchReadiness(): Promise<LaunchReadiness> {
+    return (await api.get<ApiResponse<LaunchReadiness>>("/workspace/launch-readiness")).data.data;
   },
 
   async loadDemo(replaceExisting = false): Promise<DemoDataResult> {

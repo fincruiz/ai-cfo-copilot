@@ -17,9 +17,12 @@ from app.schemas.workspace import (
     WorkspaceStatusResponse,
     ScopedResetRequest,
     ScopedResetResponse,
+    LaunchReadinessResponse,
 )
 from app.services.core.workspace_lifecycle_service import WorkspaceLifecycleService
 from app.services.audit_service import AuditService
+from app.services.integrations.base import IntegrationStore
+from app.services.launch_readiness_service import build_launch_readiness
 
 
 router = APIRouter(prefix="/workspace", tags=["Workspace & Privacy"])
@@ -38,6 +41,18 @@ async def workspace_status(
 ) -> APIResponse[WorkspaceStatusResponse]:
     data = await service.status(company_id=current_company.id)
     return APIResponse(message="Workspace status retrieved.", data=WorkspaceStatusResponse(**data))
+
+
+@router.get("/launch-readiness", response_model=APIResponse[LaunchReadinessResponse])
+async def launch_readiness(
+    current_company: Annotated[Company, Depends(get_current_company)],
+    service: Annotated[WorkspaceLifecycleService, Depends(get_workspace_service)],
+    session: Annotated[AsyncSession, Depends(get_db_session)],
+) -> APIResponse[LaunchReadinessResponse]:
+    workspace = await service.status(company_id=current_company.id)
+    connections = await IntegrationStore(session).list_connections(current_company.id)
+    data = build_launch_readiness(company=current_company, workspace=workspace, connections=connections)
+    return APIResponse(message="Workspace launch readiness retrieved.", data=LaunchReadinessResponse(**data))
 
 
 @router.post("/demo", response_model=APIResponse[DemoDataResponse])

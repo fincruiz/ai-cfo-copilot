@@ -12,6 +12,10 @@ from app.core.exceptions import ApplicationError
 logger = logging.getLogger(__name__)
 
 
+def _support_id(request: Request) -> str | None:
+    return getattr(request.state, "request_id", None)
+
+
 def register_exception_handlers(app: FastAPI) -> None:
     @app.exception_handler(ApplicationError)
     async def application_error_handler(
@@ -25,6 +29,7 @@ def register_exception_handlers(app: FastAPI) -> None:
                 "message": exc.message,
                 "error_code": exc.error_code,
                 "details": exc.details,
+                "support_id": _support_id(request),
             },
         )
 
@@ -40,6 +45,7 @@ def register_exception_handlers(app: FastAPI) -> None:
                 "message": "Request validation failed.",
                 "error_code": "VALIDATION_ERROR",
                 "details": exc.errors(),
+                "support_id": _support_id(request),
             },
         )
 
@@ -55,6 +61,7 @@ def register_exception_handlers(app: FastAPI) -> None:
                 "message": str(exc.detail),
                 "error_code": f"HTTP_{exc.status_code}",
                 "details": None,
+                "support_id": _support_id(request),
             },
         )
 
@@ -76,6 +83,7 @@ def register_exception_handlers(app: FastAPI) -> None:
                 "message": "A database operation failed.",
                 "error_code": "DATABASE_OPERATION_FAILED",
                 "details": None,
+                "support_id": _support_id(request),
             },
         )
 
@@ -97,5 +105,6 @@ def register_exception_handlers(app: FastAPI) -> None:
                 "message": "An unexpected error occurred.",
                 "error_code": "INTERNAL_SERVER_ERROR",
                 "details": None,
+                "support_id": _support_id(request),
             },
         )

@@ -202,3 +202,11 @@ export function getApiErrorMessage(
     "Unable to complete the request."
   );
 }
+
+
+export function getApiSupportId(error: unknown): string | null {
+  if (!axios.isAxiosError(error)) return null;
+  const body = error.response?.data as { support_id?: string | null } | undefined;
+  const header = error.response?.headers?.["x-request-id"];
+  return body?.support_id ?? (typeof header === "string" ? header : null);
+}

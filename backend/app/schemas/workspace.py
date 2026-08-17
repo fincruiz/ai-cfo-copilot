@@ -41,3 +41,23 @@ class ScopedResetRequest(BaseModel):
 class ScopedResetResponse(BaseModel):
     scope: str
     deleted_rows: dict[str, int]
+
+
+class LaunchReadinessCheck(BaseModel):
+    key: str
+    label: str
+    ready: bool
+    detail: str
+    path: str
+
+
+class LaunchReadinessResponse(BaseModel):
+    score: int
+    completed_steps: int
+    total_steps: int
+    checks: list[LaunchReadinessCheck]
+    next_path: str
+    next_label: str
+    connected_sources: int
+    healthy_sources: int
+    ready_for_management_use: bool

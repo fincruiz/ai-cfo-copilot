@@ -13,6 +13,7 @@ from app.schemas.integrations import TenantSelection, TallyPushRequest
 from app.schemas.responses import APIResponse
 from app.services.audit_service import AuditService
 from app.services.integrations.base import IntegrationStore
+from app.services.integrations.health import integration_health
 from app.services.integrations.xero import XeroConnector
 from app.services.integrations.zoho import ZohoConnector
 
@@ -27,6 +28,7 @@ async def list_integrations(company: Annotated[Company,Depends(get_current_compa
     for provider, configured in [('xero',bool(settings.xero_client_id and settings.xero_client_secret)),('zoho',bool(settings.zoho_client_id and settings.zoho_client_secret)),('tally',True)]:
         data.append(existing.get(provider) or {'provider':provider,'status':'disconnected','configured':configured,'metadata':{}})
         data[-1]['configured']=configured
+        data[-1].update(integration_health(data[-1]))
     return APIResponse(message='Integrations retrieved.',data=data)
 
 @router.post('/xero/start')

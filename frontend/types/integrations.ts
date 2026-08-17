@@ -10,6 +10,9 @@ export type IntegrationConnection = {
   last_sync_status?: string | null;
   last_sync_message?: string | null;
   metadata?: Record<string, any>;
+  health_status?: "healthy" | "stale" | "failed" | "needs_sync" | "setup_required" | "configuration_required" | "disconnected" | string;
+  health_message?: string | null;
+  recommended_action?: string | null;
 };
 
 export type ManagementMemory = {

@@ -21,6 +21,8 @@ class RequestLoggingMiddleware(BaseHTTPMiddleware):
             str(uuid4()),
         )
 
+        request.state.request_id = request_id
+
         started_at = time.perf_counter()
 
         try:

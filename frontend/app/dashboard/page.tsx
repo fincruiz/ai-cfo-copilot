@@ -15,13 +15,14 @@ import { HelpTip } from "@/components/ui/help-tip";
 import { ViewportModal } from "@/components/ui/viewport-modal";
 import { AskFinCruizDashboard } from "@/components/ask-fincruiz-dashboard";
 import { DailyBusinessPulse } from "@/components/daily-business-pulse";
+import { LaunchReadinessCard } from "@/components/launch-readiness-card";
 import { InsightChart } from "@/components/insight-chart";
 import { ManagementPerformanceBoard } from "@/components/management-performance-board";
 import { getApiErrorMessage } from "@/lib/api";
 import { formatDays, formatMoney, formatNumber, formatPercent, formatRatio, toNumber } from "@/lib/finance-format";
 import { authService } from "@/services/auth-service";
 import { financeService } from "@/services/finance-service";
-import { workspaceService, type WorkspaceStatus } from "@/services/workspace-service";
+import { workspaceService, type WorkspaceStatus, type LaunchReadiness } from "@/services/workspace-service";
 import { analyticsService } from "@/services/analytics-service";
 import { usageService } from "@/services/usage-service";
 import type { AICFOAnswer, AICFOSignal, AnalyticsOverview } from "@/types/analytics";
@@ -59,6 +60,7 @@ export default function DashboardPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState("");
   const [workspace, setWorkspace] = useState<WorkspaceStatus | null>(null);
+  const [launchReadiness, setLaunchReadiness] = useState<LaunchReadiness | null>(null);
   const [loadingDemo, setLoadingDemo] = useState(false);
   const [dataHealth, setDataHealth] = useState<DataHealth | null>(null);
   const [executiveBrief, setExecutiveBrief] = useState<AICFOAnswer | null>(null);
@@ -83,13 +85,13 @@ export default function DashboardPage() {
       try {
         const currentCompany = await authService.getCurrentCompany();
         setCompany(currentCompany);
-        const [profitLoss, bs, tb, ratios, suggestions, workspaceStatus, health, assuranceResult, overviewResult] = await Promise.all([
+        const [profitLoss, bs, tb, ratios, suggestions, workspaceStatus, health, assuranceResult, overviewResult, readinessResult] = await Promise.all([
           financeService.getProfitAndLoss(), financeService.getBalanceSheet(), financeService.getTrialBalance(),
           financeService.getKpis(), financeService.getMappingSuggestions(), workspaceService.getStatus(),
-          financeService.getDataHealth(), financeService.getFinancialAssurance(), analyticsService.getOverview(),
+          financeService.getDataHealth(), financeService.getFinancialAssurance(), analyticsService.getOverview(), workspaceService.getLaunchReadiness(),
         ]);
         setPnl(profitLoss); setBalanceSheet(bs); setTrialBalance(tb); setKpis(ratios);
-        setUnmappedCount(suggestions.length); setWorkspace(workspaceStatus); setDataHealth(health); setAssurance(assuranceResult); setAnalyticsOverview(overviewResult);
+        setUnmappedCount(suggestions.length); setWorkspace(workspaceStatus); setDataHealth(health); setAssurance(assuranceResult); setAnalyticsOverview(overviewResult); setLaunchReadiness(readinessResult);
         if (workspaceStatus.has_financial_data) {
           analyticsService.getExecutiveBrief().then(setExecutiveBrief).catch(() => undefined);
           analyticsService.getProactiveSignals().then((r) => setSignals(r.signals)).catch(() => undefined);
@@ -149,6 +151,7 @@ export default function DashboardPage() {
   const greeting = new Date().getHours() < 12 ? "morning" : new Date().getHours() < 18 ? "afternoon" : "evening";
 
   return <div className="mx-auto max-w-7xl space-y-6 animate-content-ready">
+    {launchReadiness ? <LaunchReadinessCard readiness={launchReadiness} /> : null}
     <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
       <div><p className="text-xs font-semibold uppercase tracking-[.18em] text-muted-foreground">Dashboard view</p><div className="mt-2 flex flex-wrap gap-2">{([
         ["owner", "Owner / CEO"], ["cfo", "CFO"], ["finance", "Finance team"], ["custom", "Custom"],

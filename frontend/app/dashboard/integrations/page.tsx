@@ -1,10 +1,11 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Building2, Cloud, RefreshCw, ShieldCheck, Unplug, Zap } from "lucide-react";
+import Link from "next/link";
+import { Building2, Cloud, RefreshCw, ShieldCheck, Unplug, Zap, CircleAlert, CheckCircle2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
-import { getApiErrorMessage } from "@/lib/api";
+import { getApiErrorMessage, getApiSupportId } from "@/lib/api";
 import { integrationService } from "@/services/integration-service";
 import type { IntegrationConnection, Provider } from "@/types/integrations";
 
@@ -18,16 +19,17 @@ export default function IntegrationsPage() {
   const [items, setItems] = useState<IntegrationConnection[]>([]);
   const [busy, setBusy] = useState("");
   const [error, setError] = useState("");
+  const [supportId, setSupportId] = useState<string | null>(null);
   const [tallyToken, setTallyToken] = useState("");
   const [remove, setRemove] = useState<Provider | null>(null);
   const [tenantChoice, setTenantChoice] = useState<Record<string, string>>({});
 
   const load = async () => {
     try {
-      setError("");
+      setError(""); setSupportId(null);
       setItems(await integrationService.list());
     } catch (e) {
-      setError(getApiErrorMessage(e));
+      setError(getApiErrorMessage(e)); setSupportId(getApiSupportId(e));
     }
   };
 
@@ -39,7 +41,7 @@ export default function IntegrationsPage() {
       const response = await integrationService.start("xero");
       window.location.assign(response.authorization_url);
     } catch (e) {
-      setError(getApiErrorMessage(e)); setBusy("");
+      setError(getApiErrorMessage(e)); setSupportId(getApiSupportId(e)); setBusy("");
     }
   };
 
@@ -49,7 +51,7 @@ export default function IntegrationsPage() {
       const response = await integrationService.start("zoho");
       window.location.assign(response.authorization_url);
     } catch (e) {
-      setError(getApiErrorMessage(e)); setBusy("");
+      setError(getApiErrorMessage(e)); setSupportId(getApiSupportId(e)); setBusy("");
     }
   };
 
@@ -59,7 +61,7 @@ export default function IntegrationsPage() {
       await integrationService.sync(provider);
       await load();
     } catch (e) {
-      setError(getApiErrorMessage(e));
+      setError(getApiErrorMessage(e)); setSupportId(getApiSupportId(e));
     } finally {
       setBusy("");
     }
@@ -72,7 +74,7 @@ export default function IntegrationsPage() {
       setTallyToken(response.bridge_token);
       await load();
     } catch (e) {
-      setError(getApiErrorMessage(e));
+      setError(getApiErrorMessage(e)); setSupportId(getApiSupportId(e));
     } finally {
       setBusy("");
     }
@@ -86,7 +88,7 @@ export default function IntegrationsPage() {
       await integrationService.selectTenant(provider, tenant);
       await load();
     } catch (e) {
-      setError(getApiErrorMessage(e));
+      setError(getApiErrorMessage(e)); setSupportId(getApiSupportId(e));
     } finally {
       setBusy("");
     }
@@ -101,7 +103,7 @@ export default function IntegrationsPage() {
       setRemove(null);
       await load();
     } catch (e) {
-      setError(getApiErrorMessage(e));
+      setError(getApiErrorMessage(e)); setSupportId(getApiSupportId(e));
     } finally {
       setBusy("");
     }
@@ -118,7 +120,7 @@ export default function IntegrationsPage() {
         <div className="rounded-2xl border bg-background p-4 text-sm"><p className="font-medium">Privacy first</p><p className="mt-1 text-muted-foreground">Disconnecting a source can also remove its synchronized FinCruiz copy.</p></div>
       </div>
 
-      {error ? <div className="rounded-xl border border-destructive/30 bg-destructive/5 p-4 text-sm text-destructive">{error}</div> : null}
+      {error ? <div className="rounded-xl border border-destructive/30 bg-destructive/5 p-4 text-sm text-destructive"><p>{error}</p>{supportId ? <p className="mt-2 text-xs opacity-80">Support ID: <code>{supportId}</code></p> : null}<Link href="/dashboard/support" className="mt-3 inline-flex text-xs font-semibold underline">Open Support & diagnostics</Link></div> : null}
 
       {items.length ? <div className="grid gap-3 rounded-2xl border bg-muted/20 p-4 sm:grid-cols-3">
         <div><p className="text-xs uppercase tracking-[.12em] text-muted-foreground">Connection health</p><p className="mt-1 font-semibold">{items.filter((item) => item.status === "connected" && item.last_sync_status !== "failed").length} healthy</p></div>
@@ -145,6 +147,8 @@ export default function IntegrationsPage() {
                 <span className={`rounded-full px-2.5 py-1 text-xs font-medium ${connected ? "bg-emerald-500/10 text-emerald-700" : "bg-muted text-muted-foreground"}`}>{item?.status?.replaceAll("_", " ") || "disconnected"}</span>
               </div>
               <p className="mt-2 text-sm text-muted-foreground">{meta[provider].subtitle}</p>
+
+              {item ? <div className={`mt-4 rounded-2xl border p-3 text-sm ${item.health_status === "healthy" ? "border-emerald-200 bg-emerald-50/70" : item.health_status === "failed" ? "border-red-200 bg-red-50/70" : "border-amber-200 bg-amber-50/70"}`}><div className="flex items-center gap-2 font-medium">{item.health_status === "healthy" ? <CheckCircle2 className="size-4 text-emerald-600"/> : <CircleAlert className="size-4 text-amber-600"/>}<span className="capitalize">{(item.health_status || "disconnected").replaceAll("_", " ")}</span></div><p className="mt-1 text-xs leading-5 text-muted-foreground">{item.health_message}</p>{item.recommended_action ? <p className="mt-2 text-xs"><b>Next:</b> {item.recommended_action}</p> : null}</div> : null}
 
               {item?.external_tenant_name ? <div className="mt-4 rounded-xl bg-muted/50 p-3 text-sm"><span className="text-muted-foreground">Connected organisation</span><br /><strong>{item.external_tenant_name}</strong></div> : null}
 
