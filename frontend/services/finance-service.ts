@@ -10,6 +10,7 @@ import type {
   DataHealth,
   ForecastResult,
   GLUploadResult,
+  IngestionJob,
   MappingSuggestion,
   MonthlyActual,
   ProfitAndLoss,
@@ -28,6 +29,28 @@ function queryString(params?: Record<string, string | undefined>) {
 }
 
 export const financeService = {
+  async stageGeneralLedger(file: File, sourceSystem?: string): Promise<IngestionJob> {
+    const body = new FormData();
+    body.append("file", file);
+    if (sourceSystem?.trim()) body.append("source_system", sourceSystem.trim());
+    return (await api.post<ApiResponse<IngestionJob>>("/uploads/general-ledger/jobs", body, {
+      headers: { "Content-Type": "multipart/form-data" },
+      timeout: 10 * 60 * 1000,
+    })).data.data;
+  },
+
+  async getIngestionJobs(): Promise<IngestionJob[]> {
+    return (await api.get<ApiResponse<IngestionJob[]>>("/uploads/general-ledger/jobs")).data.data;
+  },
+
+  async getIngestionJob(jobId: string): Promise<IngestionJob> {
+    return (await api.get<ApiResponse<IngestionJob>>(`/uploads/general-ledger/jobs/${jobId}`)).data.data;
+  },
+
+  async retryIngestionJob(jobId: string): Promise<IngestionJob> {
+    return (await api.post<ApiResponse<IngestionJob>>(`/uploads/general-ledger/jobs/${jobId}/retry`)).data.data;
+  },
+
   async uploadGeneralLedger(file: File, sourceSystem?: string): Promise<GLUploadResult> {
     const body = new FormData();
     body.append("file", file);

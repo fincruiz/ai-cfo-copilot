@@ -13,6 +13,12 @@ class Settings(BaseSettings):
 
     database_url: str | None = None
 
+    # Large-file ingestion. Point this at a persistent disk in production.
+    import_staging_dir: str = "uploads/staging"
+    import_max_upload_bytes: int = 1024 * 1024 * 1024  # 1 GiB
+    import_chunk_rows: int = 2000
+    import_worker_poll_seconds: float = 2.0
+
     supabase_url: str | None = None
     supabase_publishable_key: str | None = None
     supabase_service_role_key: str | None = None

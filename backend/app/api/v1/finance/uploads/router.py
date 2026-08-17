@@ -22,6 +22,7 @@ from app.repositories.finance.gl_transaction_repository import GLTransactionRepo
 from app.schemas.auth import CurrentUser
 from app.schemas.finance.uploads import (
     FileUploadResponse,
+    IngestionJobResponse,
     GLUploadValidationResponse,
     GLValidationSummary,
     ValidationIssue,
@@ -31,6 +32,7 @@ from app.services.audit_service import AuditService
 from app.services.finance.gl_upload_service import (
     GLUploadService,
 )
+from app.services.finance.ingestion_job_service import create_job, get_job, list_jobs
 
 
 router = APIRouter(
@@ -126,3 +128,59 @@ async def upload_general_ledger(
             inserted_transaction_count=inserted_count,
         ),
     )
+
+@router.post("/general-ledger/jobs", response_model=APIResponse[IngestionJobResponse], status_code=status.HTTP_202_ACCEPTED)
+async def stage_general_ledger_job(
+    file: Annotated[UploadFile, File(description="General ledger CSV file. Streamed to staging storage.")],
+    current_user: Annotated[CurrentUser, Depends(get_current_user)],
+    current_company: Annotated[Company, Depends(get_current_company)],
+    _membership: Annotated[object, Depends(require_finance_write)],
+    session: Annotated[AsyncSession, Depends(get_db_session)],
+    source_system: Annotated[str | None, Form()] = None,
+    reporting_period_id: Annotated[UUID | None, Form()] = None,
+) -> APIResponse[IngestionJobResponse]:
+    job = await create_job(session, company_id=current_company.id, uploaded_by=current_user.id, file=file, source_system=source_system, reporting_period_id=reporting_period_id)
+    await AuditService(session).record(company_id=current_company.id, user_id=current_user.id, action="stage_upload", module="general_ledger", summary=f"Staged GL import: {file.filename or 'general_ledger.csv'}", metadata={"job_id": str(job["id"]), "file_size_bytes": job["file_size_bytes"]}, commit=True)
+    return APIResponse(message="General ledger staged. Background validation has been queued.", data=IngestionJobResponse(**job))
+
+
+@router.get("/general-ledger/jobs", response_model=APIResponse[list[IngestionJobResponse]])
+async def general_ledger_jobs(
+    current_company: Annotated[Company, Depends(get_current_company)],
+    session: Annotated[AsyncSession, Depends(get_db_session)],
+) -> APIResponse[list[IngestionJobResponse]]:
+    jobs = await list_jobs(session, company_id=current_company.id)
+    return APIResponse(message="Ingestion jobs retrieved.", data=[IngestionJobResponse(**job) for job in jobs])
+
+
+@router.get("/general-ledger/jobs/{job_id}", response_model=APIResponse[IngestionJobResponse])
+async def general_ledger_job(
+    job_id: UUID,
+    current_company: Annotated[Company, Depends(get_current_company)],
+    session: Annotated[AsyncSession, Depends(get_db_session)],
+) -> APIResponse[IngestionJobResponse]:
+    job = await get_job(session, company_id=current_company.id, job_id=job_id)
+    if job is None:
+        from app.core.exceptions import ApplicationError
+        raise ApplicationError(message="Ingestion job not found.", error_code="INGESTION_JOB_NOT_FOUND", status_code=404)
+    return APIResponse(message="Ingestion job retrieved.", data=IngestionJobResponse(**job))
+
+
+@router.post("/general-ledger/jobs/{job_id}/retry", response_model=APIResponse[IngestionJobResponse])
+async def retry_general_ledger_job(
+    job_id: UUID,
+    current_company: Annotated[Company, Depends(get_current_company)],
+    _membership: Annotated[object, Depends(require_finance_write)],
+    session: Annotated[AsyncSession, Depends(get_db_session)],
+) -> APIResponse[IngestionJobResponse]:
+    job = await get_job(session, company_id=current_company.id, job_id=job_id)
+    if job is None:
+        from app.core.exceptions import ApplicationError
+        raise ApplicationError(message="Ingestion job not found.", error_code="INGESTION_JOB_NOT_FOUND", status_code=404)
+    if job["status"] not in {"failed"}:
+        from app.core.exceptions import ApplicationError
+        raise ApplicationError(message="Only failed jobs can be retried.", error_code="INGESTION_JOB_NOT_RETRYABLE", status_code=409)
+    await session.execute(__import__("sqlalchemy").text("UPDATE public.ingestion_jobs SET status='retry',phase='queued',progress_percent=0,error_message=NULL,completed_at=NULL,updated_at=now() WHERE id=:id AND company_id=:company_id"), {"id":job_id,"company_id":current_company.id})
+    await session.commit()
+    refreshed = await get_job(session, company_id=current_company.id, job_id=job_id)
+    return APIResponse(message="Import queued for retry.", data=IngestionJobResponse(**refreshed))

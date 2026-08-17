@@ -1,4 +1,5 @@
 from contextlib import asynccontextmanager
+import asyncio
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -14,6 +15,7 @@ from app.database.session import engine
 from app.middleware.request_logging import (
     RequestLoggingMiddleware,
 )
+from app.services.finance.ingestion_job_service import worker_loop
 
 
 configure_logging()
@@ -21,10 +23,19 @@ configure_logging()
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    yield
-
-    if engine is not None:
-        await engine.dispose()
+    stop_event = asyncio.Event()
+    worker_task = asyncio.create_task(worker_loop(stop_event))
+    try:
+        yield
+    finally:
+        stop_event.set()
+        worker_task.cancel()
+        try:
+            await worker_task
+        except asyncio.CancelledError:
+            pass
+        if engine is not None:
+            await engine.dispose()
 
 
 app = FastAPI(

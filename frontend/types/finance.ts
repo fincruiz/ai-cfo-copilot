@@ -226,3 +226,11 @@ export interface FinancialAssurance {
   checks: FinancialAssuranceCheck[];
   caveat: string;
 }
+
+
+export interface IngestionJob {
+  id: string; company_id: string; job_type: string; original_file_name: string; file_size_bytes: number;
+  source_system?: string | null; status: string; progress_percent: number; phase: string; total_rows?: number | null;
+  valid_rows?: number | null; invalid_rows?: number | null; inserted_rows: number; file_upload_id?: string | null;
+  error_message?: string | null; attempts: number; created_at: string; started_at?: string | null; completed_at?: string | null; updated_at: string;
+}

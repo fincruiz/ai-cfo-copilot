@@ -51,3 +51,25 @@ class FileUploadResponse(BaseModel):
 class GLUploadValidationResponse(BaseModel):
     upload: FileUploadResponse
     validation: GLValidationSummary
+
+class IngestionJobResponse(BaseModel):
+    id: UUID
+    company_id: UUID
+    job_type: str
+    original_file_name: str
+    file_size_bytes: int
+    source_system: str | None = None
+    status: str
+    progress_percent: int = Field(ge=0, le=100)
+    phase: str
+    total_rows: int | None = None
+    valid_rows: int | None = None
+    invalid_rows: int | None = None
+    inserted_rows: int = 0
+    file_upload_id: UUID | None = None
+    error_message: str | None = None
+    attempts: int = 0
+    created_at: datetime
+    started_at: datetime | None = None
+    completed_at: datetime | None = None
+    updated_at: datetime

@@ -1,8 +1,8 @@
 "use client";
 
-import { ChangeEvent, FormEvent, useState } from "react";
+import { ChangeEvent, FormEvent, useEffect, useState } from "react";
 import Link from "next/link";
-import { CheckCircle2, FileSpreadsheet, Loader2, UploadCloud, XCircle } from "lucide-react";
+import { CheckCircle2, Clock3, Loader2, RefreshCcw, UploadCloud, XCircle } from "lucide-react";
 
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button, buttonVariants } from "@/components/ui/button";
@@ -12,7 +12,7 @@ import { Label } from "@/components/ui/label";
 import { getApiErrorMessage } from "@/lib/api";
 import { financeService } from "@/services/finance-service";
 import { ModuleResetButton } from "@/components/module-reset-button";
-import type { GLUploadResult } from "@/types/finance";
+import type { IngestionJob } from "@/types/finance";
 
 
 const fieldAliases: Record<string, string[]> = {
@@ -33,16 +33,27 @@ export default function UploadsPage() {
   const [sourceSystem, setSourceSystem] = useState("Manual upload");
   const [isUploading, setIsUploading] = useState(false);
   const [error, setError] = useState("");
-  const [result, setResult] = useState<GLUploadResult | null>(null);
+  const [job, setJob] = useState<IngestionJob | null>(null);
+  const [jobs, setJobs] = useState<IngestionJob[]>([]);
   const [preview, setPreview] = useState<string[][]>([]);
   const detected = detectHeader(preview[0] ?? []);
   const detectedCount = Object.values(detected).filter(Boolean).length;
 
+  useEffect(() => {
+    let cancelled = false;
+    async function refreshJobs() {
+      try { const items = await financeService.getIngestionJobs(); if (!cancelled) { setJobs(items); if (job) { const next = items.find((item) => item.id === job.id); if (next) setJob(next); } } } catch {}
+    }
+    void refreshJobs();
+    const timer = window.setInterval(refreshJobs, 2000);
+    return () => { cancelled = true; window.clearInterval(timer); };
+  }, [job?.id]);
+
   async function selectFile(event: ChangeEvent<HTMLInputElement>) {
     const selected = event.target.files?.[0] ?? null;
     setFile(selected);
-    if (selected) { const text = await selected.text(); setPreview(text.split(/\r?\n/).filter(Boolean).slice(0,4).map(line => line.split(",").slice(0,8))); } else setPreview([]);
-    setResult(null);
+    if (selected) { const text = await selected.slice(0, 64 * 1024).text(); setPreview(text.split(/\r?\n/).filter(Boolean).slice(0,4).map(line => line.split(",").slice(0,8))); } else setPreview([]);
+    setJob(null);
     setError("");
   }
 
@@ -55,9 +66,11 @@ export default function UploadsPage() {
 
     setIsUploading(true);
     setError("");
-    setResult(null);
+    setJob(null);
     try {
-      setResult(await financeService.uploadGeneralLedger(file, sourceSystem));
+      const created = await financeService.stageGeneralLedger(file, sourceSystem);
+      setJob(created);
+      setJobs((current) => [created, ...current.filter((item) => item.id !== created.id)]);
     } catch (uploadError) {
       setError(getApiErrorMessage(uploadError));
     } finally {
@@ -80,7 +93,7 @@ export default function UploadsPage() {
         <Card>
           <CardHeader>
             <CardTitle>Step 1 · Choose your General Ledger</CardTitle>
-            <CardDescription>Maximum file size 10 MB. Required fields include transaction date, account code, debit and credit.</CardDescription>
+            <CardDescription>Large CSVs are streamed to staging storage first, then validated and imported in the background. Required fields include transaction date, account code, debit and credit.</CardDescription>
           </CardHeader>
           <CardContent>
             <form onSubmit={submit} className="space-y-5">
@@ -103,7 +116,7 @@ export default function UploadsPage() {
 
               <Button type="submit" disabled={!file || isUploading} className="w-full sm:w-auto">
                 {isUploading ? <Loader2 className="size-4 animate-spin" /> : <UploadCloud className="size-4" />}
-                {isUploading ? "Uploading and validating..." : "Step 3 · Upload and validate"}
+                {isUploading ? "Streaming to secure staging..." : "Step 3 · Stage and process"}
               </Button>
             </form>
           </CardContent>
@@ -119,42 +132,20 @@ export default function UploadsPage() {
         </Card>
       </div>
 
-      {result ? (
+      {job ? (
         <Card>
-          <CardHeader>
-            <div className="flex items-center gap-3">
-              {result.validation.invalid_rows === 0 ? <CheckCircle2 className="size-6 text-emerald-600" /> : <XCircle className="size-6 text-amber-600" />}
-              <div><CardTitle>Validation complete</CardTitle><CardDescription>{result.upload.original_file_name}</CardDescription></div>
-            </div>
-          </CardHeader>
-          <CardContent className="space-y-6">
-            <div className="grid gap-4 sm:grid-cols-4">
-              {[
-                ["Total rows", result.validation.total_rows],
-                ["Valid rows", result.validation.valid_rows],
-                ["Invalid rows", result.validation.invalid_rows],
-                ["Transactions inserted", result.inserted_transaction_count ?? result.validation.valid_rows],
-              ].map(([label, value]) => <div key={String(label)} className="rounded-lg border p-4"><p className="text-sm text-muted-foreground">{label}</p><p className="mt-1 text-2xl font-semibold">{value}</p></div>)}
-            </div>
-
-            {result.validation.issues.length ? (
-              <div className="space-y-2">
-                <h3 className="font-medium">Validation issues</h3>
-                {result.validation.issues.slice(0, 20).map((issue, index) => (
-                  <div key={`${issue.row_number}-${index}`} className="rounded-lg border p-3 text-sm">
-                    <span className="font-medium">{issue.severity.toUpperCase()}</span> · {issue.row_number ? `Row ${issue.row_number} · ` : ""}{issue.message}
-                  </div>
-                ))}
-              </div>
-            ) : null}
-
-            <div className="flex flex-wrap gap-3">
-              <Link href="/dashboard/mapping" className={buttonVariants()}>Review account mappings</Link>
-              <Link href="/dashboard/reports" className={buttonVariants({ variant: "outline" })}>View trial balance</Link>
-            </div>
+          <CardHeader><CardTitle className="flex items-center gap-2">{job.status === "completed" ? <CheckCircle2 className="size-5 text-emerald-600"/> : job.status === "failed" || job.status === "validation_failed" ? <XCircle className="size-5 text-destructive"/> : <Clock3 className="size-5 text-primary"/>}Background import</CardTitle><CardDescription>{job.original_file_name} · {job.phase.replaceAll("_", " ")}</CardDescription></CardHeader>
+          <CardContent className="space-y-4">
+            <div className="h-2 overflow-hidden rounded-full bg-muted"><div className="h-full bg-primary transition-all" style={{width:`${job.progress_percent}%`}}/></div>
+            <div className="grid gap-3 sm:grid-cols-4">{[["Progress",`${job.progress_percent}%`],["Rows",job.total_rows?.toLocaleString() ?? "—"],["Inserted",job.inserted_rows.toLocaleString()],["Status",job.status.replaceAll("_"," ")]].map(([label,value])=><div key={String(label)} className="rounded-xl border p-3"><p className="text-xs text-muted-foreground">{label}</p><p className="mt-1 font-semibold capitalize">{value}</p></div>)}</div>
+            {job.error_message ? <Alert variant="destructive"><AlertDescription>{job.error_message}</AlertDescription></Alert> : null}
+            {job.status === "completed" ? <div className="flex flex-wrap gap-3"><Link href="/dashboard/mapping" className={buttonVariants()}>Review account mappings</Link><Link href="/dashboard/reports" className={buttonVariants({variant:"outline"})}>View reports</Link></div> : null}
+            {job.status === "failed" ? <Button variant="outline" onClick={async()=>setJob(await financeService.retryIngestionJob(job.id))}><RefreshCcw className="size-4"/>Retry job</Button> : null}
           </CardContent>
         </Card>
       ) : null}
+
+      {jobs.length ? <Card><CardHeader><CardTitle>Recent imports</CardTitle><CardDescription>Uploads continue processing even if you navigate elsewhere in FinCruiz.</CardDescription></CardHeader><CardContent className="space-y-2">{jobs.slice(0,8).map((item)=><button type="button" key={item.id} onClick={()=>setJob(item)} className="flex w-full items-center justify-between rounded-xl border p-3 text-left hover:bg-muted/30"><div><p className="font-medium">{item.original_file_name}</p><p className="text-xs text-muted-foreground">{item.phase.replaceAll("_"," ")} · {new Date(item.created_at).toLocaleString()}</p></div><span className="text-sm font-semibold">{item.progress_percent}%</span></button>)}</CardContent></Card> : null}
     </div>
   );
 }
