@@ -8,13 +8,14 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.database.models.core.company import Company
 from app.database.session import get_db_session
 from app.dependencies.company import get_current_company, require_finance_write
+from app.dependencies.subscription import require_entitlement
 from app.schemas.responses import APIResponse
 from app.schemas.finance.advanced_forecasting import BoardPackGenerateRequest,ArtifactResponse
 from app.services.finance.board_pack_service import BoardPackService
 router=APIRouter(prefix='/board-packs',tags=['Board Packs'])
 def svc(session:Annotated[AsyncSession,Depends(get_db_session)]):return BoardPackService(session)
 @router.post('/generate',response_model=APIResponse[list[ArtifactResponse]])
-async def generate(request:BoardPackGenerateRequest,current_company:Annotated[Company,Depends(get_current_company)],_membership:Annotated[object,Depends(require_finance_write)],service:Annotated[BoardPackService,Depends(svc)]):return APIResponse(message='Board pack generated.',data=[ArtifactResponse(**x) for x in await service.generate(current_company,request)])
+async def generate(request:BoardPackGenerateRequest,current_company:Annotated[Company,Depends(get_current_company)],_membership:Annotated[object,Depends(require_finance_write)],_entitlement:Annotated[object,Depends(require_entitlement('board_packs'))],service:Annotated[BoardPackService,Depends(svc)]):return APIResponse(message='Board pack generated.',data=[ArtifactResponse(**x) for x in await service.generate(current_company,request)])
 @router.get('/artifacts')
 async def list_artifacts(current_company:Annotated[Company,Depends(get_current_company)],session:Annotated[AsyncSession,Depends(get_db_session)]):
  rows=(await session.execute(text('SELECT id,artifact_type,file_name,file_size_bytes,created_at FROM public.generated_artifacts WHERE company_id=:c ORDER BY created_at DESC'),{'c':current_company.id})).mappings().all();return APIResponse(message='Artifacts retrieved.',data=[{**dict(r),'download_url':f"/api/v1/board-packs/artifacts/{r['id']}/download"} for r in rows])

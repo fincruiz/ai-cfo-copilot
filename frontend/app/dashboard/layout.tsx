@@ -6,7 +6,7 @@ import { usePathname, useRouter } from "next/navigation";
 import {
   BarChart3, BrainCircuit, PlugZap, Building2, ChevronDown, ChevronLeft, ChevronRight,
   FileBarChart, FileInput, FileText, Gauge, Handshake, History, LayoutDashboard, LogOut,
-  PanelLeftClose, PanelLeftOpen, Presentation, Settings, ShieldCheck, SlidersHorizontal,
+  PanelLeftClose, PanelLeftOpen, Presentation, Settings, ShieldCheck, SlidersHorizontal, CreditCard,
   TrendingUp, Upload, UserRound, WandSparkles, Search, Sparkles, Menu, X, Compass, Minimize2,
 } from "lucide-react";
 
@@ -58,6 +58,7 @@ const navigationGroups: NavGroup[] = [
   ]},
   { label: "Governance", items: [
     { label: "Profile", href: "/dashboard/profile", icon: UserRound, description: "Maintain company details used across reports and intelligence.", keywords: "company profile" },
+    { label: "Plan & billing", href: "/dashboard/subscription", icon: CreditCard, description: "Review your regional plan, trial status, entitlements and billing market.", keywords: "pricing subscription billing plan trial" },
     { label: "Data & Privacy", href: "/dashboard/settings", icon: Settings, description: "Control demo data, module resets, full data reset and permanent account deletion.", keywords: "privacy reset delete data" },
     { label: "Access & permissions", href: "/dashboard/access", icon: ShieldCheck, description: "Manage workspace members, roles and access rights.", keywords: "roles users security permissions" },
     { label: "Audit trail", href: "/dashboard/audit", icon: History, description: "Review important workspace actions such as uploads, resets and configuration changes.", keywords: "audit history activity" },

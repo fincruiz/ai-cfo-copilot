@@ -6,6 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.database.models.core.company import Company
 from app.database.session import get_db_session
 from app.dependencies.company import get_current_company
+from app.dependencies.subscription import require_entitlement
 from app.schemas.finance.ai_cfo import AICFOAnswerResponse, AICFOQuestionRequest, AICFOSignalsResponse
 from app.schemas.responses import APIResponse
 from app.services.finance.ai_cfo_service import AICFOService
@@ -44,6 +45,7 @@ async def executive_brief(
 @router.get("/industry-benchmark", response_model=APIResponse[AICFOAnswerResponse])
 async def industry_benchmark(
     current_company: Annotated[Company, Depends(get_current_company)],
+    _entitlement: Annotated[object, Depends(require_entitlement('benchmarking'))],
     service: Annotated[AICFOService, Depends(get_service)],
 ):
     question = "Benchmark our profitability, growth, working capital and balance-sheet position against credible current information for our industry and country. Clearly label which comparisons are supported by external sources, avoid inventing unavailable benchmarks, and give management implications."

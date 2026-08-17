@@ -5,6 +5,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.database.models.core.company import Company
 from app.database.session import get_db_session
 from app.dependencies.company import get_current_company, require_finance_write
+from app.dependencies.subscription import require_entitlement
 from app.schemas.responses import APIResponse
 from app.schemas.finance.advanced_forecasting import AdvancedForecastRequest,PowerOfOneRequest,ForecastRunResponse,PowerOfOneResponse,DecisionSimulatorRequest,DecisionSimulatorResponse
 from app.services.finance.advanced_forecasting_service import AdvancedForecastingService
@@ -18,5 +19,5 @@ async def power(request:PowerOfOneRequest,current_company:Annotated[Company,Depe
     return APIResponse(message='Power of One impact calculated.',data=PowerOfOneResponse(**await service.power_of_one(current_company.id,request)))
 
 @router.post('/decision-simulator',response_model=APIResponse[DecisionSimulatorResponse])
-async def decision_simulator(request:DecisionSimulatorRequest,current_company:Annotated[Company,Depends(get_current_company)],_membership:Annotated[object,Depends(require_finance_write)],service:Annotated[AdvancedForecastingService,Depends(svc)]):
+async def decision_simulator(request:DecisionSimulatorRequest,current_company:Annotated[Company,Depends(get_current_company)],_membership:Annotated[object,Depends(require_finance_write)],_entitlement:Annotated[object,Depends(require_entitlement('decision_simulator'))],service:Annotated[AdvancedForecastingService,Depends(svc)]):
     return APIResponse(message='Management decision scenario calculated through the integrated three-way model.',data=DecisionSimulatorResponse(**await service.simulate_decision(current_company.id,request)))
