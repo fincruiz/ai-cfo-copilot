@@ -11,6 +11,10 @@ from app.schemas.finance.advanced_forecasting import AdvancedForecastRequest,Pow
 from app.services.finance.advanced_forecasting_service import AdvancedForecastingService
 router=APIRouter(prefix='/advanced-forecast',tags=['Advanced Forecasting'])
 def svc(session:Annotated[AsyncSession,Depends(get_db_session)]):return AdvancedForecastingService(session)
+@router.get('/baseline')
+async def baseline(current_company:Annotated[Company,Depends(get_current_company)],service:Annotated[AdvancedForecastingService,Depends(svc)]):
+    return APIResponse(message='Planning baseline retrieved from mapped actuals.',data=await service.decision_baseline(current_company.id))
+
 @router.post('/run',response_model=APIResponse[ForecastRunResponse])
 async def run(request:AdvancedForecastRequest,current_company:Annotated[Company,Depends(get_current_company)],_membership:Annotated[object,Depends(require_finance_write)],service:Annotated[AdvancedForecastingService,Depends(svc)]):
     return APIResponse(message='Integrated three-way forecast completed.',data=ForecastRunResponse(**await service.calculate(current_company.id,request)))

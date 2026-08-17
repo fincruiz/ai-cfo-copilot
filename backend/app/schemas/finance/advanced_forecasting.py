@@ -84,8 +84,21 @@ class PlanningVersionCreate(BaseModel):
     version_name: str
     financial_year_start: date
     financial_year_end: date
-    seed_from_actuals: bool = False
+    # P9 Stage 7 assisted planning. Existing callers using seed_from_actuals
+    # remain compatible; seed_mode is the new explicit control.
+    seed_from_actuals: bool = True
+    seed_mode: str = 'actuals'  # actuals | previous_budget | blank
+    detail_level: str = 'high_level'  # high_level | detailed
+    allocation_method: str = 'actuals_ratio'
     seed_growth_percent: Decimal = Decimal('0')
+    seed_version_id: UUID | None = None
+    seed_imported_version: str | None = None
+
+
+class HighLevelBudgetAllocationRequest(BaseModel):
+    annual_targets: dict[str, Decimal]
+    detail_level: str = 'detailed'
+    seasonality: str = 'historical'  # historical | equal
 
 class NativePlanLineInput(BaseModel):
     period: date

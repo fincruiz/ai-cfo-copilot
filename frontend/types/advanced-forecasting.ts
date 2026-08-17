@@ -13,3 +13,14 @@ export interface DecisionSimulation {
   base_checks: Array<Record<string, unknown>>;
   scenario_checks: Array<Record<string, unknown>>;
 }
+
+export interface PlanningContext {
+  actual_months:number; first_actual_month?:string|null; latest_actual_month?:string|null; mapped_accounts:number;
+  native_versions:PlanningVersion[]; imported_versions:Array<{plan_type:string;version_name:string;first_period:string;last_period:string;line_count:number}>;
+  recommended_seed:string;
+}
+export interface PlanningBaseline {
+  history_months:number; period_start:string; period_end:string; suggested_forecast_start:string; trailing_revenue:number; trailing_cogs:number; trailing_payroll:number; trailing_opex:number; trailing_net_profit:number; gross_margin_percent:number; payroll_percent_revenue:number; other_opex_percent_revenue:number;
+  opening_balance_sheet:Record<string,number|null>;
+  monthly:Array<{month:string;revenue:number;cost_of_sales:number;payroll:number;operating_expenses:number;net_profit_proxy:number}>;
+}

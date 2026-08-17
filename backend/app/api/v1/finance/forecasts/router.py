@@ -59,6 +59,7 @@ async def create_forecast(
             history_periods=len(history),
             confidence=confidence,
             warning=warning,
+            history=[{'period': period, 'actual': amount} for period, amount in history],
             points=[
                 ForecastPointResponse(**point.__dict__)
                 for point in points

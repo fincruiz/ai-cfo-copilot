@@ -1,7 +1,8 @@
 "use client";
 
-import { FormEvent, useEffect, useState } from "react";
+import { FormEvent, useEffect, useMemo, useState } from "react";
 import { ModuleResetButton } from "@/components/module-reset-button";
+import { InsightChart } from "@/components/insight-chart";
 import { Loader2, TrendingUp } from "lucide-react";
 
 import { Alert, AlertDescription } from "@/components/ui/alert";
@@ -12,6 +13,7 @@ import { getApiErrorMessage } from "@/lib/api";
 import { formatMoney } from "@/lib/finance-format";
 import { financeService } from "@/services/finance-service";
 import type { Branch, ForecastResult } from "@/types/finance";
+import type { AIVisualization } from "@/types/analytics";
 
 export default function ForecastingPage() {
   const [branches, setBranches] = useState<Branch[]>([]);
@@ -26,6 +28,20 @@ export default function ForecastingPage() {
   useEffect(() => {
     financeService.getBranches().then(setBranches).catch(() => setBranches([]));
   }, []);
+
+  const chart = useMemo<AIVisualization | null>(() => {
+    if (!result) return null;
+    return {
+      type: "line", title: `${result.reporting_group} — forecast range`,
+      subtitle: `${result.method.replace("_", " ")} · based on ${result.history_periods} historical periods · ${result.confidence} confidence`,
+      labels: result.points.map(p => String(p.period).slice(0,7)),
+      series: [
+        { name: "Base forecast", data: result.points.map(p => Number(p.base||0)) },
+        { name: "Downside", data: result.points.map(p => Number(p.downside||0)) },
+        { name: "Upside", data: result.points.map(p => Number(p.upside||0)) },
+      ], value_format: "currency",
+    };
+  }, [result]);
 
   async function generate(event: FormEvent) {
     event.preventDefault();
@@ -95,6 +111,8 @@ export default function ForecastingPage() {
       </Card>
 
       {result ? (
+        <>
+        {chart ? <InsightChart visualization={chart} /> : null}
         <Card>
           <CardHeader>
             <CardTitle>{result.reporting_group} forecast</CardTitle>
@@ -120,6 +138,7 @@ export default function ForecastingPage() {
             </div>
           </CardContent>
         </Card>
+        </>
       ) : null}
     </div>
   );

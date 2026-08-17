@@ -185,6 +185,7 @@ export interface ForecastResult {
   history_periods: number;
   confidence: string;
   warning?: string | null;
+  history?: Array<{ period: string; actual: string | number }>;
   points: ForecastPoint[];
 }
 

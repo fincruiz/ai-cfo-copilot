@@ -30,14 +30,24 @@ class AdvancedForecastingService:
         self.reporting=ReportingService(GLTransactionRepository(session))
 
     async def _history(self, company_id: UUID, branch_id: UUID | None):
-        monthly=await self.reporting.monthly_actuals(company_id, branch_id=branch_id)
-        if not monthly:
+        # Use raw mapped monthly groups so Payroll remains a distinct driver when
+        # the customer maps payroll separately from general operating expenses.
+        repo = GLTransactionRepository(self.session)
+        rows = await repo.monthly_actuals(company_id=company_id, branch_id=branch_id)
+        if not rows:
             raise ValueError('At least one month of mapped actuals is required.')
-        return pd.DataFrame([{
-            'Period': row['month'], 'Revenue': float(row['revenue']),
-            'COGS': float(row['cost_of_sales']), 'Payroll': 0.0,
-            'Other Opex': float(row['operating_expenses']) + float(row['depreciation']),
-        } for row in monthly])
+        from collections import defaultdict
+        from app.domain.finance.reporting.rules import canonical_reporting_group
+        by = defaultdict(lambda: {'Revenue':0.0,'COGS':0.0,'Payroll':0.0,'Other Opex':0.0})
+        for row in rows:
+            period = row.month.date() if hasattr(row.month, 'date') else row.month
+            group = canonical_reporting_group(row.reporting_group) or row.reporting_group
+            amount = float(row.amount or 0)
+            if group == 'Revenue': by[period]['Revenue'] += amount
+            elif group == 'Cost of Sales': by[period]['COGS'] += amount
+            elif group == 'Payroll': by[period]['Payroll'] += amount
+            elif group in ('Operating Expenses','Depreciation','Other Expenses'): by[period]['Other Opex'] += amount
+        return pd.DataFrame([{'Period':p, **vals} for p, vals in sorted(by.items())])
 
     async def _budget(self, company_id: UUID, version_id: UUID | None):
         if not version_id:
@@ -104,6 +114,70 @@ class AdvancedForecastingService:
                    'configuration':json.dumps(request.model_dump(mode='json')),'summary':json.dumps(summary),'payload':json.dumps(payload)})).scalar_one()
             await self.session.commit(); run_id=row
         return {'run_id':run_id,'run_name':request.run_name,'summary':summary,**payload}
+
+
+    async def decision_baseline(self, company_id: UUID, branch_id: UUID | None = None):
+        """Actual-data baseline used to prefill planning/scenario experiences."""
+        hist = await self._history(company_id, branch_id)
+        recent = hist.tail(12)
+        revenue = Decimal(str(recent['Revenue'].sum()))
+        cogs = Decimal(str(recent['COGS'].sum()))
+        payroll = Decimal(str(recent['Payroll'].sum()))
+        other_opex = Decimal(str(recent['Other Opex'].sum()))
+        gross_margin = ((revenue - cogs) / revenue) if revenue else Decimal('0')
+        payroll_pct = (payroll / revenue) if revenue else Decimal('0')
+        opex_pct = (other_opex / revenue) if revenue else Decimal('0')
+        latest = pd.to_datetime(recent['Period'].iloc[-1]).date()
+        from dateutil.relativedelta import relativedelta
+        next_month = latest.replace(day=1) + relativedelta(months=1)
+
+        balances = await GLTransactionRepository(self.session).account_balances(
+            company_id=company_id, statement='balance_sheet', branch_id=branch_id
+        )
+        opening = {
+            'cash': Decimal('0'), 'accounts_receivable': Decimal('0'), 'inventory': Decimal('0'),
+            'other_current_assets': Decimal('0'), 'gross_ppe': Decimal('0'), 'accumulated_depreciation': Decimal('0'),
+            'other_non_current_assets': Decimal('0'), 'accounts_payable': Decimal('0'), 'accrued_expenses': Decimal('0'),
+            'other_current_liabilities': Decimal('0'), 'debt_current': Decimal('0'), 'debt_non_current': Decimal('0'),
+            'other_non_current_liabilities': Decimal('0'), 'share_capital': Decimal('0'), 'retained_earnings': None,
+        }
+        for row in balances:
+            label = f"{row.reporting_group or ''} {row.reporting_subgroup or ''} {row.account_name or ''}".lower()
+            amount = abs(Decimal(row.debit or 0) - Decimal(row.credit or 0))
+            if 'cash' in label or 'bank' in label: opening['cash'] += amount
+            elif 'receivable' in label or 'debtor' in label: opening['accounts_receivable'] += amount
+            elif 'inventory' in label or 'stock' in label: opening['inventory'] += amount
+            elif 'accumulated depreciation' in label: opening['accumulated_depreciation'] -= amount
+            elif 'ppe' in label or 'property' in label or 'plant' in label or 'equipment' in label: opening['gross_ppe'] += amount
+            elif 'payable' in label or 'creditor' in label: opening['accounts_payable'] += amount
+            elif 'accrued' in label: opening['accrued_expenses'] += amount
+            elif 'loan' in label or 'borrow' in label or 'debt' in label:
+                if 'current' in label and 'non current' not in label and 'non-current' not in label: opening['debt_current'] += amount
+                else: opening['debt_non_current'] += amount
+            elif 'equity' in label or 'capital' in label or 'retained' in label: opening['share_capital'] += amount
+            elif row.statement == 'balance_sheet' and (row.reporting_group or '') == 'Current Assets': opening['other_current_assets'] += amount
+            elif row.statement == 'balance_sheet' and (row.reporting_group or '') == 'Non Current Assets': opening['other_non_current_assets'] += amount
+            elif row.statement == 'balance_sheet' and (row.reporting_group or '') == 'Current Liabilities': opening['other_current_liabilities'] += amount
+            elif row.statement == 'balance_sheet' and (row.reporting_group or '') == 'Non Current Liabilities': opening['other_non_current_liabilities'] += amount
+
+        monthly = []
+        for _, row in recent.iterrows():
+            monthly.append({
+                'month': pd.to_datetime(row['Period']).date(), 'revenue': float(row['Revenue']),
+                'cost_of_sales': float(row['COGS']), 'payroll': float(row['Payroll']),
+                'operating_expenses': float(row['Other Opex']),
+                'net_profit_proxy': float(row['Revenue']-row['COGS']-row['Payroll']-row['Other Opex']),
+            })
+        return {
+            'history_months': len(hist), 'period_start': pd.to_datetime(recent['Period'].iloc[0]).date(),
+            'period_end': latest, 'suggested_forecast_start': next_month,
+            'trailing_revenue': float(revenue), 'trailing_cogs': float(cogs), 'trailing_payroll': float(payroll),
+            'trailing_opex': float(other_opex), 'trailing_net_profit': float(revenue-cogs-payroll-other_opex),
+            'gross_margin_percent': float(gross_margin*100), 'payroll_percent_revenue': float(payroll_pct*100),
+            'other_opex_percent_revenue': float(opex_pct*100),
+            'opening_balance_sheet': {k:(float(v) if isinstance(v,Decimal) else v) for k,v in opening.items()},
+            'monthly': monthly,
+        }
 
     async def power_of_one(self, company_id: UUID, request: PowerOfOneRequest):
         base_request=AdvancedForecastRequest(**request.model_dump(exclude={

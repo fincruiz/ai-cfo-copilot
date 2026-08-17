@@ -28,4 +28,5 @@ class ForecastResponse(BaseModel):
     history_periods: int
     confidence: str
     warning: str | None
+    history: list[dict] = []
     points: list[ForecastPointResponse]

@@ -32,6 +32,7 @@ const navigationGroups: NavGroup[] = [
     { label: "Financial reports", href: "/dashboard/reports", icon: FileBarChart, description: "Profit & Loss, Balance Sheet, trial balance and core financial statements.", keywords: "p&l pnl balance sheet statements" },
     { label: "KPIs", href: "/dashboard/kpis", icon: Gauge, description: "Financial ratios and performance indicators with interpretation.", keywords: "ratios metrics margin liquidity" },
     { label: "Analytics", href: "/dashboard/analytics", icon: BarChart3, description: "Explore monthly movements, branch drivers, trends and variance patterns.", keywords: "trends monthly variance" },
+    { label: "Visual BI", href: "/dashboard/bi", icon: BarChart3, description: "Open ready-to-use management charts for revenue, profit, branches and working capital, or use Ask FinCruiz to generate a chart from a question.", keywords: "bi charts graphs visualization dashboard trends" },
     { label: "Working capital", href: "/dashboard/working-capital", icon: Handshake, description: "Understand receivables, payables, overdue exposure and cash tied up in operations.", keywords: "ar ap receivables payables cash collections" },
     { label: "Industry benchmarking", href: "/dashboard/benchmarking", icon: BarChart3, description: "Compare company performance with relevant external industry and economic context.", keywords: "benchmark market industry economic" },
   ]},
