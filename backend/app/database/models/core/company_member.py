@@ -2,7 +2,7 @@ from datetime import datetime
 from enum import Enum
 from uuid import UUID
 
-from sqlalchemy import Boolean, text
+from sqlalchemy import Boolean, UniqueConstraint, text
 from sqlalchemy.dialects.postgresql import ENUM, TIMESTAMP
 from sqlalchemy.dialects.postgresql import UUID as PostgreSQLUUID
 from sqlalchemy.orm import Mapped, mapped_column
@@ -33,7 +33,10 @@ company_role_enum = ENUM(
 
 class CompanyMember(Base):
     __tablename__ = "company_members"
-    __table_args__ = {"schema": "public"}
+    __table_args__ = (
+        UniqueConstraint("company_id", "user_id", name="uq_company_members_company_user"),
+        {"schema": "public"},
+    )
 
     id: Mapped[UUID] = mapped_column(
         PostgreSQLUUID(as_uuid=True),

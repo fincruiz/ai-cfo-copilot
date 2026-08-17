@@ -11,7 +11,20 @@ from app.database.models.finance.account_mapping import FinanceAccountMapping
 from app.database.models.finance.file_upload import FileUpload
 from app.database.models.finance.gl_transaction import GLTransaction
 
-GENERATED_COLUMNS = {"net_amount", "functional_currency_amount"}
+GENERATED_COLUMNS = {"net_amount"}
+
+
+def clean_gl_transaction_row(row: dict) -> dict:
+    """Return a database-safe GL row.
+
+    PostgreSQL owns GENERATED ALWAYS columns such as ``net_amount``.  Keeping
+    the sanitisation in one helper protects both the legacy synchronous upload
+    path and the Stage 8.6 background/chunked importer.
+    """
+    cleaned = row.copy()
+    for column in GENERATED_COLUMNS:
+        cleaned.pop(column, None)
+    return cleaned
 
 
 class GLTransactionRepository:
@@ -23,10 +36,7 @@ class GLTransactionRepository:
             return 0
         transactions = []
         for row in rows:
-            cleaned = row.copy()
-            for column in GENERATED_COLUMNS:
-                cleaned.pop(column, None)
-            transactions.append(GLTransaction(**cleaned))
+            transactions.append(GLTransaction(**clean_gl_transaction_row(row)))
         self.session.add_all(transactions)
         await self.session.flush()
         return len(transactions)
