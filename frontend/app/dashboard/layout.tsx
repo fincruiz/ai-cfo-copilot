@@ -7,7 +7,7 @@ import {
   BarChart3, BrainCircuit, PlugZap, Building2, ChevronDown, ChevronLeft, ChevronRight,
   FileBarChart, FileInput, FileText, Gauge, Handshake, History, LayoutDashboard, LogOut,
   PanelLeftClose, PanelLeftOpen, Presentation, Settings, ShieldCheck, SlidersHorizontal, CreditCard,
-  TrendingUp, Upload, UserRound, WandSparkles, Search, Sparkles, Menu, X, Compass, Minimize2,
+  TrendingUp, Upload, UserRound, WandSparkles, Search, Sparkles, Menu, X, Compass, Minimize2, LifeBuoy,
 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -65,6 +65,7 @@ const navigationGroups: NavGroup[] = [
     { label: "Data & Privacy", href: "/dashboard/settings", icon: Settings, description: "Control demo data, module resets, full data reset and permanent account deletion.", keywords: "privacy reset delete data" },
     { label: "Access & permissions", href: "/dashboard/access", icon: ShieldCheck, description: "Manage workspace members, roles and access rights.", keywords: "roles users security permissions" },
     { label: "Audit trail", href: "/dashboard/audit", icon: History, description: "Review important workspace actions such as uploads, resets and configuration changes.", keywords: "audit history activity" },
+    { label: "Support & diagnostics", href: "/dashboard/support", icon: LifeBuoy, description: "Check platform, database and workspace health before contacting support.", keywords: "support help status health diagnostics" },
   ]},
 ];
 
