@@ -272,3 +272,17 @@ body {
 @media (prefers-reduced-motion: reduce) {
   .animate-pulse-panel-in { animation: none !important; }
 }
+
+/* P9 Stage 8.3 commercial experience */
+@keyframes commercial-glow {
+  0%,100% { opacity:.72; transform:translate3d(0,0,0) scale(1); }
+  50% { opacity:1; transform:translate3d(1.5%,-1%,0) scale(1.025); }
+}
+@keyframes commercial-shimmer {
+  from { transform:translateX(-120%); }
+  to { transform:translateX(220%); }
+}
+.commercial-glow { animation: commercial-glow 10s ease-in-out infinite; }
+.commercial-shimmer { position:relative; overflow:hidden; }
+.commercial-shimmer::after { content:""; position:absolute; inset:-40% auto -40% -35%; width:22%; transform:skewX(-18deg); background:linear-gradient(90deg,transparent,rgba(255,255,255,.34),transparent); animation:commercial-shimmer 5.5s ease-in-out infinite; }
+@media (prefers-reduced-motion: reduce) { .commercial-glow,.commercial-shimmer::after { animation:none!important; } }
