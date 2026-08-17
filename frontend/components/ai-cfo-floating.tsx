@@ -86,6 +86,18 @@ export function AICFOFloating() {
     await ask(question);
   }
 
+  useEffect(() => {
+    function openFromContext(event: Event) {
+      const detail = (event as CustomEvent<{ question?: string }>).detail;
+      setOpen(true);
+      if (detail?.question) window.setTimeout(() => void ask(detail.question!), 80);
+    }
+    window.addEventListener("fincruiz:open-ai", openFromContext as EventListener);
+    return () => window.removeEventListener("fincruiz:open-ai", openFromContext as EventListener);
+  // `ask` intentionally reads current component state; this listener is re-bound when the assistant renders.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [liveContext, loading]);
+
   if (!mounted) return null;
 
   return createPortal(

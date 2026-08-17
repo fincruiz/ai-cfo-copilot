@@ -19,6 +19,8 @@ import { authService } from "@/services/auth-service";
 import { companyService } from "@/services/company-service";
 import { marketService, type MarketProfile } from "@/services/market-service";
 import { usageService } from "@/services/usage-service";
+import { WorkspaceScopeSelector } from "@/components/workspace-scope-selector";
+import { ContextualAIBar } from "@/components/contextual-ai-bar";
 
 type NavItem = { label: string; href: string; icon: typeof LayoutDashboard; description: string; keywords?: string };
 type NavGroup = { label: string; items: NavItem[]; defaultOpen?: boolean };
@@ -28,7 +30,7 @@ const navigationGroups: NavGroup[] = [
     { label: "Home", href: "/dashboard", icon: LayoutDashboard, description: "Your management-first view of performance, priorities, risks and next actions.", keywords: "dashboard executive management" },
     { label: "Intelligence Center", href: "/dashboard/intelligence", icon: BrainCircuit, description: "See what FinCruiz understands, the signals it is watching and the priorities it recommends.", keywords: "organizational brain insights ai" },
   ]},
-  { label: "Finance & performance", defaultOpen: true, items: [
+  { label: "Finance & performance", items: [
     { label: "Financial reports", href: "/dashboard/reports", icon: FileBarChart, description: "Profit & Loss, Balance Sheet, trial balance and core financial statements.", keywords: "p&l pnl balance sheet statements" },
     { label: "KPIs", href: "/dashboard/kpis", icon: Gauge, description: "Financial ratios and performance indicators with interpretation.", keywords: "ratios metrics margin liquidity" },
     { label: "Analytics", href: "/dashboard/analytics", icon: BarChart3, description: "Explore monthly movements, branch drivers, trends and variance patterns.", keywords: "trends monthly variance" },
@@ -80,12 +82,14 @@ export default function DashboardLayout({ children }: Readonly<{ children: React
   const [marketProfile, setMarketProfile] = useState<MarketProfile | null>(null);
   const navScrollRef = useRef<HTMLElement | null>(null);
   const activeGroup = useMemo(() => navigationGroups.find((group) => group.items.some((item) => item.href === "/dashboard" ? pathname === "/dashboard" : pathname === item.href || pathname.startsWith(`${item.href}/`)))?.label, [pathname]);
-  const [openGroups, setOpenGroups] = useState<Record<string, boolean>>(() => Object.fromEntries(navigationGroups.map((g) => [g.label, Boolean(g.defaultOpen)])));
+  const [openGroups, setOpenGroups] = useState<Record<string, boolean>>(() => Object.fromEntries(navigationGroups.map((g) => [g.label, g.label === "Overview"])));
 
   useEffect(() => {
     setCollapsed(window.localStorage.getItem("fincruiz_sidebar_collapsed") === "true");
     setExploreExpanded(window.localStorage.getItem("fincruiz_explore_compact") !== "true");
-    if (activeGroup) setOpenGroups((current) => ({ ...current, [activeGroup]: true }));
+    const rememberedGroup = window.localStorage.getItem("fincruiz_sidebar_open_group");
+    const nextGroup = activeGroup || rememberedGroup || "Overview";
+    setOpenGroups(Object.fromEntries(navigationGroups.map((group) => [group.label, group.label === nextGroup])));
     let cancelled = false;
     async function authorizeDashboard() {
       if (!authService.hasAccessToken()) { router.replace("/login"); return; }
@@ -143,7 +147,7 @@ export default function DashboardLayout({ children }: Readonly<{ children: React
         {navigationGroups.map((group) => {
           const isOpen = Boolean(openGroups[group.label]);
           return <div key={group.label} className="mb-2">
-            {(!collapsed || mobile) ? <button type="button" onClick={() => setOpenGroups((current) => ({ ...current, [group.label]: !isOpen }))} className="flex w-full items-center justify-between rounded-lg px-3 py-2 text-left text-[11px] font-semibold uppercase tracking-[.14em] text-muted-foreground hover:bg-muted/60"><span className="truncate">{group.label}</span><ChevronDown className={`size-3.5 shrink-0 transition ${isOpen ? "rotate-180" : ""}`}/></button> : <div className="mx-auto my-3 h-px w-8 bg-border"/>}
+            {(!collapsed || mobile) ? <button type="button" onClick={() => setOpenGroups(() => { const nextOpen = !isOpen; window.localStorage.setItem("fincruiz_sidebar_open_group", nextOpen ? group.label : ""); return Object.fromEntries(navigationGroups.map((candidate) => [candidate.label, candidate.label === group.label ? nextOpen : false])); })} className="flex w-full items-center justify-between rounded-lg px-3 py-2 text-left text-[11px] font-semibold uppercase tracking-[.14em] text-muted-foreground hover:bg-muted/60"><span className="truncate">{group.label}</span><ChevronDown className={`size-3.5 shrink-0 transition ${isOpen ? "rotate-180" : ""}`}/></button> : <div className="mx-auto my-3 h-px w-8 bg-border"/>}
             {(collapsed && !mobile) || isOpen ? <div className="space-y-1">{group.items.map((item) => {
               const Icon = item.icon;
               const active = item.href === "/dashboard" ? pathname === "/dashboard" : pathname === item.href || pathname.startsWith(`${item.href}/`);
@@ -164,9 +168,9 @@ export default function DashboardLayout({ children }: Readonly<{ children: React
     <div className={(collapsed ? "lg:pl-20" : "lg:pl-72") + " flex h-dvh min-h-0 flex-col overflow-hidden transition-[padding] duration-300"}>
       <header className="z-20 flex h-16 shrink-0 items-center justify-between border-b bg-background/90 px-4 backdrop-blur-xl sm:px-6">
         <div className="flex items-center gap-3"><button type="button" onClick={() => setMobileOpen(true)} className="flex size-9 items-center justify-center rounded-lg border text-muted-foreground hover:bg-muted lg:hidden"><Menu className="size-4"/></button><button type="button" onClick={toggleSidebar} className="hidden size-9 items-center justify-center rounded-lg border text-muted-foreground hover:bg-muted lg:flex" title={collapsed ? "Expand sidebar" : "Collapse sidebar"}>{collapsed ? <PanelLeftOpen className="size-4"/> : <PanelLeftClose className="size-4"/>}</button><div><p className="text-sm font-medium">FinCruiz Workspace</p><p className="text-xs capitalize text-muted-foreground">{companyRole ? `${companyRole.replaceAll("_", " ")} · ` : ""}Management intelligence</p></div></div>
-        <div className="flex items-center gap-2"><button type="button" onClick={() => openExplorer("top_bar")} className="group hidden min-w-[190px] items-center gap-3 rounded-2xl border border-indigo-200/80 bg-gradient-to-r from-indigo-50 via-background to-sky-50 px-4 py-2 text-left shadow-sm transition hover:-translate-y-0.5 hover:border-indigo-300 hover:shadow-md dark:border-indigo-500/20 dark:from-indigo-950/30 dark:via-background dark:to-sky-950/20 sm:flex"><span className="flex size-9 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-indigo-600 to-sky-500 text-white"><Compass className="size-4"/></span><span className="min-w-0 flex-1"><span className="block text-sm font-semibold leading-4">Explore FinCruiz</span><span className="mt-1 block text-[10px] leading-3 text-muted-foreground">Find every capability</span></span><ChevronRight className="size-4 shrink-0 text-muted-foreground transition group-hover:translate-x-0.5"/></button><button type="button" onClick={() => openExplorer("top_bar_mobile")} className="flex size-10 items-center justify-center rounded-xl border bg-background sm:hidden" aria-label="Explore FinCruiz"><Compass className="size-4"/></button>{marketProfile ? <Link href="/pricing" className="hidden rounded-xl border bg-background px-3 py-2 text-xs font-semibold text-muted-foreground hover:bg-muted md:block">{marketProfile.country_name} · {marketProfile.currency_code}</Link> : null}<ThemeToggle/></div>
+        <div className="flex items-center gap-2"><button type="button" onClick={() => openExplorer("top_bar")} className="group hidden min-w-[190px] items-center gap-3 rounded-2xl border border-indigo-200/80 bg-gradient-to-r from-indigo-50 via-background to-sky-50 px-4 py-2 text-left shadow-sm transition hover:-translate-y-0.5 hover:border-indigo-300 hover:shadow-md dark:border-indigo-500/20 dark:from-indigo-950/30 dark:via-background dark:to-sky-950/20 sm:flex"><span className="flex size-9 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-indigo-600 to-sky-500 text-white"><Compass className="size-4"/></span><span className="min-w-0 flex-1"><span className="block text-sm font-semibold leading-4">Explore FinCruiz</span><span className="mt-1 block text-[10px] leading-3 text-muted-foreground">Find every capability</span></span><ChevronRight className="size-4 shrink-0 text-muted-foreground transition group-hover:translate-x-0.5"/></button><button type="button" onClick={() => openExplorer("top_bar_mobile")} className="flex size-10 items-center justify-center rounded-xl border bg-background sm:hidden" aria-label="Explore FinCruiz"><Compass className="size-4"/></button><WorkspaceScopeSelector/>{marketProfile ? <Link href="/pricing" className="hidden rounded-xl border bg-background px-3 py-2 text-xs font-semibold text-muted-foreground hover:bg-muted md:block">{marketProfile.country_name} · {marketProfile.currency_code}</Link> : null}<ThemeToggle/></div>
       </header>
-      <main className="fincruiz-scroll-stable min-h-0 flex-1 overflow-y-auto overscroll-contain p-4 sm:p-6 lg:p-8">{children}</main>
+      <main className="fincruiz-scroll-stable min-h-0 flex-1 overflow-y-auto overscroll-contain p-4 sm:p-6 lg:p-8"><div className="min-h-full">{children}<ContextualAIBar/></div></main>
     </div>
     <AICFOFloating/>
     {explorerOpen ? <FeatureExplorer capabilities={capabilities} onClose={() => setExplorerOpen(false)}/> : null}
