@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { getApiErrorMessage } from "@/lib/api";
+import { notifyBranchesChanged } from "@/lib/branch-events";
 import { ModuleResetButton } from "@/components/module-reset-button";
 import { financeService } from "@/services/finance-service";
 import type { Branch } from "@/types/finance";
@@ -55,6 +56,7 @@ export default function BranchesPage() {
       });
       setCode(""); setName(""); setRegion("");
       await load();
+      notifyBranchesChanged();
     } catch (saveError) {
       setError(getApiErrorMessage(saveError));
     } finally {
@@ -80,6 +82,7 @@ export default function BranchesPage() {
         is_active: draft.is_active,
       });
       await load();
+      notifyBranchesChanged();
     } catch (saveError) {
       setError(getApiErrorMessage(saveError));
     } finally {
