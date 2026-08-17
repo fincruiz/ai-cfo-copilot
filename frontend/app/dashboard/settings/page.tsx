@@ -12,6 +12,7 @@ import { authService } from "@/services/auth-service";
 import { companyService } from "@/services/company-service";
 import { workspaceService, type WorkspaceStatus } from "@/services/workspace-service";
 import { SubscriptionHealthCard } from "@/components/subscription-health-card";
+import { MarketLocalisationCard } from "@/components/market-localisation-card";
 import { ProductAdoptionCard } from "@/components/product-adoption-card";
 
 export default function SettingsPage() {
@@ -109,6 +110,7 @@ export default function SettingsPage() {
       {message ? <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-900">{message}</div> : null}
       {error ? <div className="rounded-xl border border-destructive/30 bg-destructive/5 p-4 text-sm text-destructive">{error}</div> : null}
 
+      <MarketLocalisationCard />
       <SubscriptionHealthCard />
       <ProductAdoptionCard />
 

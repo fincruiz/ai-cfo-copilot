@@ -4,6 +4,7 @@ from app.database.models.core.company import Company
 from app.repositories.core.company_repository import CompanyRepository
 from app.schemas.core.company import CreateCompanyRequest
 from app.services.base import BaseService
+from app.services.market_service import resolve_market
 
 
 class CompanyService(BaseService[Company]):
@@ -51,13 +52,14 @@ class CompanyService(BaseService[Company]):
         request: CreateCompanyRequest,
         created_by: UUID,
     ) -> Company:
+        market = resolve_market(request.country_code)
         return await self.company_repository.create(
             {
                 "legal_name": request.legal_name.strip(),
                 "trading_name": request.trading_name.strip() if request.trading_name else None,
                 "abn": request.abn.strip() if request.abn else None,
                 "country_code": request.country_code.upper(),
-                "currency_code": request.currency_code.upper(),
+                "currency_code": (request.currency_code or market.currency_code).upper(),
                 "financial_year_end_month": request.financial_year_end_month,
                 "industry": request.industry.strip() if request.industry else None,
                 "business_model": request.business_model.strip() if request.business_model else None,

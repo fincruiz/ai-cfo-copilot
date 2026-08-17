@@ -1,0 +1,12 @@
+export type MarketCode = "IN" | "AU" | "AE" | "GB" | "US" | "GLOBAL";
+export type MarketConfig = { marketCode: MarketCode; countryCode: string; countryName: string; currencyCode: string; localeCode: string; registrationLabel: string; taxLabel: string; taxReturnLabel: string; financialYearLabel: string; defaultFyeMonth: number; numberFormat: "indian" | "international"; };
+export const MARKET_CONFIGS: Record<string, MarketConfig> = {
+  IN:{marketCode:"IN",countryCode:"IN",countryName:"India",currencyCode:"INR",localeCode:"en-IN",registrationLabel:"GSTIN / CIN",taxLabel:"GST",taxReturnLabel:"GST return",financialYearLabel:"Financial year",defaultFyeMonth:3,numberFormat:"indian"},
+  AU:{marketCode:"AU",countryCode:"AU",countryName:"Australia",currencyCode:"AUD",localeCode:"en-AU",registrationLabel:"ABN",taxLabel:"GST",taxReturnLabel:"BAS",financialYearLabel:"Financial year",defaultFyeMonth:6,numberFormat:"international"},
+  AE:{marketCode:"AE",countryCode:"AE",countryName:"United Arab Emirates",currencyCode:"AED",localeCode:"en-AE",registrationLabel:"TRN / trade licence",taxLabel:"VAT",taxReturnLabel:"VAT return",financialYearLabel:"Financial year",defaultFyeMonth:12,numberFormat:"international"},
+  GB:{marketCode:"GB",countryCode:"GB",countryName:"United Kingdom",currencyCode:"GBP",localeCode:"en-GB",registrationLabel:"Company number",taxLabel:"VAT",taxReturnLabel:"VAT return",financialYearLabel:"Financial year",defaultFyeMonth:12,numberFormat:"international"},
+  US:{marketCode:"US",countryCode:"US",countryName:"United States",currencyCode:"USD",localeCode:"en-US",registrationLabel:"EIN / registration",taxLabel:"Sales tax",taxReturnLabel:"Tax return",financialYearLabel:"Fiscal year",defaultFyeMonth:12,numberFormat:"international"},
+};
+export const GLOBAL_MARKET:MarketConfig={marketCode:"GLOBAL",countryCode:"GLOBAL",countryName:"International",currencyCode:"USD",localeCode:"en-US",registrationLabel:"Registration number",taxLabel:"Tax",taxReturnLabel:"Tax return",financialYearLabel:"Financial year",defaultFyeMonth:12,numberFormat:"international"};
+export function marketForCountry(countryCode?:string|null){return MARKET_CONFIGS[(countryCode||"").toUpperCase()]||GLOBAL_MARKET;}
+export function suggestedCountryFromLocale(){if(typeof navigator==="undefined")return "AU";const region=(navigator.language||"en-AU").split("-")[1]?.toUpperCase();return region&&MARKET_CONFIGS[region]?region:"AU";}

@@ -29,7 +29,7 @@ export default function HomePage() {
           </Link>
           <div className="flex items-center gap-2 sm:gap-3">
             <Link href="/demo" className="inline-flex items-center gap-2 rounded-xl border border-indigo-200 bg-indigo-50 px-3 py-2.5 text-sm font-bold text-indigo-700 shadow-sm hover:-translate-y-0.5 hover:shadow-md sm:px-5"><PlayCircle className="size-4"/><span className="hidden sm:inline">Try interactive demo</span><span className="sm:hidden">Demo</span></Link>
-            <Link href="/login" className="rounded-xl px-3 py-2.5 text-sm font-semibold text-slate-700 hover:bg-white sm:px-5">Sign in</Link>
+            <Link href="/pricing" className="hidden rounded-xl px-3 py-2.5 text-sm font-semibold text-slate-700 hover:bg-white lg:inline-flex">Pricing</Link><Link href="/login" className="rounded-xl px-3 py-2.5 text-sm font-semibold text-slate-700 hover:bg-white sm:px-5">Sign in</Link>
             <Link href="/signup" className="hidden items-center gap-2 rounded-xl bg-slate-950 px-5 py-2.5 text-sm font-bold text-white shadow-lg hover:-translate-y-0.5 hover:bg-slate-800 md:inline-flex">Create workspace<ArrowRight className="size-4"/></Link>
           </div>
         </div>
@@ -76,7 +76,7 @@ export default function HomePage() {
 
       <section className="relative z-10 mx-auto mb-20 max-w-7xl px-5 lg:px-8"><div className="overflow-hidden rounded-[34px] bg-slate-950 p-8 text-white shadow-2xl sm:p-12"><div className="grid gap-8 lg:grid-cols-[1fr_auto] lg:items-center"><div><div className="flex items-center gap-2 text-indigo-300"><PlayCircle className="size-5"/><span className="text-sm font-bold uppercase tracking-[.18em]">No login required</span></div><h2 className="mt-4 text-3xl font-black sm:text-4xl">See FinCruiz think before you trust it with your data.</h2><p className="mt-4 max-w-2xl text-slate-300">The guided demo uses synthetic company data and shows the full path from raw finance information to an executive insight and a modelled decision.</p></div><Link href="/demo" className="inline-flex min-h-14 items-center justify-center gap-2 rounded-2xl bg-white px-7 font-bold text-slate-950 hover:-translate-y-1">Start interactive demo<ArrowRight className="size-4"/></Link></div></div></section>
 
-      <footer className="relative z-10 border-t bg-white/75"><div className="mx-auto flex max-w-7xl flex-col gap-4 px-5 py-8 text-sm text-slate-500 sm:flex-row sm:items-center sm:justify-between lg:px-8"><span>FinCruiz · Financial and organizational intelligence</span><div className="flex gap-4"><Link href="/demo">Demo</Link><Link href="/login">Sign in</Link><Link href="/signup">Create workspace</Link></div></div></footer>
+      <footer className="relative z-10 border-t bg-white/75"><div className="mx-auto flex max-w-7xl flex-col gap-4 px-5 py-8 text-sm text-slate-500 sm:flex-row sm:items-center sm:justify-between lg:px-8"><span>FinCruiz · Financial and organizational intelligence</span><div className="flex gap-4"><Link href="/demo">Demo</Link><Link href="/pricing">Pricing</Link><Link href="/login">Sign in</Link><Link href="/signup">Create workspace</Link></div></div></footer>
     </main>
   );
 }

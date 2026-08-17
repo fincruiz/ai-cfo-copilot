@@ -1,0 +1,5 @@
+import { api } from "@/lib/api";
+import type { ApiResponse } from "@/types/auth";
+export type RegionalPlanPrice={plan:string;display_name:string;currency_code:string;monthly_amount_minor?:number|null;annual_amount_minor?:number|null;contact_sales:boolean;};
+export type MarketProfile={market_code:string;country_code:string;country_name:string;currency_code:string;locale_code:string;registration_label:string;tax_label:string;tax_return_label:string;financial_year_label:string;default_fye_month:number;number_format:string;pricing:RegionalPlanPrice[];};
+export const marketService={async catalog():Promise<MarketProfile[]>{return(await api.get<ApiResponse<MarketProfile[]>>("/markets/catalog")).data.data;},async resolve(countryCode:string):Promise<MarketProfile>{return(await api.get<ApiResponse<MarketProfile>>("/markets/resolve",{params:{country_code:countryCode}})).data.data;},async current():Promise<MarketProfile>{return(await api.get<ApiResponse<MarketProfile>>("/markets/current")).data.data;}};

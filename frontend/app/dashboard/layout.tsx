@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import {
   BarChart3, BrainCircuit, PlugZap, Building2, ChevronDown, ChevronLeft, ChevronRight,
@@ -17,6 +17,7 @@ import { AICFOFloating } from "@/components/ai-cfo-floating";
 import { FeatureExplorer, type Capability } from "@/components/feature-explorer";
 import { authService } from "@/services/auth-service";
 import { companyService } from "@/services/company-service";
+import { marketService, type MarketProfile } from "@/services/market-service";
 import { usageService } from "@/services/usage-service";
 
 type NavItem = { label: string; href: string; icon: typeof LayoutDashboard; description: string; keywords?: string };
@@ -74,6 +75,8 @@ export default function DashboardLayout({ children }: Readonly<{ children: React
   const [exploreExpanded, setExploreExpanded] = useState(true);
   const [isAuthorizing, setIsAuthorizing] = useState(true);
   const [companyRole, setCompanyRole] = useState("");
+  const [marketProfile, setMarketProfile] = useState<MarketProfile | null>(null);
+  const navScrollRef = useRef<HTMLElement | null>(null);
   const activeGroup = useMemo(() => navigationGroups.find((group) => group.items.some((item) => item.href === "/dashboard" ? pathname === "/dashboard" : pathname === item.href || pathname.startsWith(`${item.href}/`)))?.label, [pathname]);
   const [openGroups, setOpenGroups] = useState<Record<string, boolean>>(() => Object.fromEntries(navigationGroups.map((g) => [g.label, Boolean(g.defaultOpen)])));
 
@@ -88,6 +91,7 @@ export default function DashboardLayout({ children }: Readonly<{ children: React
         await authService.getCurrentUser();
         await authService.getCurrentCompany();
         companyService.getAccess().then((access) => { if (!cancelled) setCompanyRole(access.role); }).catch(() => undefined);
+        marketService.current().then((market) => { if (!cancelled) setMarketProfile(market); }).catch(() => undefined);
         if (!cancelled) setIsAuthorizing(false);
       } catch (error: unknown) {
         if (cancelled) return;
@@ -103,6 +107,8 @@ export default function DashboardLayout({ children }: Readonly<{ children: React
   useEffect(() => {
     if (!isAuthorizing) usageService.track("page_viewed", { area: pathname.startsWith("/dashboard/") ? pathname.split("/")[2] || "dashboard" : "dashboard" });
   }, [pathname, isAuthorizing]);
+
+  useEffect(() => { const node=navScrollRef.current; if(!node)return; node.scrollTop=Number(window.sessionStorage.getItem("fincruiz_sidebar_scroll")||"0"); const save=()=>window.sessionStorage.setItem("fincruiz_sidebar_scroll",String(node.scrollTop)); node.addEventListener("scroll",save,{passive:true}); return()=>node.removeEventListener("scroll",save); }, [collapsed]);
 
   function toggleSidebar() {
     setCollapsed((current) => { const next = !current; window.localStorage.setItem("fincruiz_sidebar_collapsed", String(next)); return next; });
@@ -131,7 +137,7 @@ export default function DashboardLayout({ children }: Readonly<{ children: React
         </div>
       ) : <div className="border-b p-3"><button type="button" onClick={() => openExplorer("collapsed_sidebar")} title="Explore all FinCruiz capabilities" className="mx-auto flex size-10 items-center justify-center rounded-xl border hover:bg-muted"><Search className="size-4"/></button></div>}
 
-      <nav className="fincruiz-scroll-stable flex-1 overflow-y-auto px-3 py-3">
+      <nav ref={navScrollRef} className="fincruiz-scroll-stable min-h-0 flex-1 overflow-y-auto overscroll-contain px-3 py-3">
         {navigationGroups.map((group) => {
           const isOpen = Boolean(openGroups[group.label]);
           return <div key={group.label} className="mb-2">
@@ -150,15 +156,15 @@ export default function DashboardLayout({ children }: Readonly<{ children: React
     </>
   );
 
-  return <div className="min-h-screen bg-muted/25">
-    <aside className={["fixed inset-y-0 left-0 z-30 hidden border-r bg-background transition-all duration-300 lg:flex lg:flex-col", collapsed ? "w-20" : "w-72"].join(" ")}><SidebarContent/></aside>
+  return <div className="h-dvh overflow-hidden bg-muted/25">
+    <aside className={["fixed inset-y-0 left-0 z-30 hidden h-dvh border-r bg-background transition-all duration-300 lg:flex lg:flex-col", collapsed ? "w-20" : "w-72"].join(" ")}><SidebarContent/></aside>
     {mobileOpen ? <div className="fixed inset-0 z-[90] bg-slate-950/45 backdrop-blur-sm lg:hidden" onMouseDown={(e) => e.target === e.currentTarget && setMobileOpen(false)}><aside className="flex h-full w-[min(88vw,320px)] flex-col bg-background shadow-2xl"><SidebarContent mobile/></aside></div> : null}
-    <div className={collapsed ? "transition-all duration-300 lg:pl-20" : "transition-all duration-300 lg:pl-72"}>
-      <header className="sticky top-0 z-20 flex h-16 items-center justify-between border-b bg-background/90 px-4 backdrop-blur-xl sm:px-6">
+    <div className={(collapsed ? "lg:pl-20" : "lg:pl-72") + " flex h-dvh min-h-0 flex-col overflow-hidden transition-[padding] duration-300"}>
+      <header className="z-20 flex h-16 shrink-0 items-center justify-between border-b bg-background/90 px-4 backdrop-blur-xl sm:px-6">
         <div className="flex items-center gap-3"><button type="button" onClick={() => setMobileOpen(true)} className="flex size-9 items-center justify-center rounded-lg border text-muted-foreground hover:bg-muted lg:hidden"><Menu className="size-4"/></button><button type="button" onClick={toggleSidebar} className="hidden size-9 items-center justify-center rounded-lg border text-muted-foreground hover:bg-muted lg:flex" title={collapsed ? "Expand sidebar" : "Collapse sidebar"}>{collapsed ? <PanelLeftOpen className="size-4"/> : <PanelLeftClose className="size-4"/>}</button><div><p className="text-sm font-medium">FinCruiz Workspace</p><p className="text-xs capitalize text-muted-foreground">{companyRole ? `${companyRole.replaceAll("_", " ")} · ` : ""}Management intelligence</p></div></div>
-        <div className="flex items-center gap-2"><button type="button" onClick={() => openExplorer("top_bar")} className="group hidden min-w-[190px] items-center gap-3 rounded-2xl border border-indigo-200/80 bg-gradient-to-r from-indigo-50 via-background to-sky-50 px-4 py-2 text-left shadow-sm transition hover:-translate-y-0.5 hover:border-indigo-300 hover:shadow-md dark:border-indigo-500/20 dark:from-indigo-950/30 dark:via-background dark:to-sky-950/20 sm:flex"><span className="flex size-9 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-indigo-600 to-sky-500 text-white"><Compass className="size-4"/></span><span className="min-w-0 flex-1"><span className="block text-sm font-semibold leading-4">Explore FinCruiz</span><span className="mt-1 block text-[10px] leading-3 text-muted-foreground">Find every capability</span></span><ChevronRight className="size-4 shrink-0 text-muted-foreground transition group-hover:translate-x-0.5"/></button><button type="button" onClick={() => openExplorer("top_bar_mobile")} className="flex size-10 items-center justify-center rounded-xl border bg-background sm:hidden" aria-label="Explore FinCruiz"><Compass className="size-4"/></button><ThemeToggle/></div>
+        <div className="flex items-center gap-2"><button type="button" onClick={() => openExplorer("top_bar")} className="group hidden min-w-[190px] items-center gap-3 rounded-2xl border border-indigo-200/80 bg-gradient-to-r from-indigo-50 via-background to-sky-50 px-4 py-2 text-left shadow-sm transition hover:-translate-y-0.5 hover:border-indigo-300 hover:shadow-md dark:border-indigo-500/20 dark:from-indigo-950/30 dark:via-background dark:to-sky-950/20 sm:flex"><span className="flex size-9 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-indigo-600 to-sky-500 text-white"><Compass className="size-4"/></span><span className="min-w-0 flex-1"><span className="block text-sm font-semibold leading-4">Explore FinCruiz</span><span className="mt-1 block text-[10px] leading-3 text-muted-foreground">Find every capability</span></span><ChevronRight className="size-4 shrink-0 text-muted-foreground transition group-hover:translate-x-0.5"/></button><button type="button" onClick={() => openExplorer("top_bar_mobile")} className="flex size-10 items-center justify-center rounded-xl border bg-background sm:hidden" aria-label="Explore FinCruiz"><Compass className="size-4"/></button>{marketProfile ? <Link href="/pricing" className="hidden rounded-xl border bg-background px-3 py-2 text-xs font-semibold text-muted-foreground hover:bg-muted md:block">{marketProfile.country_name} · {marketProfile.currency_code}</Link> : null}<ThemeToggle/></div>
       </header>
-      <main className="p-4 sm:p-6 lg:p-8">{children}</main>
+      <main className="fincruiz-scroll-stable min-h-0 flex-1 overflow-y-auto overscroll-contain p-4 sm:p-6 lg:p-8">{children}</main>
     </div>
     <AICFOFloating/>
     {explorerOpen ? <FeatureExplorer capabilities={capabilities} onClose={() => setExplorerOpen(false)}/> : null}
