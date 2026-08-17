@@ -96,9 +96,17 @@ class PlanningVersionCreate(BaseModel):
 
 
 class HighLevelBudgetAllocationRequest(BaseModel):
-    annual_targets: dict[str, Decimal]
+    annual_targets: dict[str, Decimal] = Field(default_factory=dict)
+    # Optional executive targets. When supplied, FinCruiz derives Cost of Sales
+    # from gross margin and derives the operating-expense envelope from the
+    # requested net-profit target before allocating to the COA.
+    revenue_target: Decimal | None = None
+    gross_margin_percent: Decimal | None = None
+    net_profit_target: Decimal | None = None
+    branch_id: UUID | None = None
     detail_level: str = 'detailed'
     seasonality: str = 'historical'  # historical | equal
+    allocation_method: str = 'historical_actuals'  # historical_actuals | equal
 
 class NativePlanLineInput(BaseModel):
     period: date

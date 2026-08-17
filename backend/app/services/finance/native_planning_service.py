@@ -100,7 +100,7 @@ class NativePlanningService:
             'recommended_seed': 'actuals' if monthly else ('previous_budget' if versions or imported else 'blank'),
         }
 
-    async def _account_history(self, company_id: UUID) -> list[dict]:
+    async def _account_history(self, company_id: UUID, branch_id: UUID | None = None) -> list[dict]:
         rows = (await self.session.execute(text("""
             SELECT date_trunc('month', gt.transaction_date)::date AS month,
                    gt.source_account_code,
@@ -113,12 +113,13 @@ class NativePlanningService:
             JOIN public.finance_account_mappings fam
               ON fam.company_id=gt.company_id AND fam.source_account_code=gt.source_account_code
             WHERE gt.company_id=:company_id AND gt.validation_status='valid'
+              AND (:branch_id IS NULL OR gt.branch_id=:branch_id)
               AND gt.is_elimination=false AND fu.is_active=true AND fu.processing_status='validated'
               AND fam.statement='income_statement'
             GROUP BY date_trunc('month', gt.transaction_date)::date,
                      gt.source_account_code, fam.reporting_group, fam.reporting_subgroup
             ORDER BY month, fam.reporting_group, gt.source_account_code
-        """), {'company_id': company_id})).mappings().all()
+        """), {'company_id': company_id, 'branch_id': branch_id})).mappings().all()
         return [dict(r) for r in rows]
 
     async def _actual_seed(self, company_id: UUID, start: date, end: date, growth: Decimal, detail_level: str) -> list[dict]:
@@ -306,42 +307,75 @@ class NativePlanningService:
     async def allocate_high_level(self, company_id: UUID, version_id: UUID, request):
         version = await self.get_version(company_id, version_id)
         months = month_range(version['financial_year_start'], version['financial_year_end'])
-        history = await self._account_history(company_id)
+        history = await self._account_history(company_id, request.branch_id)
         source_months = sorted({r['month'] for r in history})[-12:]
         history = [r for r in history if r['month'] in source_months]
         by_group_month: dict[str, dict[date, Decimal]] = defaultdict(lambda: defaultdict(lambda: Decimal('0')))
         by_group_account: dict[str, dict[tuple[str, str | None, str | None], Decimal]] = defaultdict(lambda: defaultdict(lambda: Decimal('0')))
+        historical_totals: dict[str, Decimal] = defaultdict(lambda: Decimal('0'))
         for r in history:
             amt = Decimal(r['amount'] or 0); group = r['reporting_group']
             by_group_month[group][r['month']] += amt
             by_group_account[group][(r['source_account_code'], r['account_name'], r['reporting_subgroup'])] += amt
+            historical_totals[group] += amt
+
+        targets = {k: Decimal(v) for k, v in (request.annual_targets or {}).items()}
+        if request.revenue_target is not None:
+            targets['Revenue'] = Decimal(request.revenue_target)
+        if request.gross_margin_percent is not None and 'Revenue' in targets:
+            gp = Decimal(request.gross_margin_percent) / Decimal('100')
+            targets['Cost of Sales'] = targets['Revenue'] * (Decimal('1') - gp)
+        if request.net_profit_target is not None and 'Revenue' in targets:
+            gp_value = targets['Revenue'] - targets.get('Cost of Sales', Decimal('0'))
+            non_operating = sum((targets.get(g, Decimal('0')) for g in ('Depreciation','Finance Costs','Tax','Other Expenses')), Decimal('0'))
+            other_income = targets.get('Other Income', Decimal('0'))
+            opex_envelope = max(Decimal('0'), gp_value + other_income - non_operating - Decimal(request.net_profit_target))
+            payroll_hist = abs(historical_totals.get('Payroll', Decimal('0')))
+            opex_hist = abs(historical_totals.get('Operating Expenses', Decimal('0')))
+            denom = payroll_hist + opex_hist
+            payroll_share = payroll_hist / denom if denom else Decimal('0.5')
+            targets.setdefault('Payroll', opex_envelope * payroll_share)
+            targets.setdefault('Operating Expenses', opex_envelope * (Decimal('1') - payroll_share))
+
         new_rows = []
-        for group, target in request.annual_targets.items():
+        for group, target in targets.items():
             values = [by_group_month[group].get(m, Decimal('0')) for m in source_months]
             month_weights = monthly_weights_from_history(values, len(months)) if request.seasonality == 'historical' else [Decimal('1')] * len(months)
             month_amounts = allocate_total(Decimal(target), month_weights)
             if request.detail_level == 'detailed' and by_group_account.get(group):
                 accounts = list(by_group_account[group].items())
-                acc_weights = [abs(v) for _, v in accounts]
+                acc_weights = [abs(v) for _, v in accounts] if request.allocation_method == 'historical_actuals' else [Decimal('1')] * len(accounts)
                 for period, month_amount in zip(months, month_amounts):
                     splits = allocate_total(month_amount, acc_weights)
                     for ((code, name, subgroup), _), amount in zip(accounts, splits):
-                        new_rows.append({'period': period, 'branch_id': None, 'reporting_group': group,
+                        new_rows.append({'period': period, 'branch_id': request.branch_id, 'reporting_group': group,
                                          'reporting_subgroup': subgroup or name, 'source_account_code': code,
-                                         'amount': amount, 'driver_type': 'high_level_allocation', 'driver_value': None,
-                                         'notes': 'Allocated from high-level management target using historical account mix.'})
+                                         'amount': amount, 'driver_type': 'executive_target_allocation', 'driver_value': None,
+                                         'notes': 'Derived from management targets and allocated using the selected historical method.'})
             else:
                 for period, amount in zip(months, month_amounts):
-                    new_rows.append({'period': period, 'branch_id': None, 'reporting_group': group,
+                    new_rows.append({'period': period, 'branch_id': request.branch_id, 'reporting_group': group,
                                      'reporting_subgroup': None, 'source_account_code': None, 'amount': amount,
-                                     'driver_type': 'high_level_allocation', 'driver_value': None,
-                                     'notes': 'Allocated from high-level management target.'})
-        groups = list(request.annual_targets.keys())
-        for group in groups:
-            await self.session.execute(
-                text('DELETE FROM public.native_plan_lines WHERE company_id=:company_id AND version_id=:id AND reporting_group=:group'),
-                {'company_id': company_id, 'id': version_id, 'group': group},
-            )
+                                     'driver_type': 'executive_target_allocation', 'driver_value': None,
+                                     'notes': 'Derived from high-level management targets.'})
+        for group in targets:
+            await self.session.execute(text("""DELETE FROM public.native_plan_lines
+                WHERE company_id=:company_id AND version_id=:id AND reporting_group=:group
+                  AND ((:branch_id IS NULL AND branch_id IS NULL) OR branch_id=:branch_id)"""),
+                {'company_id': company_id, 'id': version_id, 'group': group, 'branch_id': request.branch_id})
         await self._insert_lines(company_id, version_id, new_rows)
+        await self.session.execute(text("""UPDATE public.planning_versions
+            SET assumptions = assumptions || CAST(:patch AS jsonb), updated_at=now()
+            WHERE id=:id AND company_id=:company_id"""), {
+                'id': version_id, 'company_id': company_id,
+                'patch': json.dumps({'last_target_model': {
+                    'branch_id': str(request.branch_id) if request.branch_id else None,
+                    'revenue_target': float(request.revenue_target) if request.revenue_target is not None else None,
+                    'gross_margin_percent': float(request.gross_margin_percent) if request.gross_margin_percent is not None else None,
+                    'net_profit_target': float(request.net_profit_target) if request.net_profit_target is not None else None,
+                    'seasonality': request.seasonality, 'allocation_method': request.allocation_method,
+                    'detail_level': request.detail_level,
+                }})
+            })
         await self.session.commit()
         return await self.get_version(company_id, version_id)
