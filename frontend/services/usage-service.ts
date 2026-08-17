@@ -15,6 +15,9 @@ function sessionId(): string {
 }
 
 export const usageService = {
+  async summary(days = 30): Promise<Array<{ event_name: string; count: number; users: number }>> {
+    return (await api.get<{ data: Array<{ event_name: string; count: number; users: number }> }>(`/usage/summary?days=${days}`)).data.data;
+  },
   track(event_name: string, properties: UsageProperties = {}) {
     if (typeof window === "undefined") return;
     const payload = {

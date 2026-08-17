@@ -120,6 +120,12 @@ export default function IntegrationsPage() {
 
       {error ? <div className="rounded-xl border border-destructive/30 bg-destructive/5 p-4 text-sm text-destructive">{error}</div> : null}
 
+      {items.length ? <div className="grid gap-3 rounded-2xl border bg-muted/20 p-4 sm:grid-cols-3">
+        <div><p className="text-xs uppercase tracking-[.12em] text-muted-foreground">Connection health</p><p className="mt-1 font-semibold">{items.filter((item) => item.status === "connected" && item.last_sync_status !== "failed").length} healthy</p></div>
+        <div><p className="text-xs uppercase tracking-[.12em] text-muted-foreground">Needs attention</p><p className="mt-1 font-semibold">{items.filter((item) => item.status === "connected" && item.last_sync_status === "failed").length} source(s)</p></div>
+        <div><p className="text-xs uppercase tracking-[.12em] text-muted-foreground">Last successful sync</p><p className="mt-1 font-semibold">{(() => { const dates = items.filter((item) => item.last_synced_at && item.last_sync_status !== "failed").map((item) => new Date(item.last_synced_at as string).getTime()); return dates.length ? new Date(Math.max(...dates)).toLocaleString() : "No completed sync yet"; })()}</p></div>
+      </div> : null}
+
       <div className="grid gap-5 lg:grid-cols-3">
         {(["xero", "zoho", "tally"] as Provider[]).map((provider) => {
           const item = items.find((connection) => connection.provider === provider);

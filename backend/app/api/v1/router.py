@@ -21,6 +21,7 @@ from app.api.v1.core.audit.router import router as audit_router
 from app.api.v1.integrations.router import router as integrations_router
 from app.api.v1.intelligence.router import router as intelligence_router
 from app.api.v1.usage.router import router as usage_router
+from app.api.v1.subscription.router import router as subscription_router
 api_router=APIRouter()
 api_router.include_router(health_router)
 api_router.include_router(auth_router)
@@ -46,3 +47,4 @@ api_router.include_router(board_packs_router)
 api_router.include_router(integrations_router)
 api_router.include_router(intelligence_router)
 api_router.include_router(usage_router)
+api_router.include_router(subscription_router)
