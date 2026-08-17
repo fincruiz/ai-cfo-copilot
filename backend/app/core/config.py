@@ -26,6 +26,25 @@ class Settings(BaseSettings):
     openai_api_key: str | None = None
     openai_model: str = "gpt-5.6"
 
+
+
+    # Commercial billing. Keep provider secrets server-side only.
+    billing_frontend_url: str = "http://localhost:3000"
+    stripe_secret_key: str | None = None
+    stripe_webhook_secret: str | None = None
+    stripe_starter_monthly_price_id: str | None = None
+    stripe_starter_annual_price_id: str | None = None
+    stripe_growth_monthly_price_id: str | None = None
+    stripe_growth_annual_price_id: str | None = None
+
+    razorpay_key_id: str | None = None
+    razorpay_key_secret: str | None = None
+    razorpay_webhook_secret: str | None = None
+    razorpay_starter_monthly_plan_id: str | None = None
+    razorpay_starter_annual_plan_id: str | None = None
+    razorpay_growth_monthly_plan_id: str | None = None
+    razorpay_growth_annual_plan_id: str | None = None
+
     # Integration platform
     integration_encryption_key: str | None = None
     integration_frontend_url: str = "http://localhost:3000"

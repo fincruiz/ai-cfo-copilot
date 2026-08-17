@@ -4,3 +4,26 @@ export type SubscriptionStatus={plan:'trial'|'founding'|'growth'|'enterprise';di
 export type EntitlementCatalog={plans:Array<{plan:string;display_name:string;entitlements:Record<string,string|number|boolean>}>};
 export type BetaReadiness={score:number;status:'ready'|'attention'|'blocked';checks:Array<{key:string;label:string;status:'ready'|'attention'|'blocked';detail:string}>};
 export const subscriptionService={async entitlements(){return(await api.get<ApiResponse<EntitlementCatalog>>('/subscription/entitlements')).data.data},async status(){return(await api.get<ApiResponse<SubscriptionStatus>>('/subscription/status')).data.data},async betaReadiness(){return(await api.get<ApiResponse<BetaReadiness>>('/subscription/beta-readiness')).data.data},async requestChange(plan:'founding'|'growth'|'enterprise',billing_interval:'monthly'|'annual'){return(await api.post('/subscription/change-request',{plan,billing_interval})).data.data},async requestCancellation(){return(await api.post<ApiResponse<SubscriptionStatus>>('/subscription/cancel-request')).data.data},async updateBillingMarket(country_code:string){return(await api.put<ApiResponse<SubscriptionStatus>>('/subscription/billing-market',{country_code})).data.data}};
+
+
+export type BillingCheckout={
+  provider:'stripe'|'razorpay';
+  checkout_url?:string|null;
+  provider_session_id:string;
+  public_key?:string|null;
+  subscription_id?:string|null;
+  plan:'founding'|'growth';
+  billing_interval:'monthly'|'annual';
+};
+
+export const billingService={
+  async checkout(plan:'founding'|'growth',billing_interval:'monthly'|'annual'){
+    return (await api.post<ApiResponse<BillingCheckout>>('/billing/checkout',{plan,billing_interval})).data.data;
+  },
+  async portal(){
+    return (await api.post<ApiResponse<{provider:'stripe'|'razorpay';url:string}>>('/billing/portal')).data.data;
+  },
+  async verifyRazorpay(payload:{razorpay_payment_id:string;razorpay_subscription_id:string;razorpay_signature:string}){
+    return (await api.post('/billing/razorpay/verify',payload)).data.data;
+  },
+};
