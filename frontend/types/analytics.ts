@@ -83,6 +83,8 @@ export interface AIVisualization {
   currency?: string | null;
 }
 
+export interface AICFOConversationTurn { role: "user" | "assistant"; content: string; }
+
 export interface AICFOAnswer {
   answer: string;
   mode: string;
@@ -95,6 +97,7 @@ export interface AICFOAnswer {
   confidence?: "high" | "medium" | "low";
   confidence_reason?: string | null;
   decision_handoff?: AICFODecisionHandoff | null;
+  interpreted_question?: string | null;
 }
 
 

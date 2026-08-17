@@ -12,6 +12,7 @@ from app.database.models.finance.account_mapping import (
 from app.database.models.finance.gl_transaction import (
     GLTransaction,
 )
+from app.database.models.finance.file_upload import FileUpload
 
 
 class AccountMappingRepository:
@@ -103,17 +104,18 @@ class AccountMappingRepository:
                 GLTransaction.source_account_code,
                 GLTransaction.source_account_name,
             )
+            .join(FileUpload, FileUpload.id == GLTransaction.file_upload_id)
             .where(
-                GLTransaction.company_id
-                == company_id,
-                GLTransaction.source_account_code.not_in(
-                    mapped_accounts
-                ),
+                GLTransaction.company_id == company_id,
+                GLTransaction.validation_status == "valid",
+                GLTransaction.is_elimination.is_(False),
+                FileUpload.is_active.is_(True),
+                FileUpload.processing_status == "validated",
+                FileUpload.document_type == "general_ledger",
+                GLTransaction.source_account_code.not_in(mapped_accounts),
             )
             .distinct()
-            .order_by(
-                GLTransaction.source_account_code.asc()
-            )
+            .order_by(GLTransaction.source_account_code.asc())
         )
 
         result = await self.session.execute(

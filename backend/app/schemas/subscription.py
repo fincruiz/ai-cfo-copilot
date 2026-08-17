@@ -47,3 +47,13 @@ class BetaReadinessOut(BaseModel):
     score: int = Field(ge=0,le=100)
     status: Literal['ready','attention','blocked']
     checks: list[BetaReadinessCheck]
+
+
+class PlanEntitlementOut(BaseModel):
+    plan: str
+    display_name: str
+    entitlements: dict[str, Any]
+
+
+class EntitlementCatalogOut(BaseModel):
+    plans: list[PlanEntitlementOut]

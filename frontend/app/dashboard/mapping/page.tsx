@@ -1,8 +1,9 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { ModuleResetButton } from "@/components/module-reset-button";
-import { CheckCircle2, Loader2, RefreshCw, Save, WandSparkles } from "lucide-react";
+import { ArrowRight, CheckCircle2, Loader2, RefreshCw, Save, WandSparkles } from "lucide-react";
 
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
@@ -24,6 +25,7 @@ export default function MappingPage() {
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
   const [search, setSearch] = useState("");
+  const [welcomeFlow, setWelcomeFlow] = useState(false);
 
   async function load() {
     setIsLoading(true);
@@ -42,7 +44,7 @@ export default function MappingPage() {
     }
   }
 
-  useEffect(() => { void load(); }, []);
+  useEffect(() => { setWelcomeFlow(new URLSearchParams(window.location.search).get("welcome") === "1"); void load(); }, []);
 
   const filteredRows = useMemo(() => {
     const term = search.trim().toLowerCase();
@@ -96,6 +98,7 @@ export default function MappingPage() {
 
       {error ? <Alert variant="destructive"><AlertDescription>{error}</AlertDescription></Alert> : null}
       {success ? <Alert><CheckCircle2 className="size-4" /><AlertDescription>{success}</AlertDescription></Alert> : null}
+      {welcomeFlow && (success || (!isLoading && rows.length === 0 && savedCount > 0)) ? <div className="flex justify-end"><Link href="/dashboard/getting-started" className="inline-flex items-center gap-2 rounded-xl bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground">Continue guided setup<ArrowRight className="size-4"/></Link></div> : null}
 
       <div className="grid gap-4 sm:grid-cols-3">
         <Card><CardHeader className="pb-2"><CardDescription>Saved mappings</CardDescription><CardTitle className="text-3xl">{savedCount}</CardTitle></CardHeader></Card>

@@ -1,0 +1,27 @@
+.venv/
+.env
+
+__pycache__/
+*.py[cod]
+
+.pytest_cache/
+.coverage
+htmlcov/
+
+*.log
+
+.vscode/
+.idea/
+
+dist/
+build/
+# Python build artifacts
+__pycache__/
+*.py[cod]
+
+# P9 generated/local artifacts
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.venv/
+.env

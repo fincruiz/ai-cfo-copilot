@@ -2,9 +2,15 @@ from typing import Literal
 from pydantic import BaseModel, Field
 
 
+class AICFOConversationTurn(BaseModel):
+    role: Literal["user", "assistant"]
+    content: str = Field(min_length=1, max_length=2000)
+
+
 class AICFOQuestionRequest(BaseModel):
     question: str = Field(min_length=2, max_length=1000)
     include_external_context: bool = True
+    conversation: list[AICFOConversationTurn] = Field(default_factory=list, max_length=8)
 
 
 class AICFOSource(BaseModel):
@@ -58,6 +64,7 @@ class AICFOAnswerResponse(BaseModel):
     confidence: Literal["high", "medium", "low"] = "medium"
     confidence_reason: str | None = None
     decision_handoff: AICFODecisionHandoff | None = None
+    interpreted_question: str | None = None
 
 
 class AICFOSignal(BaseModel):

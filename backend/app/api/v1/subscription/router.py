@@ -5,11 +5,20 @@ from app.database.models.core.company import Company
 from app.database.session import get_db_session
 from app.dependencies.company import get_current_company,require_company_admin
 from app.schemas.responses import APIResponse
-from app.schemas.subscription import BetaReadinessCheck,BetaReadinessOut,SubscriptionStatusOut,SubscriptionChangeRequest,SubscriptionChangeOut,BillingMarketRequest
+from app.schemas.subscription import BetaReadinessCheck,BetaReadinessOut,SubscriptionStatusOut,SubscriptionChangeRequest,SubscriptionChangeOut,BillingMarketRequest,EntitlementCatalogOut,PlanEntitlementOut
 from app.services.core.workspace_lifecycle_service import WorkspaceLifecycleService
 from app.services.integrations.base import IntegrationStore
-from app.services.subscription_service import SubscriptionService
+from app.services.subscription_service import SubscriptionService,PLAN_ENTITLEMENTS
+from app.services.market_service import PLAN_LABELS
 router=APIRouter(prefix='/subscription',tags=['Subscription & Beta'])
+
+@router.get('/entitlements',response_model=APIResponse[EntitlementCatalogOut])
+async def entitlement_catalog():
+    plans=[]
+    for plan in ('trial','founding','growth','enterprise'):
+        label='30-day Full Access Trial' if plan=='trial' else PLAN_LABELS.get(plan,plan.title())
+        plans.append(PlanEntitlementOut(plan=plan,display_name=label,entitlements=PLAN_ENTITLEMENTS[plan]))
+    return APIResponse(message='Plan entitlements retrieved.',data=EntitlementCatalogOut(plans=plans))
 @router.get('/status',response_model=APIResponse[SubscriptionStatusOut])
 async def subscription_status(company:Annotated[Company,Depends(get_current_company)],session:Annotated[AsyncSession,Depends(get_db_session)]):return APIResponse(message='Subscription status retrieved.',data=SubscriptionStatusOut(**await SubscriptionService(session).status(company_id=company.id)))
 @router.post('/change-request',response_model=APIResponse[SubscriptionChangeOut])

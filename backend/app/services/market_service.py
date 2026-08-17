@@ -39,7 +39,7 @@ PRICE_CATALOG: dict[str, dict[str, dict[str, int | None]]] = {
     "GLOBAL": {"founding": {"monthly": 9900, "annual": 99000}, "growth": {"monthly": 19900, "annual": 199000}, "enterprise": {"monthly": None, "annual": None}},
 }
 
-PLAN_LABELS = {"founding": "Essentials", "growth": "Growth", "enterprise": "Enterprise"}
+PLAN_LABELS = {"founding": "Starter", "growth": "Growth", "enterprise": "Scale / Enterprise"}
 
 
 def resolve_market(country_code: str | None) -> MarketProfile:

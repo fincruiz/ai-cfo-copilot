@@ -7,10 +7,10 @@ from app.core.exceptions import ApplicationError
 from app.services.market_service import PLAN_LABELS, PRICE_CATALOG, resolve_market
 
 PLAN_ENTITLEMENTS={
- 'trial':{'ai_queries_monthly':200,'users':3,'integrations':1,'forecasting':True,'decision_simulator':True,'board_packs':True,'benchmarking':True,'audit_history_days':30},
- 'founding':{'ai_queries_monthly':2000,'users':10,'integrations':3,'forecasting':True,'decision_simulator':True,'board_packs':True,'benchmarking':True,'audit_history_days':365},
- 'growth':{'ai_queries_monthly':5000,'users':25,'integrations':5,'forecasting':True,'decision_simulator':True,'board_packs':True,'benchmarking':True,'audit_history_days':730},
- 'enterprise':{'ai_queries_monthly':-1,'users':-1,'integrations':-1,'forecasting':True,'decision_simulator':True,'board_packs':True,'benchmarking':True,'audit_history_days':-1},
+ 'trial':{'ai_cfo':True,'ai_queries_monthly':200,'users':3,'integrations':1,'branches':3,'forecasting':True,'decision_simulator':True,'three_way_forecast':True,'native_planning':True,'board_packs':True,'benchmarking':False,'advanced_governance':False,'audit_history_days':30},
+ 'founding':{'ai_cfo':True,'ai_queries_monthly':1000,'users':5,'integrations':1,'branches':5,'forecasting':True,'decision_simulator':True,'three_way_forecast':True,'native_planning':True,'board_packs':False,'benchmarking':False,'advanced_governance':False,'audit_history_days':90},
+ 'growth':{'ai_cfo':True,'ai_queries_monthly':5000,'users':25,'integrations':5,'branches':25,'forecasting':True,'decision_simulator':True,'three_way_forecast':True,'native_planning':True,'board_packs':True,'benchmarking':True,'advanced_governance':True,'audit_history_days':730},
+ 'enterprise':{'ai_cfo':True,'ai_queries_monthly':-1,'users':-1,'integrations':-1,'branches':-1,'forecasting':True,'decision_simulator':True,'three_way_forecast':True,'native_planning':True,'board_packs':True,'benchmarking':True,'advanced_governance':True,'audit_history_days':-1},
 }
 ACTIVE_STATUSES={'trialing','active'}
 
@@ -37,7 +37,7 @@ class SubscriptionService:
         data=dict(row or {});plan=str(data.get('plan') or 'trial');status=str(data.get('status') or 'trialing');trial_end=data.get('trial_ends_at')
         if status=='trialing' and trial_end and days_remaining(trial_end)==0:status='expired'
         billing_country=str(data.get('billing_country_code') or data.get('country_code') or 'GLOBAL').upper()
-        return {'plan':plan,'display_name':'Trial' if plan=='trial' else PLAN_LABELS.get(plan,plan.title()),'status':status,'trial_started_at':data.get('trial_started_at'),'trial_ends_at':trial_end,'current_period_ends_at':data.get('current_period_ends_at'),'days_remaining':days_remaining(trial_end),'entitlements':entitlements_for_plan(plan,data.get('entitlements') or {}),'is_access_active':status in ACTIVE_STATUSES,'billing_managed_externally':True,'billing_country_code':billing_country,'billing_interval':data.get('billing_interval') or 'monthly','requested_plan':data.get('requested_plan'),'requested_interval':data.get('requested_interval'),'change_requested_at':data.get('change_requested_at'),'cancellation_requested_at':data.get('cancellation_requested_at')}
+        return {'plan':plan,'display_name':'30-day Full Access Trial' if plan=='trial' else PLAN_LABELS.get(plan,plan.title()),'status':status,'trial_started_at':data.get('trial_started_at'),'trial_ends_at':trial_end,'current_period_ends_at':data.get('current_period_ends_at'),'days_remaining':days_remaining(trial_end),'entitlements':entitlements_for_plan(plan,data.get('entitlements') or {}),'is_access_active':status in ACTIVE_STATUSES,'billing_managed_externally':True,'billing_country_code':billing_country,'billing_interval':data.get('billing_interval') or 'monthly','requested_plan':data.get('requested_plan'),'requested_interval':data.get('requested_interval'),'change_requested_at':data.get('change_requested_at'),'cancellation_requested_at':data.get('cancellation_requested_at')}
     async def request_change(self,*,company_id:UUID,plan:str,interval:str)->dict:
         status=await self.status(company_id=company_id)
         if status['status'] in {'cancelled','expired'} and status['plan']!='trial':

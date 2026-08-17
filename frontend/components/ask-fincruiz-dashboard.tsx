@@ -2,12 +2,12 @@
 
 import { FormEvent, useState } from "react";
 import { useRouter } from "next/navigation";
-import { ArrowRight, Bot, ExternalLink, FileCheck2, Gauge, Globe2, Loader2, Navigation, Send, Sparkles } from "lucide-react";
+import { ArrowRight, Bot, ExternalLink, FileCheck2, Gauge, Globe2, Lightbulb, Loader2, Navigation, Send, Sparkles, Target } from "lucide-react";
 
 import { analyticsService } from "@/services/analytics-service";
 import { usageService } from "@/services/usage-service";
 import { InsightChart } from "@/components/insight-chart";
-import type { AICFOAnswer } from "@/types/analytics";
+import type { AICFOAnswer, AICFOConversationTurn } from "@/types/analytics";
 
 const prompts = [
   "What should management focus on today?",
@@ -22,6 +22,7 @@ export function AskFinCruizDashboard() {
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<AICFOAnswer | null>(null);
   const [liveContext, setLiveContext] = useState(true);
+  const [conversation, setConversation] = useState<AICFOConversationTurn[]>([]);
 
   async function ask(value: string) {
     const cleaned = value.trim();
@@ -31,8 +32,9 @@ export function AskFinCruizDashboard() {
     setResult(null);
     usageService.track("ai_question_submitted", { source: "dashboard_ask_fincruiz" });
     try {
-      const response = await analyticsService.askAiCfo(cleaned, liveContext);
+      const response = await analyticsService.askAiCfo(cleaned, liveContext, conversation);
       setResult(response);
+      setConversation((current):AICFOConversationTurn[] => [...current, { role: "user" as const, content: cleaned }, { role: "assistant" as const, content: response.answer }].slice(-8));
     } catch {
       setResult({
         answer: "I could not retrieve the company context just now. Check that the workspace data and backend are available, then try again.",
@@ -80,11 +82,15 @@ export function AskFinCruizDashboard() {
             {loading ? <div className="flex items-center gap-2 text-sm text-muted-foreground"><Loader2 className="size-4 animate-spin" /> Reviewing company evidence and choosing the right analysis...</div> : result ? (
               <div className="animate-step-in">
                 <div className="flex flex-wrap items-center justify-between gap-2"><div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-[.14em] text-indigo-700 dark:text-indigo-300"><Sparkles className="size-3.5" /> FinCruiz response</div><span className="rounded-full border px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">{result.mode?.replaceAll("_", " ") || "analysis"}</span></div>
-                <p className="mt-3 whitespace-pre-wrap text-sm leading-7">{result.answer}</p>
-                {result.visualization ? <InsightChart visualization={result.visualization} /> : null}
+                {result.interpreted_question && result.interpreted_question !== question ? <p className="mt-3 text-[11px] text-muted-foreground">Following the earlier question, FinCruiz interpreted this as: <span className="font-medium text-foreground">{result.interpreted_question}</span></p> : null}
+                <div className="mt-3 rounded-2xl border border-indigo-200/70 bg-gradient-to-br from-white to-indigo-50/60 p-4 dark:border-indigo-500/20 dark:from-white/[.04] dark:to-indigo-950/20">
+                  <p className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[.14em] text-indigo-700 dark:text-indigo-300"><Lightbulb className="size-3.5"/>Management answer</p>
+                  <p className="mt-2 whitespace-pre-wrap text-[15px] font-medium leading-7">{result.answer}</p>
+                </div>
+                {result.visualization ? <div className="mt-4"><div className="mb-2 flex items-center gap-2 text-xs font-semibold text-muted-foreground"><Target className="size-3.5"/>Evidence visual</div><InsightChart visualization={result.visualization} /></div> : null}
 
                 {(result.evidence?.length || result.confidence) ? <div className="mt-4 rounded-2xl border bg-white/70 p-4 dark:bg-white/[.03]">
-                  <div className="flex flex-wrap items-center justify-between gap-2"><p className="flex items-center gap-2 text-xs font-semibold uppercase tracking-[.12em] text-muted-foreground"><FileCheck2 className="size-3.5"/>Evidence used</p>{result.confidence ? <span className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[10px] font-semibold uppercase ${result.confidence === "high" ? "bg-emerald-100 text-emerald-700" : result.confidence === "low" ? "bg-rose-100 text-rose-700" : "bg-amber-100 text-amber-700"}`}><Gauge className="size-3"/>{result.confidence} confidence</span> : null}</div>
+                  <div className="flex flex-wrap items-center justify-between gap-2"><p className="flex items-center gap-2 text-xs font-semibold uppercase tracking-[.12em] text-muted-foreground"><FileCheck2 className="size-3.5"/>Evidence behind this answer</p>{result.confidence ? <span className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[10px] font-semibold uppercase ${result.confidence === "high" ? "bg-emerald-100 text-emerald-700" : result.confidence === "low" ? "bg-rose-100 text-rose-700" : "bg-amber-100 text-amber-700"}`}><Gauge className="size-3"/>{result.confidence} confidence</span> : null}</div>
                   {result.evidence?.length ? <div className="mt-3 grid gap-2 sm:grid-cols-2">{result.evidence.map((item, index) => <div key={`${item.label}-${index}`} className="rounded-xl border bg-background px-3 py-2.5"><div className="flex items-start justify-between gap-3"><span className="text-xs text-muted-foreground">{item.label}</span><span className="text-sm font-semibold tabular-nums">{item.value}</span></div><p className="mt-1 text-[10px] text-muted-foreground">{item.source}{item.period ? ` · ${item.period}` : ""}</p></div>)}</div> : null}
                   {result.confidence_reason ? <p className="mt-3 text-[11px] leading-5 text-muted-foreground">{result.confidence_reason}</p> : null}
                 </div> : null}

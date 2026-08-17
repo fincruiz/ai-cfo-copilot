@@ -18,11 +18,13 @@ from app.schemas.workspace import (
     ScopedResetRequest,
     ScopedResetResponse,
     LaunchReadinessResponse,
+    CommercialOnboardingSummaryResponse,
 )
 from app.services.core.workspace_lifecycle_service import WorkspaceLifecycleService
 from app.services.audit_service import AuditService
 from app.services.integrations.base import IntegrationStore
 from app.services.launch_readiness_service import build_launch_readiness
+from app.services.commercial_onboarding_service import CommercialOnboardingService
 
 
 router = APIRouter(prefix="/workspace", tags=["Workspace & Privacy"])
@@ -53,6 +55,18 @@ async def launch_readiness(
     connections = await IntegrationStore(session).list_connections(current_company.id)
     data = build_launch_readiness(company=current_company, workspace=workspace, connections=connections)
     return APIResponse(message="Workspace launch readiness retrieved.", data=LaunchReadinessResponse(**data))
+
+
+@router.get("/commercial-onboarding", response_model=APIResponse[CommercialOnboardingSummaryResponse])
+async def commercial_onboarding_summary(
+    current_company: Annotated[Company, Depends(get_current_company)],
+    session: Annotated[AsyncSession, Depends(get_db_session)],
+) -> APIResponse[CommercialOnboardingSummaryResponse]:
+    data = await CommercialOnboardingService(session).build(current_company.id)
+    return APIResponse(
+        message="Commercial onboarding workspace summary retrieved.",
+        data=CommercialOnboardingSummaryResponse(**data),
+    )
 
 
 @router.post("/demo", response_model=APIResponse[DemoDataResponse])

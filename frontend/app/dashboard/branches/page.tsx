@@ -1,7 +1,8 @@
 "use client";
 
+import Link from "next/link";
 import { FormEvent, useEffect, useMemo, useState } from "react";
-import { Building2, Check, Loader2, Plus, RefreshCw, Save } from "lucide-react";
+import { ArrowRight, Building2, Check, Loader2, Plus, RefreshCw, Save } from "lucide-react";
 
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
@@ -22,6 +23,7 @@ export default function BranchesPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [savingId, setSavingId] = useState("");
   const [error, setError] = useState("");
+  const [welcomeFlow, setWelcomeFlow] = useState(false);
 
   const pending = useMemo(
     () => branches.filter((branch) => branch.review_status === "pending"),
@@ -41,6 +43,8 @@ export default function BranchesPage() {
       setIsLoading(false);
     }
   }
+
+  useEffect(() => { setWelcomeFlow(new URLSearchParams(window.location.search).get("welcome") === "1"); }, []);
 
   useEffect(() => { void load(); }, []);
 
@@ -104,6 +108,7 @@ export default function BranchesPage() {
       </div>
 
       {error ? <Alert variant="destructive"><AlertDescription>{error}</AlertDescription></Alert> : null}
+      {welcomeFlow && pending.length === 0 && !isLoading ? <div className="flex justify-end"><Link href="/dashboard/getting-started" className="inline-flex items-center gap-2 rounded-xl bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground">Continue guided setup<ArrowRight className="size-4"/></Link></div> : null}
 
       {pending.length ? (
         <Alert>

@@ -6,6 +6,7 @@ import type {
   FinanceImportResult,
   WorkingCapitalSummary,
   AICFOSignalsResponse,
+  AICFOConversationTurn,
 } from "@/types/analytics";
 
 async function upload(
@@ -71,11 +72,12 @@ export const analyticsService = {
     return (await api.get<ApiResponse<AICFOAnswer>>("/ai-cfo/industry-benchmark")).data.data;
   },
 
-  async askAiCfo(question: string, includeExternalContext = true): Promise<AICFOAnswer> {
+  async askAiCfo(question: string, includeExternalContext = true, conversation: AICFOConversationTurn[] = []): Promise<AICFOAnswer> {
     return (
       await api.post<ApiResponse<AICFOAnswer>>("/ai-cfo/ask", {
         question,
         include_external_context: includeExternalContext,
+        conversation: conversation.slice(-8),
       })
     ).data.data;
   },

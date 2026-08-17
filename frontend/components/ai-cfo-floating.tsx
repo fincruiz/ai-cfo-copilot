@@ -65,7 +65,11 @@ export function AICFOFloating() {
     setLoading(true);
     usageService.track("ai_question_submitted", { source: "floating_assistant" }); // question text deliberately excluded
     try {
-      const response = await analyticsService.askAiCfo(cleaned, liveContext);
+      const conversation = messages
+        .filter((message) => message.content && !(message.role === "assistant" && !message.result))
+        .map((message) => ({ role: message.role, content: message.content }))
+        .slice(-8);
+      const response = await analyticsService.askAiCfo(cleaned, liveContext, conversation);
       setMessages((current) => [...current, { role: "assistant", content: response.answer, result: response }]);
     } catch {
       setMessages((current) => [

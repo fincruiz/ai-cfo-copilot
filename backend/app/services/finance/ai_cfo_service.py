@@ -455,8 +455,180 @@ MANAGEMENT_QUESTION:
             })
         return {"signals": signals[:5], "generated_from_months": len(monthly)}
 
-    async def answer(self, company_id: UUID, question: str, include_external_context: bool = True) -> dict:
-        guidance = self._guidance(question)
+    @staticmethod
+    def _pct_change(current: Any, previous: Any) -> float | None:
+        try:
+            current_f = float(current or 0)
+            previous_f = float(previous or 0)
+        except (TypeError, ValueError):
+            return None
+        if abs(previous_f) < 0.000001:
+            return None
+        return ((current_f - previous_f) / abs(previous_f)) * 100
+
+    @classmethod
+    def _executive_finance_answer(cls, question: str, context: dict) -> tuple[str, dict | None] | None:
+        """Create the first-line management answer from deterministic finance context.
+
+        This deliberately handles the common CFO questions locally so the answer
+        remains useful even when external AI is unavailable.  It never fabricates
+        values: every figure comes from monthly_actuals / prepared statements.
+        """
+        q = question.lower()
+        monthly = context.get("monthly_actuals") or []
+        company = context.get("company") or {}
+        currency = company.get("currency") or "AUD"
+
+        if not monthly:
+            return None
+
+        latest = monthly[-1]
+        previous = monthly[-2] if len(monthly) >= 2 else None
+        period = str(latest.get("month") or latest.get("period") or "latest period")
+
+        def number(row: dict | None, key: str) -> float:
+            if not row:
+                return 0.0
+            try:
+                return float(row.get(key) or 0)
+            except (TypeError, ValueError):
+                return 0.0
+
+        revenue = number(latest, "revenue")
+        gross_profit = number(latest, "gross_profit")
+        net_profit = number(latest, "net_profit")
+        gp_margin = (gross_profit / revenue * 100) if revenue else None
+
+        revenue_change = cls._pct_change(revenue, number(previous, "revenue")) if previous else None
+        profit_change = cls._pct_change(net_profit, number(previous, "net_profit")) if previous else None
+
+        if "branch" in q or "location" in q or "site performance" in q:
+            branches = context.get("branch_comparison") or []
+            if branches:
+                ranked = sorted(
+                    branches,
+                    key=lambda row: float(row.get("net_profit") or 0),
+                )
+                weakest = ranked[0]
+                strongest = ranked[-1]
+                weak_name = str(weakest.get("branch_name") or weakest.get("branch_code") or "Lowest branch")
+                strong_name = str(strongest.get("branch_name") or strongest.get("branch_code") or "Top branch")
+                weak_profit = float(weakest.get("net_profit") or 0)
+                strong_profit = float(strongest.get("net_profit") or 0)
+                weak_revenue = float(weakest.get("revenue") or 0)
+                weak_margin = (weak_profit / weak_revenue * 100) if weak_revenue else None
+                answer = (
+                    f"{weak_name} is the weakest branch by net profit at {currency} {weak_profit:,.2f}. "
+                    f"{strong_name} is the strongest at {currency} {strong_profit:,.2f}."
+                )
+                if weak_margin is not None:
+                    answer += f" {weak_name}'s net margin is {weak_margin:.1f}%."
+                answer += " Review its revenue mix, gross margin and operating-cost structure before assuming the issue is volume alone."
+                return answer, {"label": "Open Branch Performance", "route": "/dashboard/visual-bi"}
+
+        if any(term in q for term in ("cash pressure", "pressure on cash", "cash down", "cash tight", "cash getting tied", "cash tied")):
+            drivers: list[str] = []
+            ar = context.get("ar_summary") or {}
+            ap = context.get("ap_summary") or {}
+            if isinstance(ar, dict):
+                overdue_ar = float(ar.get("overdue_amount") or 0)
+                overdue_pct = float(ar.get("overdue_percent") or 0)
+                if overdue_ar > 0:
+                    drivers.append(f"overdue receivables are {currency} {overdue_ar:,.2f} ({overdue_pct:.1f}% of AR)")
+            if profit_change is not None and profit_change < 0:
+                drivers.append(f"net profit is down {abs(profit_change):.1f}% period on period")
+            if isinstance(ap, dict):
+                overdue_ap = float(ap.get("overdue_amount") or 0)
+                overdue_ap_pct = float(ap.get("overdue_percent") or 0)
+                if overdue_ap > 0:
+                    drivers.append(f"{overdue_ap_pct:.1f}% of AP is overdue, indicating payment-timing pressure")
+            bs = context.get("balance_sheet") or {}
+            if isinstance(bs, dict):
+                current_assets = float(bs.get("current_assets") or 0)
+                current_liabilities = float(bs.get("current_liabilities") or 0)
+                if current_assets and current_liabilities:
+                    ratio = current_assets / current_liabilities
+                    if ratio < 1.2:
+                        drivers.append(f"the current-asset/current-liability coverage is {ratio:.2f}x")
+            if drivers:
+                return (
+                    "The clearest cash-pressure indicators in the loaded evidence are: "
+                    + "; ".join(drivers[:3])
+                    + ". These are indicators rather than a fabricated cash-flow bridge; use Working Capital and the Three-Way Forecast to quantify the cash timing effect.",
+                    {"label": "Open Working Capital", "route": "/dashboard/working-capital"},
+                )
+
+        if any(term in q for term in ("why did profit", "profit change", "profit up", "profit down", "what drove profit", "profitability")):
+            parts = [f"For {period}, net profit is {currency} {net_profit:,.2f}"]
+            if profit_change is not None:
+                direction = "up" if profit_change >= 0 else "down"
+                parts[0] += f", {direction} {abs(profit_change):.1f}% from the previous period"
+            parts[0] += "."
+            if revenue_change is not None:
+                rev_direction = "grew" if revenue_change >= 0 else "declined"
+                parts.append(f"Revenue {rev_direction} {abs(revenue_change):.1f}% over the same comparison.")
+            if gp_margin is not None:
+                parts.append(f"Gross margin is {gp_margin:.1f}%.")
+            if revenue_change is not None and profit_change is not None:
+                gap = profit_change - revenue_change
+                if gap <= -5:
+                    parts.append("Profit is lagging the revenue movement, so margin or operating-cost leakage deserves management attention.")
+                elif gap >= 5:
+                    parts.append("Profit is moving ahead of revenue, indicating positive operating leverage or margin improvement.")
+            return " ".join(parts), {"label": "Open Analytics", "route": "/dashboard/analytics"}
+
+        if any(term in q for term in ("revenue trend", "revenue trending", "sales trend", "revenue growth", "how is revenue")):
+            answer = f"Revenue for {period} is {currency} {revenue:,.2f}."
+            if revenue_change is not None:
+                answer += f" That is {'up' if revenue_change >= 0 else 'down'} {abs(revenue_change):.1f}% from the previous period."
+            if gp_margin is not None:
+                answer += f" Gross margin is {gp_margin:.1f}%, so review the trend together with margin rather than revenue alone."
+            return answer, {"label": "Review Revenue & Margin", "route": "/dashboard/analytics"}
+
+        if any(term in q for term in ("management focus", "management priority", "focus on today", "biggest priority")):
+            findings: list[str] = []
+            if revenue_change is not None and abs(revenue_change) >= 5:
+                findings.append(f"revenue is {'up' if revenue_change >= 0 else 'down'} {abs(revenue_change):.1f}% period on period")
+            if profit_change is not None and abs(profit_change) >= 5:
+                findings.append(f"net profit is {'up' if profit_change >= 0 else 'down'} {abs(profit_change):.1f}%")
+            ar = context.get("ar_summary") or {}
+            overdue_pct = float(ar.get("overdue_percent") or 0) if isinstance(ar, dict) else 0.0
+            if overdue_pct >= 20:
+                findings.append(f"{overdue_pct:.1f}% of receivables are overdue")
+            if findings:
+                return "Management should focus first on " + "; ".join(findings[:3]) + ". Use the evidence below to validate the movement, then open the relevant analysis before changing the forecast.", {"label": "Open Management Analytics", "route": "/dashboard/analytics"}
+
+        return None
+
+    @staticmethod
+    def _resolve_follow_up(question: str, conversation: list[dict[str, str]] | None) -> str:
+        """Preserve the immediately preceding management topic for short follow-ups."""
+        cleaned = question.strip()
+        if not conversation:
+            return cleaned
+        previous_user = next(
+            (
+                str(turn.get("content") or "").strip()
+                for turn in reversed(conversation[-8:])
+                if turn.get("role") == "user" and str(turn.get("content") or "").strip()
+            ),
+            "",
+        )
+        if not previous_user:
+            return cleaned
+        q = cleaned.lower()
+        markers = (
+            "which branch", "which one", "show me", "show that", "show the trend",
+            "why", "what about", "and cash", "and profit", "and revenue",
+            "break that down", "what drove that", "compare them", "how about",
+        )
+        if len(cleaned.split()) <= 8 or any(q.startswith(item) for item in markers):
+            return f"{previous_user}. Follow-up: {cleaned}"
+        return cleaned
+
+    async def answer(self, company_id: UUID, question: str, include_external_context: bool = True, conversation: list[dict[str, str]] | None = None) -> dict:
+        interpreted_question = self._resolve_follow_up(question, conversation)
+        guidance = self._guidance(interpreted_question)
         if guidance:
             return {
                 **guidance,
@@ -469,24 +641,46 @@ MANAGEMENT_QUESTION:
                 ],
                 "sources": [],
                 "external_context_used": False,
-                "visualization": None, "evidence": [], "confidence": "high", "confidence_reason": "Platform guidance does not depend on financial estimates.", "decision_handoff": self._decision_handoff(question),
+                "visualization": None, "evidence": [], "confidence": "high", "confidence_reason": "Platform guidance does not depend on financial estimates.", "decision_handoff": self._decision_handoff(interpreted_question), "interpreted_question": interpreted_question,
             }
 
         company, context = await self._company_context(company_id)
-        evidence = self._evidence(context, question)
+        evidence = self._evidence(context, interpreted_question)
         confidence, confidence_reason = self._confidence(context)
-        decision_handoff = self._decision_handoff(question)
-        q = question.lower()
-        visualization = self._visualization_for_question(question, context)
+        decision_handoff = self._decision_handoff(interpreted_question)
+        q = interpreted_question.lower()
+        visualization = self._visualization_for_question(interpreted_question, context)
         overview = await self.analytics.overview(company_id)
         pnl = await self.reporting.pnl(company_id)
         bs = await self.reporting.balance_sheet(company_id)
         ar = overview.get("ar_summary")
         ap = overview.get("ap_summary")
 
-        use_web = include_external_context and self._external_context_useful(question)
+        deterministic = self._executive_finance_answer(interpreted_question, context)
+        if deterministic and not (include_external_context and self._external_context_useful(interpreted_question)):
+            answer, deterministic_action = deterministic
+            return {
+                "answer": answer,
+                "mode": "evidence_backed_management_answer",
+                "suggested_questions": [
+                    "What should management focus on next?",
+                    "Show me the trend behind this movement.",
+                    "What is putting pressure on cash?",
+                    "Should I model a scenario from this?",
+                ],
+                "sources": [],
+                "action": deterministic_action,
+                "external_context_used": False,
+                "visualization": visualization,
+                "evidence": evidence,
+                "confidence": confidence,
+                "confidence_reason": confidence_reason,
+                "decision_handoff": decision_handoff, "interpreted_question": interpreted_question,
+            }
+
+        use_web = include_external_context and self._external_context_useful(interpreted_question)
         if use_web:
-            enriched = await self._openai_web_answer(question, context)
+            enriched = await self._openai_web_answer(interpreted_question, context)
             if enriched:
                 answer, sources = enriched
                 return {
@@ -502,7 +696,7 @@ MANAGEMENT_QUESTION:
                     "action": None,
                     "external_context_used": True,
                     "visualization": visualization,
-                    "evidence": evidence, "confidence": confidence, "confidence_reason": confidence_reason, "decision_handoff": decision_handoff,
+                    "evidence": evidence, "confidence": confidence, "confidence_reason": confidence_reason, "decision_handoff": decision_handoff, "interpreted_question": interpreted_question,
                 }
 
         if any(word in q for word in ("receivable", "customer", "collection", "ar ")):
@@ -567,5 +761,5 @@ MANAGEMENT_QUESTION:
             "action": action,
             "external_context_used": False,
             "visualization": visualization,
-            "evidence": evidence, "confidence": confidence, "confidence_reason": confidence_reason, "decision_handoff": decision_handoff,
+            "evidence": evidence, "confidence": confidence, "confidence_reason": confidence_reason, "decision_handoff": decision_handoff, "interpreted_question": interpreted_question,
         }

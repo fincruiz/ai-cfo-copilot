@@ -23,6 +23,7 @@ export default function IntegrationsPage() {
   const [tallyToken, setTallyToken] = useState("");
   const [remove, setRemove] = useState<Provider | null>(null);
   const [tenantChoice, setTenantChoice] = useState<Record<string, string>>({});
+  const [welcomeFlow, setWelcomeFlow] = useState(false);
 
   const load = async () => {
     try {
@@ -33,7 +34,7 @@ export default function IntegrationsPage() {
     }
   };
 
-  useEffect(() => { void load(); }, []);
+  useEffect(() => { setWelcomeFlow(new URLSearchParams(window.location.search).get("welcome") === "1"); void load(); }, []);
 
   const connectXero = async () => {
     try {
@@ -121,6 +122,8 @@ export default function IntegrationsPage() {
       </div>
 
       {error ? <div className="rounded-xl border border-destructive/30 bg-destructive/5 p-4 text-sm text-destructive"><p>{error}</p>{supportId ? <p className="mt-2 text-xs opacity-80">Support ID: <code>{supportId}</code></p> : null}<Link href="/dashboard/support" className="mt-3 inline-flex text-xs font-semibold underline">Open Support & diagnostics</Link></div> : null}
+
+      {welcomeFlow && items.some((item) => item.status === "connected" && item.last_synced_at) ? <div className="flex items-center justify-between gap-4 rounded-2xl border border-primary/20 bg-primary/5 p-4"><div><p className="font-semibold">Connection is active</p><p className="text-sm text-muted-foreground">Continue the guided review to see whether enough finance data is available for mapping and management intelligence.</p></div><Link href="/dashboard/getting-started" className="shrink-0 rounded-xl bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground">Continue setup</Link></div> : null}
 
       {items.length ? <div className="grid gap-3 rounded-2xl border bg-muted/20 p-4 sm:grid-cols-3">
         <div><p className="text-xs uppercase tracking-[.12em] text-muted-foreground">Connection health</p><p className="mt-1 font-semibold">{items.filter((item) => item.status === "connected" && item.last_sync_status !== "failed").length} healthy</p></div>

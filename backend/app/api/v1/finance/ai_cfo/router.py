@@ -25,8 +25,9 @@ async def ask_ai_cfo(
     request: AICFOQuestionRequest,
     current_company: Annotated[Company, Depends(get_current_company)],
     service: Annotated[AICFOService, Depends(get_service)],
+    _entitlement: Annotated[object, Depends(require_entitlement("ai_cfo"))],
 ):
-    result = await service.answer(current_company.id, request.question, request.include_external_context)
+    result = await service.answer(current_company.id, request.question, request.include_external_context, [turn.model_dump() for turn in request.conversation])
     return APIResponse(
         message="AI CFO response generated.",
         data=AICFOAnswerResponse(**result),
@@ -37,6 +38,7 @@ async def ask_ai_cfo(
 async def executive_brief(
     current_company: Annotated[Company, Depends(get_current_company)],
     service: Annotated[AICFOService, Depends(get_service)],
+    _entitlement: Annotated[object, Depends(require_entitlement("ai_cfo"))],
 ):
     question = "Give me a proactive executive CFO briefing. Identify the 3 most material internal movements or risks in the loaded company data, connect them to relevant current economic or industry conditions when useful, and recommend the 3 highest-priority management actions for the next 30-90 days."
     result = await service.answer(current_company.id, question, True)
@@ -57,6 +59,7 @@ async def industry_benchmark(
 async def proactive_signals(
     current_company: Annotated[Company, Depends(get_current_company)],
     service: Annotated[AICFOService, Depends(get_service)],
+    _entitlement: Annotated[object, Depends(require_entitlement("ai_cfo"))],
 ):
     result = await service.proactive_signals(current_company.id)
     return APIResponse(message="Proactive finance signals generated.", data=AICFOSignalsResponse(**result))

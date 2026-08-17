@@ -1,3 +1,5 @@
+from typing import Any
+
 from pydantic import BaseModel
 
 
@@ -61,3 +63,35 @@ class LaunchReadinessResponse(BaseModel):
     connected_sources: int
     healthy_sources: int
     ready_for_management_use: bool
+
+
+class CommercialOnboardingStep(BaseModel):
+    key: str
+    label: str
+    complete: bool
+
+
+class CommercialOnboardingSummaryResponse(BaseModel):
+    stage: str
+    ready_for_intelligence: bool
+    progress_percent: int
+    completed_steps: int
+    total_steps: int
+    steps: list[CommercialOnboardingStep]
+    transaction_count: int
+    account_count: int
+    mapping_count: int
+    unmapped_account_count: int
+    branch_count: int
+    pending_branch_count: int
+    months_history: int
+    period_start: str | None = None
+    period_end: str | None = None
+    financial_confidence_score: float | None = None
+    financial_confidence_grade: str | None = None
+    financial_checks: list[dict[str, Any]] = []
+    latest_ingestion: dict[str, Any] | None = None
+    briefing: dict[str, Any] | None = None
+    briefing_error: str | None = None
+    next_path: str
+    next_label: str

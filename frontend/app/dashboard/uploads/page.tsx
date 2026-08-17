@@ -36,8 +36,11 @@ export default function UploadsPage() {
   const [job, setJob] = useState<IngestionJob | null>(null);
   const [jobs, setJobs] = useState<IngestionJob[]>([]);
   const [preview, setPreview] = useState<string[][]>([]);
+  const [welcomeFlow, setWelcomeFlow] = useState(false);
   const detected = detectHeader(preview[0] ?? []);
   const detectedCount = Object.values(detected).filter(Boolean).length;
+
+  useEffect(() => { setWelcomeFlow(new URLSearchParams(window.location.search).get("welcome") === "1"); }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -139,7 +142,7 @@ export default function UploadsPage() {
             <div className="h-2 overflow-hidden rounded-full bg-muted"><div className="h-full bg-primary transition-all" style={{width:`${job.progress_percent}%`}}/></div>
             <div className="grid gap-3 sm:grid-cols-4">{[["Progress",`${job.progress_percent}%`],["Rows",job.total_rows?.toLocaleString() ?? "—"],["Inserted",job.inserted_rows.toLocaleString()],["Status",job.status.replaceAll("_"," ")]].map(([label,value])=><div key={String(label)} className="rounded-xl border p-3"><p className="text-xs text-muted-foreground">{label}</p><p className="mt-1 font-semibold capitalize">{value}</p></div>)}</div>
             {job.error_message ? <Alert variant="destructive"><AlertDescription>{job.error_message}</AlertDescription></Alert> : null}
-            {job.status === "completed" ? <div className="flex flex-wrap gap-3"><Link href="/dashboard/mapping" className={buttonVariants()}>Review account mappings</Link><Link href="/dashboard/reports" className={buttonVariants({variant:"outline"})}>View reports</Link></div> : null}
+            {job.status === "completed" ? <div className="flex flex-wrap gap-3">{welcomeFlow ? <Link href="/dashboard/getting-started" className={buttonVariants()}>Continue guided setup</Link> : <Link href="/dashboard/mapping" className={buttonVariants()}>Review account mappings</Link>}<Link href="/dashboard/reports" className={buttonVariants({variant:"outline"})}>View reports</Link></div> : null}
             {job.status === "failed" ? <Button variant="outline" onClick={async()=>setJob(await financeService.retryIngestionJob(job.id))}><RefreshCcw className="size-4"/>Retry job</Button> : null}
           </CardContent>
         </Card>
