@@ -25,6 +25,7 @@ from app.api.v1.usage.router import router as usage_router
 from app.api.v1.subscription.router import router as subscription_router
 from app.api.v1.markets.router import router as markets_router
 from app.api.v1.billing.router import router as billing_router
+from app.api.v1.operations.router import router as operations_router
 api_router=APIRouter()
 api_router.include_router(health_router)
 api_router.include_router(auth_router)
@@ -54,3 +55,5 @@ api_router.include_router(usage_router)
 api_router.include_router(subscription_router)
 api_router.include_router(markets_router)
 api_router.include_router(billing_router)
+
+api_router.include_router(operations_router)

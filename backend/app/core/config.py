@@ -18,6 +18,13 @@ class Settings(BaseSettings):
     import_max_upload_bytes: int = 1024 * 1024 * 1024  # 1 GiB
     import_chunk_rows: int = 2000
     import_worker_poll_seconds: float = 2.0
+    # Operational hardening thresholds.
+    import_staging_persistent: bool = False
+    ingestion_stale_minutes: int = 30
+    operational_failure_window_hours: int = 24
+    slow_request_ms: int = 1500
+    database_degraded_ms: int = 500
+    database_unhealthy_ms: int = 1500
 
     supabase_url: str | None = None
     supabase_publishable_key: str | None = None
