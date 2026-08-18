@@ -10,6 +10,7 @@ from app.schemas.auth import (
     SignupRequest,
     SignupResponse,
     TokenResponse,
+    ResendConfirmationRequest, PasswordRecoveryRequest, PasswordUpdateRequest,
 )
 from app.schemas.responses import APIResponse
 from app.services.auth_service import AuthService
@@ -114,3 +115,18 @@ async def get_me(
         message="Authenticated user retrieved successfully.",
         data=current_user,
     )
+
+@router.post("/resend-confirmation",response_model=APIResponse[dict])
+async def resend_confirmation(request: ResendConfirmationRequest):
+    await AuthService().resend_confirmation(email=request.email)
+    return APIResponse(message="If the account is awaiting confirmation, a new confirmation email has been sent.",data={"sent":True})
+
+@router.post("/forgot-password",response_model=APIResponse[dict])
+async def forgot_password(request: PasswordRecoveryRequest):
+    await AuthService().request_password_recovery(email=request.email)
+    return APIResponse(message="If an account exists for that email, password reset instructions have been sent.",data={"sent":True})
+
+@router.post("/reset-password",response_model=APIResponse[dict])
+async def reset_password(request: PasswordUpdateRequest):
+    await AuthService().update_password(access_token=request.access_token,password=request.password)
+    return APIResponse(message="Password updated successfully.",data={"updated":True})

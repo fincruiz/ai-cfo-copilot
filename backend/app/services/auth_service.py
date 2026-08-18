@@ -6,6 +6,13 @@ from app.core.config import settings
 from app.core.exceptions import ApplicationError
 
 
+def _auth_redirect_url(path: str) -> str:
+    root = settings.auth_frontend_url.rstrip("/")
+    if settings.is_production and ("localhost" in root or "127.0.0.1" in root or not root.startswith("https://")):
+        raise RuntimeError("AUTH_FRONTEND_URL must be a public HTTPS URL in production.")
+    return f"{root}{path}"
+
+
 class AuthService:
     def __init__(self) -> None:
         if not settings.supabase_url:
@@ -36,6 +43,7 @@ class AuthService:
         payload = {
             "email": email,
             "password": password,
+            "email_redirect_to": _auth_redirect_url("/auth/callback?next=/onboarding"),
             "data": {
                 "full_name": full_name,
                 "company_details": company_details,
@@ -174,3 +182,19 @@ class AuthService:
             )
 
         return response.json()
+
+    async def resend_confirmation(self, *, email: str) -> None:
+        url=f"{self.base_url}/auth/v1/resend"; headers={"apikey":self.api_key,"Content-Type":"application/json"}
+        payload={"type":"signup","email":email,"options":{"email_redirect_to":_auth_redirect_url("/auth/callback?next=/onboarding")}}
+        async with httpx.AsyncClient(timeout=15.0) as client: response=await client.post(url,headers=headers,json=payload)
+        if response.status_code not in {200,201}: raise ApplicationError(message="Unable to resend the confirmation email right now.",error_code="AUTH_RESEND_FAILED",status_code=422)
+
+    async def request_password_recovery(self, *, email: str) -> None:
+        url=f"{self.base_url}/auth/v1/recover"; headers={"apikey":self.api_key,"Content-Type":"application/json"}
+        async with httpx.AsyncClient(timeout=15.0) as client: response=await client.post(url,headers=headers,json={"email":email,"redirect_to":_auth_redirect_url("/auth/callback?next=/auth/reset-password")})
+        if response.status_code>=500: raise ApplicationError(message="Authentication service is unavailable.",error_code="AUTH_SERVICE_UNAVAILABLE",status_code=503)
+
+    async def update_password(self, *, access_token: str, password: str) -> None:
+        url=f"{self.base_url}/auth/v1/user"; headers={"apikey":self.api_key,"Authorization":f"Bearer {access_token}","Content-Type":"application/json"}
+        async with httpx.AsyncClient(timeout=15.0) as client: response=await client.put(url,headers=headers,json={"password":password})
+        if response.status_code!=200: raise ApplicationError(message="This password reset link is invalid or has expired. Request a new one.",error_code="PASSWORD_RESET_INVALID",status_code=401)

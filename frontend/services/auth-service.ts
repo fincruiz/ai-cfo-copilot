@@ -93,6 +93,11 @@ export const authService = {
     return response.data.data;
   },
 
+  persistSession(tokens: AuthTokens): void { persistTokens(tokens); },
+  async resendConfirmation(email:string):Promise<void>{await api.post("/auth/resend-confirmation",{email});},
+  async forgotPassword(email:string):Promise<void>{await api.post("/auth/forgot-password",{email});},
+  async resetPassword(accessToken:string,password:string):Promise<void>{await api.post("/auth/reset-password",{access_token:accessToken,password});},
+
   logout(): void {
     if (typeof window === "undefined") return;
 

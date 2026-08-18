@@ -103,6 +103,7 @@ export default function SignupPage() {
   const [done, setDone] = useState(false);
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
+  const [resending,setResending]=useState(false); const [resendMessage,setResendMessage]=useState("");
   const [logoPreview, setLogoPreview] = useState("");
 
   const [form, setForm] = useState({
@@ -233,9 +234,7 @@ export default function SignupPage() {
             </CardDescription>
           </CardHeader>
           <CardContent>
-            <Button size="lg" className="h-14 w-full text-base" onClick={() => router.push("/login")}>
-              Go to sign in
-            </Button>
+            <div className="grid gap-3"><Button size="lg" className="h-14 w-full text-base" onClick={() => router.push("/login")}>Go to sign in</Button><Button variant="outline" disabled={resending} onClick={async()=>{setResending(true);setResendMessage("");try{await authService.resendConfirmation(form.email);setResendMessage("A fresh confirmation email has been requested.")}catch(e){setResendMessage(getApiErrorMessage(e))}finally{setResending(false)}}}>{resending?"Sending…":"Resend confirmation email"}</Button>{resendMessage?<p className="text-center text-sm text-muted-foreground">{resendMessage}</p>:null}</div>
           </CardContent>
         </Card>
       </main>

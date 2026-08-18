@@ -22,6 +22,7 @@ class Settings(BaseSettings):
     supabase_url: str | None = None
     supabase_publishable_key: str | None = None
     supabase_service_role_key: str | None = None
+    auth_frontend_url: str = "http://localhost:3000"
 
     openai_api_key: str | None = None
     openai_model: str = "gpt-5.6"

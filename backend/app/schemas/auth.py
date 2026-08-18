@@ -44,3 +44,14 @@ class CurrentUser(BaseModel):
     role: str | None = None
     aud: str | None = None
     user_metadata: dict[str, Any] = {}
+
+
+class ResendConfirmationRequest(BaseModel):
+    email: EmailStr
+
+class PasswordRecoveryRequest(BaseModel):
+    email: EmailStr
+
+class PasswordUpdateRequest(BaseModel):
+    access_token: str = Field(min_length=1)
+    password: str = Field(min_length=8)
