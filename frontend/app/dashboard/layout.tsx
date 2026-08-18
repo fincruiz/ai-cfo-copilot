@@ -7,7 +7,7 @@ import {
   BarChart3, BrainCircuit, PlugZap, Building2, ChevronDown, ChevronLeft, ChevronRight,
   FileBarChart, FileInput, FileText, Gauge, Handshake, History, LayoutDashboard, LogOut,
   PanelLeftClose, PanelLeftOpen, Presentation, Settings, ShieldCheck, SlidersHorizontal, CreditCard,
-  TrendingUp, Upload, UserRound, WandSparkles, Search, Sparkles, Menu, X, Compass, Minimize2, LifeBuoy,
+  TrendingUp, Upload, UserRound, WandSparkles, Search, Sparkles, Menu, X, Compass, Minimize2, LifeBuoy, MessageSquareText,
 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -21,6 +21,7 @@ import { marketService, type MarketProfile } from "@/services/market-service";
 import { usageService } from "@/services/usage-service";
 import { WorkspaceScopeSelector } from "@/components/workspace-scope-selector";
 import { ContextualAIBar } from "@/components/contextual-ai-bar";
+import { BetaFeedbackButton } from "@/components/beta-feedback-button";
 
 type NavItem = { label: string; href: string; icon: typeof LayoutDashboard; description: string; keywords?: string };
 type NavGroup = { label: string; items: NavItem[]; defaultOpen?: boolean };
@@ -67,6 +68,7 @@ const navigationGroups: NavGroup[] = [
     { label: "Access & permissions", href: "/dashboard/access", icon: ShieldCheck, description: "Manage workspace members, roles and access rights.", keywords: "roles users security permissions" },
     { label: "Audit trail", href: "/dashboard/audit", icon: History, description: "Review important workspace actions such as uploads, resets and configuration changes.", keywords: "audit history activity" },
     { label: "Support & diagnostics", href: "/dashboard/support", icon: LifeBuoy, description: "Check platform, database and workspace health before contacting support.", keywords: "support help status health diagnostics" },
+    { label: "Beta feedback", href: "/dashboard/beta-feedback", icon: MessageSquareText, description: "Review tester feedback, P0/P1 launch issues and beta usage signals.", keywords: "beta feedback testing bugs launch issues" },
   ]},
 ];
 
@@ -174,6 +176,7 @@ export default function DashboardLayout({ children }: Readonly<{ children: React
       </header>
       <main className="fincruiz-scroll-stable min-h-0 flex-1 overflow-y-auto overscroll-contain p-4 sm:p-6 lg:p-8"><div className="min-h-full">{children}<ContextualAIBar/></div></main>
     </div>
+    <BetaFeedbackButton/>
     <AICFOFloating/>
     {explorerOpen ? <FeatureExplorer capabilities={capabilities} onClose={() => setExplorerOpen(false)}/> : null}
   </div>;

@@ -9,11 +9,11 @@ import { usageService } from "@/services/usage-service";
 import { InsightChart } from "@/components/insight-chart";
 import type { AICFOAnswer, AICFOConversationTurn } from "@/types/analytics";
 
-const prompts = [
-  "What should management focus on today?",
-  "Why did profit change this month?",
-  "Can we afford to hire 3 people?",
-  "What is putting pressure on cash?",
+const promptGroups = [
+  {label:"Understand performance",items:["Why did profit change this month?","Which branch is hurting margins?","What are my fastest-growing expenses?"]},
+  {label:"Improve cash",items:["What is putting pressure on cash?","Which customers are driving working-capital pressure?","What happens if debtor days improve by 10 days?"]},
+  {label:"Plan ahead",items:["Forecast the next 12 months.","Can we afford to hire 3 people?","What happens if revenue grows 15%?"]},
+  {label:"Challenge the business",items:["What should management focus on today?","What are the three biggest financial risks?","What should the board discuss next?"]},
 ];
 
 export function AskFinCruizDashboard() {
@@ -62,8 +62,8 @@ export function AskFinCruizDashboard() {
             <div><p className="text-xs font-semibold uppercase tracking-[.18em] text-indigo-700 dark:text-indigo-300">Conversational BI</p><h2 className="text-xl font-semibold">Ask FinCruiz</h2></div>
           </div>
           <p className="mt-4 text-sm leading-6 text-muted-foreground">Ask the management question in plain English. FinCruiz selects the relevant finance evidence, visualizes it where useful, and routes decisions into the appropriate model.</p>
-          <div className="mt-5 space-y-2">
-            {prompts.map((prompt) => <button key={prompt} type="button" onClick={() => void ask(prompt)} className="flex w-full items-center justify-between gap-3 rounded-2xl border border-indigo-200 bg-white/80 px-3.5 py-3 text-left text-xs font-medium text-slate-700 transition hover:-translate-y-0.5 hover:border-indigo-400 hover:shadow-sm dark:border-white/10 dark:bg-white/5 dark:text-slate-200"><span>{prompt}</span><ArrowRight className="size-3.5 shrink-0"/></button>)}
+          <div className="mt-5 space-y-4">
+            {promptGroups.map((group)=><div key={group.label}><p className="mb-2 text-[10px] font-bold uppercase tracking-[.14em] text-muted-foreground">{group.label}</p><div className="space-y-2">{group.items.map((prompt) => <button key={prompt} type="button" onClick={() => void ask(prompt)} className="flex w-full items-center justify-between gap-3 rounded-2xl border border-indigo-200 bg-white/80 px-3.5 py-2.5 text-left text-xs font-medium text-slate-700 transition hover:-translate-y-0.5 hover:border-indigo-400 hover:shadow-sm dark:border-white/10 dark:bg-white/5 dark:text-slate-200"><span>{prompt}</span><ArrowRight className="size-3.5 shrink-0"/></button>)}</div></div>)}
           </div>
         </div>
 

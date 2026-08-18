@@ -26,6 +26,8 @@ from app.api.v1.subscription.router import router as subscription_router
 from app.api.v1.markets.router import router as markets_router
 from app.api.v1.billing.router import router as billing_router
 from app.api.v1.operations.router import router as operations_router
+from app.api.v1.beta_feedback.router import router as beta_feedback_router
+from app.api.v1.demo.router import router as demo_router
 api_router=APIRouter()
 api_router.include_router(health_router)
 api_router.include_router(auth_router)
@@ -57,3 +59,5 @@ api_router.include_router(markets_router)
 api_router.include_router(billing_router)
 
 api_router.include_router(operations_router)
+api_router.include_router(beta_feedback_router)
+api_router.include_router(demo_router)
