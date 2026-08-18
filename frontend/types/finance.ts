@@ -234,3 +234,30 @@ export interface IngestionJob {
   valid_rows?: number | null; invalid_rows?: number | null; inserted_rows: number; file_upload_id?: string | null;
   error_message?: string | null; attempts: number; created_at: string; started_at?: string | null; completed_at?: string | null; updated_at: string;
 }
+
+
+export interface FinanceReliabilityCheck {
+  key: string;
+  label: string;
+  status: "pass" | "warning" | "fail" | string;
+  detail: string;
+  action?: string | null;
+  category: string;
+  blocking: boolean;
+}
+
+export interface FinanceReliability {
+  status: "ready" | "attention" | "blocked" | string;
+  score: number;
+  pass_count: number;
+  warning_count: number;
+  fail_count: number;
+  checks: FinanceReliabilityCheck[];
+  active_upload_id?: string | null;
+  first_transaction_date?: string | null;
+  last_transaction_date?: string | null;
+  assurance_score: number;
+  assurance_grade: string;
+  certified_at: string;
+  caveat: string;
+}

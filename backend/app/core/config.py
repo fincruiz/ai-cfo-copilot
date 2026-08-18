@@ -31,6 +31,7 @@ class Settings(BaseSettings):
 
     # Commercial billing. Keep provider secrets server-side only.
     billing_frontend_url: str = "http://localhost:3000"
+    billing_allow_live_payments: bool = False
     stripe_secret_key: str | None = None
     stripe_webhook_secret: str | None = None
     stripe_starter_monthly_price_id: str | None = None

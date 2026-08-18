@@ -35,3 +35,25 @@ class BillingPortalOut(BaseModel):
 class BillingWebhookOut(BaseModel):
     received: bool = True
     duplicate: bool = False
+
+
+class BillingReadinessCheckOut(BaseModel):
+    key: str
+    label: str
+    status: Literal["ready", "attention", "blocked"]
+    detail: str
+
+
+class BillingReadinessOut(BaseModel):
+    provider: BillingProviderName
+    mode: Literal["test", "live", "unknown"]
+    status: Literal["ready", "attention", "blocked"]
+    checks: list[BillingReadinessCheckOut]
+    recent_verified_events: int = 0
+    last_verified_event_at: str | None = None
+
+
+class BillingEventSummaryOut(BaseModel):
+    provider: str
+    event_type: str
+    created_at: str

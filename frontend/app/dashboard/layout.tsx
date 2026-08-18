@@ -55,6 +55,7 @@ const navigationGroups: NavGroup[] = [
   { label: "Data & organization", items: [
     { label: "Integration Hub", href: "/dashboard/integrations", icon: PlugZap, description: "Connect systems such as Xero, Zoho Books and Tally to FinCruiz.", keywords: "xero zoho tally erp connection" },
     { label: "Upload data", href: "/dashboard/uploads", icon: Upload, description: "Upload the General Ledger and validate its structure before analysis.", keywords: "gl general ledger csv" },
+    { label: "Data reliability", href: "/dashboard/data-reliability", icon: ShieldCheck, description: "Certify the active ledger, mappings, reconciliations, branches, lineage and ingestion health before relying on management outputs.", keywords: "reliability assurance reconciliation data quality certification finance truth" },
     { label: "Import Centre", href: "/dashboard/import-center", icon: FileInput, description: "Load supporting finance datasets such as AR, AP and Chart of Accounts.", keywords: "ar ap coa import" },
     { label: "Account mapping", href: "/dashboard/mapping", icon: WandSparkles, description: "Map source accounts into consistent reporting groups used by FinCruiz.", keywords: "coa mapping accounts" },
     { label: "Branches", href: "/dashboard/branches", icon: Building2, description: "Manage branches or business units and analyse performance across them.", keywords: "branch division business unit" },

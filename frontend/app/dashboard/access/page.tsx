@@ -10,9 +10,9 @@ type Member={id:string;user_id:string;role:string;is_active:boolean;joined_at:st
 const roleOptions=["admin","cfo","finance_manager","accountant","board_member","viewer"];
 export default function AccessPage(){
   const [a,setA]=useState<Access|null>(null);const [members,setMembers]=useState<Member[]>([]);const [saving,setSaving]=useState("");const [error,setError]=useState("");
-  async function load(){setError("");try{const [access,people]=await Promise.all([companyService.getAccess(),companyService.getMembers()]);setA(access);setMembers(people)}catch(e){setError(e instanceof Error?e.message:"Unable to load access controls.")}}
+  async function load(){setError("");try{const [access,people]=await Promise.all([companyService.accessMe(),companyService.accessMembers()]);setA(access);setMembers(people)}catch(e){setError(e instanceof Error?e.message:"Unable to load access controls.")}}
   useEffect(()=>{void load()},[]);
-  async function roleChange(id:string,role:string){setSaving(id);setError("");try{await companyService.updateMemberRole(id,role);await load()}catch(e){setError(e instanceof Error?e.message:"Unable to update role.")}finally{setSaving("")}}
+  async function roleChange(id:string,role:string){setSaving(id);setError("");try{await companyService.accessRole(id,role);await load()}catch(e){setError(e instanceof Error?e.message:"Unable to update role.")}finally{setSaving("")}}
   if(!a)return <div className="flex min-h-64 items-center justify-center"><Loader2 className="size-5 animate-spin"/></div>;
   const rows=[["View company finance",true],["Upload / change finance data",a.can_write_finance],["Reset individual finance modules",a.can_write_finance],["Reset all workspace finance data",a.can_reset_all],["Manage member roles",a.can_manage_members]] as const;
   return <div className="mx-auto max-w-6xl space-y-6"><div><p className="text-sm font-medium text-muted-foreground">Security & access</p><h1 className="mt-1 text-3xl font-semibold tracking-tight">People and permissions</h1><p className="mt-2 text-muted-foreground">Make access understandable: who can view, change, reset, or administer this workspace.</p></div>{error?<div className="rounded-xl border border-destructive/30 bg-destructive/5 p-3 text-sm text-destructive">{error}</div>:null}

@@ -64,4 +64,15 @@ export const companyService = {
   async updateMemberRole(memberId: string, role: string): Promise<void> {
     await api.patch(`/companies/me/members/${memberId}/role`, { role });
   },
+  async accessMe(){return (await api.get<ApiResponse<any>>("/access/me")).data.data;},
+  async accessMembers(){return (await api.get<ApiResponse<any[]>>("/access/members")).data.data;},
+  async accessInvitations(){return (await api.get<ApiResponse<any[]>>("/access/invitations")).data.data;},
+  async createAccessInvitation(payload:{email:string;role:string;expires_in_days?:number}){return (await api.post<ApiResponse<any>>("/access/invitations",payload)).data.data;},
+  async revokeAccessInvitation(id:string){await api.post(`/access/invitations/${id}/revoke`);},
+  async acceptAccessInvitation(token:string){return (await api.post<ApiResponse<any>>("/access/invitations/accept",{token})).data.data;},
+  async getPersonalProfile(){return (await api.get<ApiResponse<any>>("/access/profile")).data.data;},
+  async updatePersonalProfile(payload:{full_name:string;job_title?:string|null}){return (await api.put<ApiResponse<any>>("/access/profile",payload)).data.data;},
+  async accessRole(id:string,role:string){await api.patch(`/access/members/${id}/role`,{role});},
+  async deactivateAccessMember(id:string){await api.post(`/access/members/${id}/deactivate`);},
+
 };

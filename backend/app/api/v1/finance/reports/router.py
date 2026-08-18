@@ -20,7 +20,9 @@ from app.schemas.finance.reports import (
     TrialBalanceResponse,
 )
 from app.schemas.finance.assurance import FinancialAssuranceResponse
+from app.schemas.finance.reliability import FinanceReliabilityResponse
 from app.services.finance.assurance_service import FinancialAssuranceService
+from app.services.finance.reliability_service import FinanceReliabilityService
 from app.schemas.responses import APIResponse
 from app.services.finance.reporting_service import ReportingService
 
@@ -88,6 +90,18 @@ async def assurance(
     return APIResponse(
         message="Financial assurance checks completed.",
         data=FinancialAssuranceResponse(**result),
+    )
+
+
+@router.get("/reliability", response_model=APIResponse[FinanceReliabilityResponse])
+async def reliability(
+    current_company: Annotated[Company, Depends(get_current_company)],
+    svc: Annotated[ReportingService, Depends(service)],
+):
+    result = await FinanceReliabilityService(svc).certify(current_company.id)
+    return APIResponse(
+        message="Finance reliability certification completed.",
+        data=FinanceReliabilityResponse(**result),
     )
 
 

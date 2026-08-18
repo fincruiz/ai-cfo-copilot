@@ -193,6 +193,14 @@ export const financeService = {
     return (await api.post<ApiResponse<ForecastResult>>("/forecasts", payload)).data.data;
   },
 
+  async getFinanceReliability(): Promise<import("@/types/finance").FinanceReliability> {
+    return (
+      await api.get<ApiResponse<import("@/types/finance").FinanceReliability>>(
+        "/reports/reliability",
+      )
+    ).data.data;
+  },
+
   async getFinancialAssurance() {
     return (await api.get<ApiResponse<import("@/types/finance").FinancialAssurance>>("/reports/assurance")).data.data;
   },

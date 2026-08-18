@@ -7,13 +7,34 @@ from app.core.exceptions import ApplicationError
 from app.database.models.core.company import Company
 from app.database.session import get_db_session
 from app.dependencies.company import get_current_company, require_company_admin
-from app.schemas.billing import BillingPortalOut, BillingWebhookOut, CheckoutRequest, CheckoutSessionOut, RazorpayVerifyRequest
+from app.schemas.billing import BillingPortalOut, BillingWebhookOut, CheckoutRequest, CheckoutSessionOut, RazorpayVerifyRequest, BillingReadinessOut, BillingEventSummaryOut
 from app.schemas.responses import APIResponse
 from app.services.billing.service import BillingService
 from app.services.billing.signatures import verify_razorpay_subscription_payment, verify_razorpay_webhook, verify_stripe_webhook
 
 router = APIRouter(prefix="/billing", tags=["Billing"])
 
+
+
+
+@router.get("/readiness", response_model=APIResponse[BillingReadinessOut])
+async def billing_readiness(
+    company: Annotated[Company, Depends(get_current_company)],
+    session: Annotated[AsyncSession, Depends(get_db_session)],
+    _admin=Depends(require_company_admin),
+):
+    data = await BillingService(session).readiness(company_id=company.id)
+    return APIResponse(message="Billing certification readiness retrieved.", data=BillingReadinessOut(**data))
+
+
+@router.get("/events", response_model=APIResponse[list[BillingEventSummaryOut]])
+async def billing_events(
+    company: Annotated[Company, Depends(get_current_company)],
+    session: Annotated[AsyncSession, Depends(get_db_session)],
+    _admin=Depends(require_company_admin),
+):
+    data = await BillingService(session).recent_events(company_id=company.id)
+    return APIResponse(message="Recent verified billing events retrieved.", data=[BillingEventSummaryOut(**row) for row in data])
 
 @router.post("/checkout", response_model=APIResponse[CheckoutSessionOut])
 async def checkout(

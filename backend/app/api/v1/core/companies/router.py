@@ -293,6 +293,7 @@ async def update_my_company(
     request: UpdateCompanyRequest,
     current_company: Annotated[Company, Depends(get_current_company)],
     service: Annotated[CompanyService, Depends(get_company_service)],
+    _admin_membership=Depends(require_company_admin),
 ):
     company = await service.update_company(
         current_company,
@@ -335,6 +336,7 @@ async def update_preferences(
     request: CompanyPreferencesRequest,
     current_company: Annotated[Company, Depends(get_current_company)],
     session: Annotated[AsyncSession, Depends(get_db_session)],
+    _admin_membership=Depends(require_company_admin),
 ):
     from sqlalchemy import text
     values = request.model_dump()
