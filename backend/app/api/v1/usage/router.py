@@ -63,6 +63,6 @@ async def usage_funnel(
         count(*) FILTER(WHERE event_name IN ('upload_completed','gl_upload_completed','ingestion_completed'))::int AS upload_completions,
         count(*) FILTER(WHERE event_name='frontend_error_observed')::int AS frontend_errors
       FROM public.product_usage_events
-      WHERE company_id=:company_id AND created_at>=now()-(:days || ' days')::interval
+      WHERE company_id=:company_id AND created_at >= now() - make_interval(days => :days)
     """),{"company_id":current_company.id,"days":max(1,min(days,365))})).mappings().one()
     return APIResponse(message="Beta usage funnel retrieved.",data=dict(rows))

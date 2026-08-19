@@ -41,7 +41,19 @@ class BetaFeedbackService:
         return dict(row)
 
     async def list(self, *, company_id: UUID, status: str | None = None, severity: str | None = None, limit: int = 200) -> list[dict]:
-        rows=(await self.session.execute(text("""
+        clauses = ["bf.company_id=:company_id"]
+        params: dict[str, object] = {
+            "company_id": company_id,
+            "limit": max(1, min(limit, 500)),
+        }
+        if status:
+            clauses.append("bf.status=:status")
+            params["status"] = status
+        if severity:
+            clauses.append("bf.severity=:severity")
+            params["severity"] = severity
+
+        query = text(f"""
             SELECT bf.id,bf.user_id,bf.category,bf.severity,bf.status,bf.title,bf.description,
                    bf.path,bf.user_role,bf.app_version,bf.browser,bf.viewport,bf.request_id,
                    (bf.attachment_bytes IS NOT NULL) AS has_attachment,
@@ -49,14 +61,13 @@ class BetaFeedbackService:
                    COALESCE(p.full_name,'Beta tester') AS reporter_name
             FROM public.beta_feedback bf
             LEFT JOIN public.profiles p ON p.id=bf.user_id
-            WHERE bf.company_id=:c
-              AND (:status IS NULL OR bf.status=:status)
-              AND (:severity IS NULL OR bf.severity=:severity)
+            WHERE {' AND '.join(clauses)}
             ORDER BY CASE bf.severity WHEN 'p0' THEN 0 WHEN 'p1' THEN 1 ELSE 2 END,
                      bf.created_at DESC
             LIMIT :limit
-        """), {"c":company_id,"status":status,"severity":severity,"limit":max(1,min(limit,500))})).mappings().all()
-        return [dict(x) for x in rows]
+        """)
+        rows = (await self.session.execute(query, params)).mappings().all()
+        return [dict(item) for item in rows]
 
     async def update(self, *, company_id: UUID, feedback_id: UUID, status: str, resolution_notes: str | None) -> dict | None:
         row=(await self.session.execute(text("""
