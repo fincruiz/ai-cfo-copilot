@@ -31,34 +31,26 @@ const COLLAPSE_STORAGE_KEY = "fincruiz.ask-fincruiz.collapsed";
 
 const promptGroups = [
   {
-    label: "Understand performance",
+    label: "Start with the business",
     items: [
-      "Why did profit change this month?",
-      "Which branch is hurting margins?",
-      "What are my fastest-growing expenses?",
+      "What should I focus on today?",
+      "Why is cash getting tighter?",
+      "Which branch is underperforming?",
     ],
   },
   {
-    label: "Improve cash",
+    label: "Plan & decide",
     items: [
-      "What is putting pressure on cash?",
-      "Which customers are driving working-capital pressure?",
-      "What happens if debtor days improve by 10 days?",
-    ],
-  },
-  {
-    label: "Plan ahead",
-    items: [
-      "Forecast the next 12 months.",
       "Can we afford to hire 3 people?",
+      "Build me a forecast for the next 12 months.",
       "What happens if revenue grows 15%?",
     ],
   },
   {
-    label: "Challenge the business",
+    label: "Challenge management",
     items: [
-      "What should management focus on today?",
       "What are the three biggest financial risks?",
+      "Where are we losing margin?",
       "What should the board discuss next?",
     ],
   },
@@ -154,22 +146,22 @@ export function AskFinCruizDashboard() {
         <button
           type="button"
           onClick={() => setCollapsedPreference(false)}
-          className="pointer-events-auto group flex size-14 items-center justify-center rounded-2xl bg-gradient-to-br from-indigo-600 via-blue-600 to-sky-500 text-white shadow-[0_18px_55px_rgba(79,70,229,.35)] ring-1 ring-white/20 transition duration-200 hover:-translate-y-0.5 hover:shadow-[0_22px_65px_rgba(79,70,229,.45)] sm:size-16"
+          className="pointer-events-auto inline-flex h-11 items-center gap-2.5 rounded-full border border-indigo-200/80 bg-background/95 px-4 text-sm font-semibold text-foreground shadow-[0_10px_30px_rgba(15,23,42,.14)] backdrop-blur transition duration-200 hover:-translate-y-0.5 hover:border-indigo-300 hover:shadow-[0_14px_36px_rgba(15,23,42,.18)] dark:border-indigo-500/25"
           aria-expanded="false"
           aria-label="Open Ask FinCruiz"
           title="Ask FinCruiz"
         >
-          <Bot className="size-6 transition-transform group-hover:scale-105 sm:size-7" />
-          <span className="absolute -right-1 -top-1 flex size-5 items-center justify-center rounded-full border-2 border-background bg-emerald-500 text-[10px] font-black text-white">
-            ✦
+          <span className="flex size-7 items-center justify-center rounded-full bg-gradient-to-br from-indigo-600 to-sky-500 text-white">
+            <Sparkles className="size-3.5" />
           </span>
+          <span>Ask FinCruiz</span>
         </button>
       </div>
     );
   }
 
   return (
-    <div className="pointer-events-none fixed inset-x-0 bottom-0 z-[80] flex justify-end px-3 pb-3 sm:inset-x-auto sm:bottom-6 sm:right-6 sm:block sm:px-0 sm:pb-0">
+    <div className="pointer-events-none fixed inset-x-0 bottom-0 z-[80] flex justify-end px-3 pb-3 sm:inset-x-auto sm:bottom-20 sm:right-6 sm:block sm:px-0 sm:pb-0">
       <section className="pointer-events-auto flex max-h-[82vh] w-full flex-col overflow-hidden rounded-t-[28px] border border-indigo-200/80 bg-background shadow-[0_24px_80px_rgba(15,23,42,.28)] dark:border-indigo-500/20 sm:max-h-[76vh] sm:w-[420px] sm:rounded-[28px]">
         <div className="flex shrink-0 items-center justify-between gap-3 border-b bg-gradient-to-r from-indigo-50 via-background to-sky-50 px-4 py-3 dark:from-indigo-950/30 dark:via-background dark:to-sky-950/20">
           <div className="flex min-w-0 items-center gap-3">
@@ -179,7 +171,7 @@ export function AskFinCruizDashboard() {
             <div className="min-w-0">
               <p className="truncate text-sm font-semibold">Ask FinCruiz</p>
               <p className="truncate text-[11px] text-muted-foreground">
-                Evidence-backed management intelligence
+                Your global AI CFO copilot
               </p>
             </div>
           </div>
@@ -200,14 +192,14 @@ export function AskFinCruizDashboard() {
           <div className="p-4">
             <form onSubmit={submit}>
               <label className="text-xs font-semibold uppercase tracking-[.12em] text-muted-foreground">
-                Ask a business question
+                Ask anything about your business
               </label>
 
               <div className="mt-2 flex gap-2 rounded-2xl border bg-background p-2 shadow-sm focus-within:ring-2 focus-within:ring-indigo-500/20">
                 <input
                   value={question}
                   onChange={(event) => setQuestion(event.target.value)}
-                  placeholder="e.g. Why is profit up but cash down?"
+                  placeholder="e.g. What should I focus on today?"
                   className="min-w-0 flex-1 bg-transparent px-2 py-2 text-sm outline-none placeholder:text-muted-foreground"
                 />
 
@@ -473,15 +465,6 @@ export function AskFinCruizDashboard() {
         </div>
       </section>
 
-      <button
-        type="button"
-        onClick={() => setCollapsedPreference(true)}
-        className="pointer-events-auto absolute -top-16 right-0 hidden size-14 items-center justify-center rounded-2xl bg-gradient-to-br from-indigo-600 via-blue-600 to-sky-500 text-white shadow-[0_18px_55px_rgba(79,70,229,.35)] sm:flex"
-        aria-label="Minimise Ask FinCruiz"
-        title="Minimise Ask FinCruiz"
-      >
-        <Bot className="size-6" />
-      </button>
     </div>
   );
 
