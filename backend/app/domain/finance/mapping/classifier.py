@@ -14,7 +14,9 @@ class MappingSuggestion:
 RULES = [
     (("sales", "revenue", "turnover"), "income_statement", "Revenue", "Sales", "credit", 0.95),
     (("cost of sales", "cogs", "cost of goods", "raw material", "purchases", "direct labour", "direct labor"), "income_statement", "Cost of Sales", None, "debit", 0.92),
-    (("rent", "salary", "wages", "admin", "marketing", "advertising", "insurance", "utilities", "travel", "software", "professional fee"), "income_statement", "Operating Expenses", None, "debit", 0.88),
+    (("salary", "salaries", "wages", "payroll", "superannuation", "super guarantee"), "income_statement", "Operating Expenses", "Payroll / People", "debit", 0.93),
+    (("rent", "admin", "marketing", "advertising", "insurance", "utilities", "travel", "software", "professional fee"), "income_statement", "Operating Expenses", None, "debit", 0.88),
+    (("accumulated depreciation", "accumulated amortisation", "accumulated amortization"), "balance_sheet", "Non Current Assets", "Accumulated Depreciation", "credit", 0.97),
     (("depreciation", "amortisation", "amortization"), "income_statement", "Depreciation", None, "debit", 0.95),
     (("interest income",), "income_statement", "Other Income", None, "credit", 0.92),
     (("interest", "finance charge", "bank charge"), "income_statement", "Finance Costs", None, "debit", 0.90),

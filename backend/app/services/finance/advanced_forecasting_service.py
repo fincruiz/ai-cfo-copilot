@@ -42,28 +42,38 @@ class AdvancedForecastingService:
         for row in rows:
             period = row.month.date() if hasattr(row.month, 'date') else row.month
             group = canonical_reporting_group(row.reporting_group) or row.reporting_group
+            subgroup = str(getattr(row, 'reporting_subgroup', '') or '').strip().lower()
             amount = float(row.amount or 0)
             if group == 'Revenue': by[period]['Revenue'] += amount
             elif group == 'Cost of Sales': by[period]['COGS'] += amount
+            elif group == 'Operating Expenses' and subgroup in {'payroll', 'payroll / people', 'people', 'salaries & wages'}:
+                by[period]['Payroll'] += amount
             elif group == 'Payroll': by[period]['Payroll'] += amount
-            elif group in ('Operating Expenses','Depreciation','Other Expenses'): by[period]['Other Opex'] += amount
+            elif group in ('Operating Expenses','Other Expenses'):
+                by[period]['Other Opex'] += amount
+            # Depreciation is deliberately excluded from Other Opex so EBITDA
+            # remains before depreciation. The three-way engine models it below EBITDA.
         return pd.DataFrame([{'Period':p, **vals} for p, vals in sorted(by.items())])
 
     async def _budget(self, company_id: UUID, version_id: UUID | None):
         if not version_id:
             return None
         rows=(await self.session.execute(text('''
-            SELECT period, reporting_group, SUM(amount) amount
+            SELECT period, reporting_group, reporting_subgroup, SUM(amount) amount
             FROM public.native_plan_lines
             WHERE company_id=:company_id AND version_id=:version_id
-            GROUP BY period, reporting_group ORDER BY period
+            GROUP BY period, reporting_group, reporting_subgroup ORDER BY period
         '''), {'company_id':company_id,'version_id':version_id})).mappings().all()
         if not rows: return None
         by={}
-        mapping={'Revenue':'Revenue','Cost of Sales':'COGS','Payroll':'Payroll','Operating Expenses':'Other Opex'}
+        mapping={'Revenue':'Revenue','Cost of Sales':'COGS','Payroll':'Payroll'}
         for r in rows:
             p=r['period']; by.setdefault(p, {'Period':p,'Revenue':0,'COGS':0,'Payroll':0,'Other Opex':0})
-            target=mapping.get(r['reporting_group'])
+            group = r['reporting_group']
+            subgroup = str(r.get('reporting_subgroup') or '').strip().lower()
+            target = mapping.get(group)
+            if group == 'Operating Expenses':
+                target = 'Payroll' if subgroup in {'payroll', 'payroll / people', 'people', 'salaries & wages'} else 'Other Opex'
             if target: by[p][target]+=float(r['amount'] or 0)
         return pd.DataFrame(by.values())
 
@@ -143,22 +153,30 @@ class AdvancedForecastingService:
         }
         for row in balances:
             label = f"{row.reporting_group or ''} {row.reporting_subgroup or ''} {row.account_name or ''}".lower()
-            amount = abs(Decimal(row.debit or 0) - Decimal(row.credit or 0))
-            if 'cash' in label or 'bank' in label: opening['cash'] += amount
-            elif 'receivable' in label or 'debtor' in label: opening['accounts_receivable'] += amount
-            elif 'inventory' in label or 'stock' in label: opening['inventory'] += amount
-            elif 'accumulated depreciation' in label: opening['accumulated_depreciation'] -= amount
-            elif 'ppe' in label or 'property' in label or 'plant' in label or 'equipment' in label: opening['gross_ppe'] += amount
-            elif 'payable' in label or 'creditor' in label: opening['accounts_payable'] += amount
-            elif 'accrued' in label: opening['accrued_expenses'] += amount
+            debit = Decimal(row.debit or 0); credit = Decimal(row.credit or 0)
+            asset_amount = debit - credit; credit_amount = credit - debit
+            if 'cash' in label or 'bank' in label: opening['cash'] += asset_amount
+            elif 'receivable' in label or 'debtor' in label: opening['accounts_receivable'] += asset_amount
+            elif 'inventory' in label or 'stock' in label: opening['inventory'] += asset_amount
+            elif 'accumulated depreciation' in label: opening['accumulated_depreciation'] -= credit_amount
+            elif 'ppe' in label or 'property' in label or 'plant' in label or 'equipment' in label: opening['gross_ppe'] += asset_amount
+            elif 'payable' in label or 'creditor' in label: opening['accounts_payable'] += credit_amount
+            elif 'accrued' in label: opening['accrued_expenses'] += credit_amount
             elif 'loan' in label or 'borrow' in label or 'debt' in label:
-                if 'current' in label and 'non current' not in label and 'non-current' not in label: opening['debt_current'] += amount
-                else: opening['debt_non_current'] += amount
-            elif 'equity' in label or 'capital' in label or 'retained' in label: opening['share_capital'] += amount
+                if 'current' in label and 'non current' not in label and 'non-current' not in label: opening['debt_current'] += credit_amount
+                else: opening['debt_non_current'] += credit_amount
+            elif 'equity' in label or 'capital' in label or 'retained' in label: opening['share_capital'] += credit_amount
             elif row.statement == 'balance_sheet' and (row.reporting_group or '') == 'Current Assets': opening['other_current_assets'] += amount
             elif row.statement == 'balance_sheet' and (row.reporting_group or '') == 'Non Current Assets': opening['other_non_current_assets'] += amount
             elif row.statement == 'balance_sheet' and (row.reporting_group or '') == 'Current Liabilities': opening['other_current_liabilities'] += amount
             elif row.statement == 'balance_sheet' and (row.reporting_group or '') == 'Non Current Liabilities': opening['other_non_current_liabilities'] += amount
+
+        history_months = max(len(recent), 1)
+        annualised_revenue = revenue * Decimal('12') / Decimal(history_months)
+        annualised_cogs = cogs * Decimal('12') / Decimal(history_months)
+        dso_days = (opening['accounts_receivable'] / annualised_revenue * Decimal('365')) if annualised_revenue else Decimal('0')
+        dpo_days = (opening['accounts_payable'] / annualised_cogs * Decimal('365')) if annualised_cogs else Decimal('0')
+        inventory_days = (opening['inventory'] / annualised_cogs * Decimal('365')) if annualised_cogs else Decimal('0')
 
         monthly = []
         for _, row in recent.iterrows():
@@ -175,6 +193,14 @@ class AdvancedForecastingService:
             'trailing_opex': float(other_opex), 'trailing_net_profit': float(revenue-cogs-payroll-other_opex),
             'gross_margin_percent': float(gross_margin*100), 'payroll_percent_revenue': float(payroll_pct*100),
             'other_opex_percent_revenue': float(opex_pct*100),
+            'suggested_drivers': {
+                'gross_margin': float(gross_margin),
+                'payroll_pct_revenue': float(payroll_pct),
+                'other_opex_pct_revenue': float(opex_pct),
+                'dso_days': float(max(Decimal('0'), min(Decimal('365'), dso_days))),
+                'dpo_days': float(max(Decimal('0'), min(Decimal('365'), dpo_days))),
+                'inventory_days': float(max(Decimal('0'), min(Decimal('365'), inventory_days))),
+            },
             'opening_balance_sheet': {k:(float(v) if isinstance(v,Decimal) else v) for k,v in opening.items()},
             'monthly': monthly,
         }
@@ -200,7 +226,24 @@ class AdvancedForecastingService:
         budget=await self._budget(company_id, request.budget_version_id)
         config=self._config(adjusted)
         build=TrendBudgetForecastBuilder(HistoricalData(history),budget,config).build()
-        result=ThreeWayForecastEngine(build.forecast,config).run()
+        scenario_forecast = build.forecast.copy()
+
+        # Operating sensitivities must change the operating forecast itself.
+        # ForecastDrivers are used by the three-way engine for working capital,
+        # tax, capex and financing; they do not rewrite COGS/payroll/opex.
+        if float(request.gross_margin_points):
+            revenue = scenario_forecast['Revenue'].replace(0, pd.NA)
+            current_margin = ((scenario_forecast['Revenue'] - scenario_forecast['COGS']) / revenue).fillna(0.0)
+            target_margin = (current_margin + float(request.gross_margin_points) / 100).clip(lower=0.0, upper=1.0)
+            scenario_forecast['COGS'] = scenario_forecast['Revenue'] * (1 - target_margin)
+        scenario_forecast['Payroll'] = (
+            scenario_forecast['Payroll'] * (1 + float(request.payroll_change_percent) / 100)
+        ).clip(lower=0.0)
+        scenario_forecast['Other Opex'] = (
+            scenario_forecast['Other Opex'] * (1 + float(request.other_opex_change_percent) / 100)
+        ).clip(lower=0.0)
+
+        result=ThreeWayForecastEngine(scenario_forecast,config).run()
         adj={'forecast_revenue':float(result.profit_and_loss['Revenue'].sum()),'forecast_ebitda':float(result.profit_and_loss['EBITDA'].sum()),
              'forecast_net_income':float(result.profit_and_loss['Net Income'].sum()),'closing_cash':float(result.balance_sheet['Cash'].iloc[-1]),
              'closing_debt':float(result.balance_sheet['Current Debt'].iloc[-1]+result.balance_sheet['Non-current Debt'].iloc[-1])}

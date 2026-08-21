@@ -2,7 +2,7 @@ from collections import defaultdict
 from datetime import date
 from decimal import Decimal
 
-from sqlalchemy import text
+from sqlalchemy import select, text
 from uuid import UUID
 
 from app.domain.finance.kpis.ratio_engine import calculate_ratios
@@ -12,11 +12,43 @@ from app.domain.finance.reporting.pnl import build_profit_and_loss
 from app.domain.finance.reporting.rules import canonical_reporting_group
 from app.domain.finance.reporting.trial_balance import build_trial_balance
 from app.repositories.finance.gl_transaction_repository import GLTransactionRepository
+from app.database.models.core.company import Company
 
 
 class ReportingService:
     def __init__(self, repository: GLTransactionRepository):
         self.repository = repository
+
+    async def _financial_year_end_month(self, company_id: UUID) -> int:
+        value = (
+            await self.repository.session.execute(
+                select(Company.financial_year_end_month).where(Company.id == company_id)
+            )
+        ).scalar_one_or_none()
+        return int(value or 6)
+
+    async def _resolve_income_period(
+        self,
+        company_id: UUID,
+        start_date: date | None,
+        end_date: date | None,
+        branch_id: UUID | None,
+    ) -> tuple[date | None, date | None]:
+        resolved_end = end_date or await self.repository.latest_transaction_date(
+            company_id=company_id, branch_id=branch_id
+        )
+        if resolved_end is None:
+            return start_date, end_date
+        if start_date is not None:
+            return start_date, resolved_end
+
+        fy_end_month = await self._financial_year_end_month(company_id)
+        start_month = fy_end_month % 12 + 1
+        if start_month == 1:
+            start_year = resolved_end.year
+        else:
+            start_year = resolved_end.year if resolved_end.month >= start_month else resolved_end.year - 1
+        return date(start_year, start_month, 1), resolved_end
 
     async def trial_balance(
         self,
@@ -42,6 +74,9 @@ class ReportingService:
         end_date: date | None = None,
         branch_id: UUID | None = None,
     ):
+        start_date, end_date = await self._resolve_income_period(
+            company_id, start_date, end_date, branch_id
+        )
         rows = await self.repository.account_balances(
             company_id=company_id,
             start_date=start_date,
@@ -57,15 +92,22 @@ class ReportingService:
         end_date: date | None = None,
         branch_id: UUID | None = None,
     ):
+        resolved_end = end_date or await self.repository.latest_transaction_date(
+            company_id=company_id, branch_id=branch_id
+        )
         rows = await self.repository.account_balances(
             company_id=company_id,
-            end_date=end_date,
+            end_date=resolved_end,
             statement="balance_sheet",
             branch_id=branch_id,
         )
+        pnl_start, pnl_end = await self._resolve_income_period(
+            company_id, None, resolved_end, branch_id
+        )
         pnl = await self.pnl(
             company_id,
-            end_date=end_date,
+            start_date=pnl_start,
+            end_date=pnl_end,
             branch_id=branch_id,
         )
         return build_balance_sheet(
@@ -82,6 +124,9 @@ class ReportingService:
         employees=None,
         branch_id: UUID | None = None,
     ):
+        start_date, end_date = await self._resolve_income_period(
+            company_id, start_date, end_date, branch_id
+        )
         pnl = await self.pnl(company_id, start_date, end_date, branch_id)
         bs = await self.balance_sheet(company_id, end_date, branch_id)
         rows = await self.repository.account_balances(
@@ -97,17 +142,20 @@ class ReportingService:
                 f"{row.reporting_subgroup or ''} "
                 f"{row.account_name or ''}"
             ).lower()
-            amount = abs(Decimal(row.debit or 0) - Decimal(row.credit or 0))
+            debit = Decimal(row.debit or 0)
+            credit = Decimal(row.credit or 0)
+            asset_amount = debit - credit
+            liability_amount = credit - debit
             if "inventory" in label or "stock" in label:
-                inv += amount
+                inv += asset_amount
             if "cash" in label or "bank" in label:
-                cash += amount
+                cash += asset_amount
             if "receivable" in label or "debtor" in label:
-                recv += amount
+                recv += asset_amount
             if "payable" in label or "creditor" in label:
-                pay += amount
+                pay += liability_amount
             if "loan" in label or "borrow" in label or "debt" in label:
-                debt += amount
+                debt += liability_amount
         return calculate_ratios(
             pnl,
             bs,

@@ -2,7 +2,7 @@
 
 import { FormEvent, useEffect, useState } from "react";
 import { createPortal } from "react-dom";
-import { useRouter } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import {
   Bot,
   ExternalLink,
@@ -28,6 +28,7 @@ interface Message {
 
 export function AICFOFloating() {
   const router = useRouter();
+  const pathname = usePathname();
   const [open, setOpen] = useState(false);
   const [mounted, setMounted] = useState(false);
   const [question, setQuestion] = useState("");
@@ -205,7 +206,7 @@ export function AICFOFloating() {
         </section>
       ) : null}
 
-      <div className="fixed bottom-5 right-5 z-[9997] flex items-center gap-3 sm:bottom-7 sm:right-7">
+      {pathname !== "/dashboard" ? <div className="fixed bottom-5 right-5 z-[9997] flex items-center gap-3 sm:bottom-7 sm:right-7">
         {!open ? (
           <div className="hidden animate-soft-bob rounded-2xl border bg-background/95 px-4 py-3 text-sm font-semibold shadow-xl backdrop-blur sm:block">
             <span className="inline-block min-w-52 animate-prompt-swap">{prompts[promptIndex]}</span>
@@ -220,7 +221,7 @@ export function AICFOFloating() {
             </>
           ) : null}
         </button>
-      </div>
+      </div> : null}
     </>,
     document.body,
   );

@@ -132,7 +132,15 @@ class GLTransactionRepository:
         signed_amount = func.sum(
             case(
                 (
-                    FinanceAccountMapping.sign_convention == "credit",
+                    FinanceAccountMapping.sign_convention.in_(("credit", "negative", "invert", "reverse")),
+                    GLTransaction.credit - GLTransaction.debit,
+                ),
+                (
+                    FinanceAccountMapping.sign_convention == "debit",
+                    GLTransaction.debit - GLTransaction.credit,
+                ),
+                (
+                    FinanceAccountMapping.reporting_group.in_(("Revenue", "Sales", "Other Income")),
                     GLTransaction.credit - GLTransaction.debit,
                 ),
                 else_=GLTransaction.debit - GLTransaction.credit,
@@ -143,6 +151,7 @@ class GLTransactionRepository:
             select(
                 month,
                 FinanceAccountMapping.reporting_group,
+                FinanceAccountMapping.reporting_subgroup,
                 signed_amount,
             )
             .join(FileUpload, FileUpload.id == GLTransaction.file_upload_id)
@@ -170,8 +179,25 @@ class GLTransactionRepository:
         query = query.group_by(
             month,
             FinanceAccountMapping.reporting_group,
+            FinanceAccountMapping.reporting_subgroup,
         ).order_by(month)
         return (await self.session.execute(query)).all()
+
+
+    async def latest_transaction_date(
+        self,
+        *,
+        company_id: UUID,
+        branch_id: UUID | None = None,
+    ) -> date | None:
+        query = (
+            select(func.max(GLTransaction.transaction_date))
+            .join(FileUpload, FileUpload.id == GLTransaction.file_upload_id)
+            .where(*self._active_base_conditions(company_id))
+        )
+        if branch_id is not None:
+            query = query.where(GLTransaction.branch_id == branch_id)
+        return (await self.session.execute(query)).scalar_one_or_none()
 
     async def monthly_group_totals(
         self,

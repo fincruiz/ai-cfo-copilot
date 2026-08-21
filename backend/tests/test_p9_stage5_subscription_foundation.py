@@ -4,10 +4,15 @@ from app.services.subscription_service import days_remaining, entitlements_for_p
 
 
 def test_founding_plan_keeps_beta_capabilities_enabled():
+    """Starter/founding keeps core beta capabilities enabled.
+
+    Commercial entitlement limits were refined in Stage 9.3a:
+    Starter/founding includes 1 integration, while Growth includes 5.
+    """
     e = entitlements_for_plan("founding")
     assert e["decision_simulator"] is True
     assert e["forecasting"] is True
-    assert e["integrations"] == 3
+    assert e["integrations"] == 1
     assert e["ai_queries_monthly"] >= 1000
 
 

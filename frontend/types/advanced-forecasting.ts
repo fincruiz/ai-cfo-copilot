@@ -21,6 +21,7 @@ export interface PlanningContext {
 }
 export interface PlanningBaseline {
   history_months:number; period_start:string; period_end:string; suggested_forecast_start:string; trailing_revenue:number; trailing_cogs:number; trailing_payroll:number; trailing_opex:number; trailing_net_profit:number; gross_margin_percent:number; payroll_percent_revenue:number; other_opex_percent_revenue:number;
+  suggested_drivers?:{gross_margin:number;payroll_pct_revenue:number;other_opex_pct_revenue:number;dso_days:number;dpo_days:number;inventory_days:number};
   opening_balance_sheet:Record<string,number|null>;
   monthly:Array<{month:string;revenue:number;cost_of_sales:number;payroll:number;operating_expenses:number;net_profit_proxy:number}>;
 }

@@ -68,6 +68,12 @@ class ThreeWayForecastEngine:
         retained_earnings = float(ob.retained_earnings or 0.0)
 
         capex_vintages = []
+        # Existing PPE must continue depreciating even when forecast capex is zero.
+        # In the absence of a fixed-asset register, use opening net book value and
+        # the configured useful life as a transparent management-model estimate.
+        opening_ppe_remaining = max(0.0, gross_ppe + accum_dep)
+        opening_ppe_monthly_dep = opening_ppe_remaining / max(d.useful_life_months, 1)
+
         rows = []
         wc_schedule = []
         debt_schedule = []
@@ -88,7 +94,9 @@ class ThreeWayForecastEngine:
                 "remaining": d.useful_life_months,
                 "monthly_dep": capex / max(d.useful_life_months, 1),
             })
-            depreciation = 0.0
+            opening_ppe_dep = min(opening_ppe_monthly_dep, opening_ppe_remaining)
+            opening_ppe_remaining = max(0.0, opening_ppe_remaining - opening_ppe_dep)
+            depreciation = opening_ppe_dep
             for vintage in capex_vintages:
                 if vintage["remaining"] > 0:
                     depreciation += vintage["monthly_dep"]

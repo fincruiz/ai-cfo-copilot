@@ -107,7 +107,12 @@ class NativePlanningService:
                    COALESCE(MAX(gt.source_account_name), MAX(fam.source_account_name), gt.source_account_code) account_name,
                    fam.reporting_group,
                    fam.reporting_subgroup,
-                   SUM(CASE WHEN fam.sign_convention='credit' THEN gt.credit-gt.debit ELSE gt.debit-gt.credit END) amount
+                   SUM(CASE
+                     WHEN fam.sign_convention IN ('credit','negative','invert','reverse') THEN gt.credit-gt.debit
+                     WHEN fam.sign_convention='debit' THEN gt.debit-gt.credit
+                     WHEN fam.reporting_group IN ('Revenue','Sales','Other Income') THEN gt.credit-gt.debit
+                     ELSE gt.debit-gt.credit
+                   END) amount
             FROM public.gl_transactions gt
             JOIN public.file_uploads fu ON fu.id=gt.file_upload_id
             JOIN public.finance_account_mappings fam
@@ -120,7 +125,16 @@ class NativePlanningService:
                      gt.source_account_code, fam.reporting_group, fam.reporting_subgroup
             ORDER BY month, fam.reporting_group, gt.source_account_code
         """), {'company_id': company_id, 'branch_id': branch_id})).mappings().all()
-        return [dict(r) for r in rows]
+        result = []
+        for row in rows:
+            item = dict(row)
+            subgroup = str(item.get('reporting_subgroup') or '').strip().lower()
+            if item.get('reporting_group') == 'Operating Expenses' and subgroup in {
+                'payroll', 'payroll / people', 'people', 'salaries & wages'
+            }:
+                item['reporting_group'] = 'Payroll'
+            result.append(item)
+        return result
 
     async def _actual_seed(self, company_id: UUID, start: date, end: date, growth: Decimal, detail_level: str) -> list[dict]:
         target_months = month_range(start, end)
@@ -326,6 +340,13 @@ class NativePlanningService:
             gp = Decimal(request.gross_margin_percent) / Decimal('100')
             targets['Cost of Sales'] = targets['Revenue'] * (Decimal('1') - gp)
         if request.net_profit_target is not None and 'Revenue' in targets:
+            # If management supplies only revenue / GM / net-profit targets, retain
+            # the last-12-month non-operating structure rather than silently
+            # assuming depreciation, interest and tax are zero. Explicit targets
+            # still override these historical defaults.
+            for group in ('Depreciation', 'Finance Costs', 'Tax', 'Other Expenses', 'Other Income'):
+                if group not in targets and historical_totals.get(group) is not None:
+                    targets[group] = historical_totals.get(group, Decimal('0'))
             gp_value = targets['Revenue'] - targets.get('Cost of Sales', Decimal('0'))
             non_operating = sum((targets.get(g, Decimal('0')) for g in ('Depreciation','Finance Costs','Tax','Other Expenses')), Decimal('0'))
             other_income = targets.get('Other Income', Decimal('0'))
