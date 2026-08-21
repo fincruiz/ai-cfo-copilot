@@ -62,7 +62,7 @@ export interface AICFOAction {
   route: string;
 }
 
-export interface AICFOEvidence { label: string; value: string; source: string; period?: string | null; }
+export interface AICFOEvidence { label: string; value: string; source: string; period?: string | null; route?: string | null; }
 export interface AICFODecisionHandoff { scenario_type: string; title: string; assumptions: Record<string, string | number>; route: string; }
 
 

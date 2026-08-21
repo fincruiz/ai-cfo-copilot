@@ -131,3 +131,59 @@ def assert_checkout_allowed(country_code: str | None) -> tuple[str, str]:
             status_code=503,
         )
     return provider, mode
+
+STRIPE_SANDBOX_LIFECYCLE_EVENTS = frozenset({
+    "checkout.session.completed",
+    "invoice.paid",
+    "invoice.payment_failed",
+    "customer.subscription.updated",
+    "customer.subscription.deleted",
+})
+RAZORPAY_SANDBOX_LIFECYCLE_EVENTS = frozenset({
+    "subscription.activated",
+    "subscription.charged",
+    "subscription.halted",
+    "subscription.cancelled",
+})
+
+
+def stripe_subscription_status(event_type: str, provider_status: str | None = None) -> str | None:
+    if event_type == "invoice.paid":
+        return "active"
+    if event_type in {"invoice.payment_failed", "invoice.payment_action_required", "customer.subscription.paused"}:
+        return "past_due"
+    if event_type == "customer.subscription.deleted":
+        return "cancelled"
+    if event_type in {"customer.subscription.updated", "customer.subscription.created"}:
+        status = (provider_status or "").lower()
+        if status in {"active", "trialing"}:
+            return "active"
+        if status in {"past_due", "unpaid", "incomplete"}:
+            return "past_due"
+        if status in {"canceled", "cancelled"}:
+            return "cancelled"
+    return None
+
+
+def razorpay_subscription_status(event_type: str) -> str | None:
+    if event_type in {"subscription.activated", "subscription.charged"}:
+        return "active"
+    if event_type == "subscription.halted":
+        return "past_due"
+    if event_type in {"subscription.cancelled", "subscription.completed"}:
+        return "cancelled"
+    return None
+
+
+def sandbox_lifecycle_coverage(provider: str, observed_events: set[str] | list[str] | tuple[str, ...]) -> dict:
+    provider = provider.lower().strip()
+    required = STRIPE_SANDBOX_LIFECYCLE_EVENTS if provider == "stripe" else RAZORPAY_SANDBOX_LIFECYCLE_EVENTS if provider == "razorpay" else frozenset()
+    observed = {str(item) for item in observed_events}
+    missing = sorted(required - observed)
+    return {
+        "provider": provider,
+        "required": sorted(required),
+        "observed": sorted(observed & required),
+        "missing": missing,
+        "complete": bool(required) and not missing,
+    }

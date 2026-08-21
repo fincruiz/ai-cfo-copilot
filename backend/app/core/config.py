@@ -1,3 +1,4 @@
+from datetime import datetime
 from functools import lru_cache
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -25,6 +26,23 @@ class Settings(BaseSettings):
     slow_request_ms: int = 1500
     database_degraded_ms: int = 500
     database_unhealthy_ms: int = 1500
+
+    # Stage 10 paid-launch certification. These values are operator evidence,
+    # not inferred claims. Populate them only after the corresponding deployed
+    # check has actually been completed.
+    deployment_region: str | None = None
+    database_region: str | None = None
+    production_performance_certified_at: datetime | None = None
+    stripe_sandbox_certified_at: datetime | None = None
+    razorpay_sandbox_certified_at: datetime | None = None
+    backup_restore_verified_at: datetime | None = None
+    launch_certification_max_age_days: int = 30
+    backup_restore_max_age_days: int = 90
+    error_monitoring_dsn: str | None = None
+    error_monitoring_verified_at: datetime | None = None
+    support_contact_email: str | None = None
+    support_runbook_url: str | None = None
+    paid_launch_providers: str = "stripe,razorpay"
 
     supabase_url: str | None = None
     supabase_publishable_key: str | None = None
@@ -61,6 +79,9 @@ class Settings(BaseSettings):
     xero_client_id: str | None = None
     xero_client_secret: str | None = None
     xero_redirect_uri: str | None = None
+    # Xero Journals API is an Advanced-tier/certified capability. Keep disabled
+    # unless the FinCruiz Xero app has been approved for accounting.journals.read.
+    xero_journals_enabled: bool = False
 
     zoho_client_id: str | None = None
     zoho_client_secret: str | None = None

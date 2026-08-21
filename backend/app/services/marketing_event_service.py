@@ -22,6 +22,9 @@ ALLOWED_EVENTS = {
     "homepage_persona_changed",
     "homepage_final_demo_clicked",
     "homepage_final_signup_clicked",
+    "homepage_book_demo_clicked",
+    "demo_book_demo_clicked",
+    "demo_lead_submitted",
     # Public guided demo
     "demo_viewed",
     "demo_audience_changed",

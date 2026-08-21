@@ -44,8 +44,8 @@ const widgetMeta: Record<WidgetKey, { label: string; description: string }> = {
 };
 
 const presets: Record<Exclude<DashboardView, "custom">, WidgetKey[]> = {
-  owner: ["headline", "metrics", "performance", "priorities", "briefing"],
-  cfo: ["headline", "metrics", "performance", "priorities", "briefing", "profitability", "confidence"],
+  owner: ["headline", "metrics", "performance", "priorities"],
+  cfo: ["headline", "metrics", "performance", "priorities", "briefing", "confidence"],
   finance: ["metrics", "performance", "profitability", "confidence", "dataHealth", "priorities"],
 };
 
@@ -178,6 +178,7 @@ export default function DashboardPage() {
     {visible.has("performance") && hasFinancials ? <ManagementPerformanceBoard overview={analyticsOverview} currency={currency} /> : null}
 
     <AskFinCruizDashboard />
+
 
     {workspace?.demo_data_active ? <Card className="border-sky-200 bg-sky-50/50"><CardContent className="flex items-center gap-3 py-4"><FlaskConical className="size-5 text-sky-700"/><div><p className="font-semibold">Demo workspace active</p><p className="text-sm text-muted-foreground">Synthetic company data is active. You can reset it without affecting your profile.</p></div></CardContent></Card> : null}
 

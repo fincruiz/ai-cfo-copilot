@@ -106,3 +106,24 @@ class DataHealthResponse(BaseModel):
     is_balance_sheet_balanced: bool
     is_mapping_complete: bool
     overall_status: str
+
+
+class ReportContextResponse(BaseModel):
+    period_start: date | None = None
+    period_end: date | None = None
+    data_as_of: date | None = None
+    transaction_count: int = 0
+    branch_id: UUID | None = None
+
+
+class LedgerTransactionResponse(BaseModel):
+    id: UUID
+    transaction_date: date
+    source_account_code: str
+    source_account_name: str | None = None
+    description: str | None = None
+    document_number: str | None = None
+    debit: Decimal
+    credit: Decimal
+    branch_id: UUID | None = None
+    external_reference: str | None = None

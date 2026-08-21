@@ -2,17 +2,17 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { Building2, Cloud, RefreshCw, ShieldCheck, Unplug, Zap, CircleAlert, CheckCircle2 } from "lucide-react";
+import { Building2, Cloud, Database, RefreshCw, ShieldCheck, Unplug, Zap, CircleAlert, CheckCircle2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { getApiErrorMessage, getApiSupportId } from "@/lib/api";
 import { integrationService } from "@/services/integration-service";
-import type { IntegrationConnection, Provider } from "@/types/integrations";
+import type { FinanceTruthStatus, IntegrationConnection, Provider } from "@/types/integrations";
 
 const meta: Record<Provider, { name: string; subtitle: string; accent: string }> = {
-  xero: { name: "Xero", subtitle: "Accounting, contacts, invoices and banking", accent: "bg-sky-500/10" },
-  zoho: { name: "Zoho Books", subtitle: "Accounts, customers, invoices and bills", accent: "bg-orange-500/10" },
-  tally: { name: "TallyPrime", subtitle: "Secure bridge from on-premise Tally data", accent: "bg-emerald-500/10" },
+  xero: { name: "Xero", subtitle: "Source intelligence with optional journal-grade GL activation", accent: "bg-sky-500/10" },
+  zoho: { name: "Zoho Books", subtitle: "Accounts, registers, customers, invoices and bills", accent: "bg-orange-500/10" },
+  tally: { name: "TallyPrime", subtitle: "Secure, balanced ledger snapshots from on-premise Tally", accent: "bg-emerald-500/10" },
 };
 
 export default function IntegrationsPage() {
@@ -126,8 +126,8 @@ export default function IntegrationsPage() {
       {welcomeFlow && items.some((item) => item.status === "connected" && item.last_synced_at) ? <div className="flex items-center justify-between gap-4 rounded-2xl border border-primary/20 bg-primary/5 p-4"><div><p className="font-semibold">Connection is active</p><p className="text-sm text-muted-foreground">Continue the guided review to see whether enough finance data is available for mapping and management intelligence.</p></div><Link href="/dashboard/getting-started" className="shrink-0 rounded-xl bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground">Continue setup</Link></div> : null}
 
       {items.length ? <div className="grid gap-3 rounded-2xl border bg-muted/20 p-4 sm:grid-cols-3">
-        <div><p className="text-xs uppercase tracking-[.12em] text-muted-foreground">Connection health</p><p className="mt-1 font-semibold">{items.filter((item) => item.status === "connected" && item.last_sync_status !== "failed").length} healthy</p></div>
-        <div><p className="text-xs uppercase tracking-[.12em] text-muted-foreground">Needs attention</p><p className="mt-1 font-semibold">{items.filter((item) => item.status === "connected" && item.last_sync_status === "failed").length} source(s)</p></div>
+        <div><p className="text-xs uppercase tracking-[.12em] text-muted-foreground">Connection health</p><p className="mt-1 font-semibold">{items.filter((item) => item.health_status === "healthy").length} healthy</p></div>
+        <div><p className="text-xs uppercase tracking-[.12em] text-muted-foreground">Needs attention</p><p className="mt-1 font-semibold">{items.filter((item) => ["failed", "finance_blocked", "source_only", "stale", "needs_sync", "setup_required", "configuration_required"].includes(item.health_status || "")).length} source(s)</p></div>
         <div><p className="text-xs uppercase tracking-[.12em] text-muted-foreground">Last successful sync</p><p className="mt-1 font-semibold">{(() => { const dates = items.filter((item) => item.last_synced_at && item.last_sync_status !== "failed").map((item) => new Date(item.last_synced_at as string).getTime()); return dates.length ? new Date(Math.max(...dates)).toLocaleString() : "No completed sync yet"; })()}</p></div>
       </div> : null}
 
@@ -139,6 +139,8 @@ export default function IntegrationsPage() {
           const tenantOptions = provider === "xero"
             ? ((item?.metadata?.tenants as any[] | undefined) ?? [])
             : ((item?.metadata?.organizations as any[] | undefined) ?? []);
+          const financeTruth = (item?.metadata?.finance_truth as FinanceTruthStatus | undefined);
+          const sourceCounts = (item?.metadata?.source_counts as Record<string, number> | undefined);
 
           return (
             <div key={provider} className="rounded-3xl border bg-background p-6 shadow-sm">
@@ -151,7 +153,22 @@ export default function IntegrationsPage() {
               </div>
               <p className="mt-2 text-sm text-muted-foreground">{meta[provider].subtitle}</p>
 
-              {item ? <div className={`mt-4 rounded-2xl border p-3 text-sm ${item.health_status === "healthy" ? "border-emerald-200 bg-emerald-50/70" : item.health_status === "failed" ? "border-red-200 bg-red-50/70" : "border-amber-200 bg-amber-50/70"}`}><div className="flex items-center gap-2 font-medium">{item.health_status === "healthy" ? <CheckCircle2 className="size-4 text-emerald-600"/> : <CircleAlert className="size-4 text-amber-600"/>}<span className="capitalize">{(item.health_status || "disconnected").replaceAll("_", " ")}</span></div><p className="mt-1 text-xs leading-5 text-muted-foreground">{item.health_message}</p>{item.recommended_action ? <p className="mt-2 text-xs"><b>Next:</b> {item.recommended_action}</p> : null}</div> : null}
+              {item ? <div className={`mt-4 rounded-2xl border p-3 text-sm ${item.health_status === "healthy" ? "border-emerald-200 bg-emerald-50/70" : item.health_status === "failed" || item.health_status === "finance_blocked" ? "border-red-200 bg-red-50/70" : "border-amber-200 bg-amber-50/70"}`}><div className="flex items-center gap-2 font-medium">{item.health_status === "healthy" ? <CheckCircle2 className="size-4 text-emerald-600"/> : <CircleAlert className="size-4 text-amber-600"/>}<span className="capitalize">{(item.health_status || "disconnected").replaceAll("_", " ")}</span></div><p className="mt-1 text-xs leading-5 text-muted-foreground">{item.health_message}</p>{item.recommended_action ? <p className="mt-2 text-xs"><b>Next:</b> {item.recommended_action}</p> : null}</div> : null}
+
+              {connected ? (
+                <div className="mt-4 rounded-2xl border bg-muted/20 p-4 text-sm">
+                  <div className="flex items-center justify-between gap-3">
+                    <div className="flex items-center gap-2 font-medium"><Database className="size-4" />Financial reporting</div>
+                    <span className={`rounded-full px-2.5 py-1 text-[11px] font-semibold ${financeTruth?.status === "activated" ? "bg-emerald-500/10 text-emerald-700" : financeTruth?.status === "blocked" ? "bg-red-500/10 text-red-700" : "bg-amber-500/10 text-amber-700"}`}>
+                      {financeTruth?.status === "activated" ? "Driving reports" : financeTruth?.status === "collecting" ? "Collecting snapshot" : financeTruth?.status === "blocked" ? "Activation blocked" : "Source only"}
+                    </span>
+                  </div>
+                  <p className="mt-2 text-xs leading-5 text-muted-foreground">{financeTruth?.message || "Run a sync to determine whether this source can drive the governed FinCruiz General Ledger."}</p>
+                  {financeTruth?.status === "activated" ? <div className="mt-3 grid grid-cols-2 gap-2 text-xs"><div><span className="text-muted-foreground">GL lines</span><br/><b>{Number(financeTruth.canonical_rows || 0).toLocaleString()}</b></div><div><span className="text-muted-foreground">Data through</span><br/><b>{financeTruth.data_through || "—"}</b></div></div> : null}
+                  {sourceCounts ? <p className="mt-3 border-t pt-2 text-[11px] text-muted-foreground">Source sync: {Object.entries(sourceCounts).filter(([, value]) => value > 0).map(([key, value]) => `${key.replaceAll("_", " ")} ${Number(value).toLocaleString()}`).join(" · ")}</p> : null}
+                  {provider === "xero" && financeTruth?.status === "source_only" ? <p className="mt-2 text-[11px] leading-5 text-muted-foreground">Xero journal-grade activation is only used when the FinCruiz Xero app has approved Journals API access. Until then, Xero can remain a source-intelligence connection while a validated GL upload drives financial statements.</p> : null}
+                </div>
+              ) : null}
 
               {item?.external_tenant_name ? <div className="mt-4 rounded-xl bg-muted/50 p-3 text-sm"><span className="text-muted-foreground">Connected organisation</span><br /><strong>{item.external_tenant_name}</strong></div> : null}
 
@@ -191,7 +208,7 @@ export default function IntegrationsPage() {
         })}
       </div>
 
-      {tallyToken ? <div className="rounded-3xl border bg-background p-6"><div className="flex items-start gap-3"><ShieldCheck className="mt-0.5 size-5" /><div><h2 className="font-semibold">Tally bridge token — shown once</h2><p className="mt-1 text-sm text-muted-foreground">Use this token in the FinCruiz Tally bridge running on the same network as TallyPrime. Do not email or store it in a spreadsheet.</p><code className="mt-4 block break-all rounded-xl bg-muted p-4 text-xs">{tallyToken}</code></div></div></div> : null}
+      {tallyToken ? <div className="rounded-3xl border bg-background p-6"><div className="flex items-start gap-3"><ShieldCheck className="mt-0.5 size-5" /><div><h2 className="font-semibold">Tally bridge token — shown once</h2><p className="mt-1 text-sm text-muted-foreground">Use this token in the FinCruiz Tally bridge running on the same network as TallyPrime. The bridge should mark the first and final chunks of each full-ledger snapshot; FinCruiz activates reports only after the completed snapshot balances. Do not email or store the token in a spreadsheet.</p><code className="mt-4 block break-all rounded-xl bg-muted p-4 text-xs">{tallyToken}</code></div></div></div> : null}
 
       <ConfirmDialog
         open={!!remove}

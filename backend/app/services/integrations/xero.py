@@ -18,9 +18,10 @@ API_URL = "https://api.xero.com/api.xro/2.0"
 CONNECTIONS_URL = "https://api.xero.com/connections"
 
 # Xero apps created on/after 2 March 2026 use granular scopes.
-# FinCruiz is intentionally read-only at this stage.
-XERO_SCOPES = " ".join(
-    [
+# FinCruiz is intentionally read-only. Journal-grade GL access is optional because
+# Xero gates accounting.journals.read behind Advanced-tier approval/certification.
+def xero_scopes() -> str:
+    scopes = [
         "openid",
         "profile",
         "email",
@@ -32,7 +33,13 @@ XERO_SCOPES = " ".join(
         "accounting.banktransactions.read",
         "accounting.manualjournals.read",
     ]
-)
+    if settings.xero_journals_enabled:
+        scopes.append("accounting.journals.read")
+    return " ".join(scopes)
+
+
+# Backwards-compatible import surface for diagnostics/tests.
+XERO_SCOPES = xero_scopes()
 
 _XERO_MS_DATE = re.compile(r"/Date\((?P<ms>-?\d+)(?:[+-]\d+)?\)/")
 
@@ -91,7 +98,7 @@ class XeroConnector:
             "response_type": "code",
             "client_id": settings.xero_client_id,
             "redirect_uri": settings.xero_redirect_uri,
-            "scope": XERO_SCOPES,
+            "scope": xero_scopes(),
             "state": state,
         }
         return f"{AUTH_URL}?{urlencode(params)}"
@@ -177,8 +184,13 @@ class XeroConnector:
             access_token=token_data["access_token"],
             refresh_token=token_data.get("refresh_token"),
             expires_in=token_data.get("expires_in"),
-            metadata={"granted_scope": token_data.get("scope")},
         )
+        if token_data.get("scope"):
+            await self.store.merge_metadata(
+                company_id,
+                "xero",
+                {"granted_scope": token_data.get("scope")},
+            )
         return await self.store.credentials(company_id, "xero")
 
     async def _get_all_pages(
@@ -213,6 +225,124 @@ class XeroConnector:
             if len(batch) < 100:
                 break
         return rows
+
+    async def _get_all_journals(
+        self,
+        client: httpx.AsyncClient,
+        headers: dict[str, str],
+        *,
+        max_pages: int = 5000,
+    ) -> list[dict[str, Any]]:
+        """Retrieve Xero journals using JournalNumber offset, per Xero guidance.
+
+        A partial page is not a reliable end-of-data marker for Journals, so the loop
+        stops only on an empty response or if the provider fails to advance the offset.
+        """
+        rows: list[dict[str, Any]] = []
+        offset = 0
+        for _ in range(max_pages):
+            response = await client.get(
+                f"{API_URL}/Journals",
+                headers=headers,
+                params={"offset": offset},
+            )
+            response.raise_for_status()
+            batch = response.json().get("Journals", [])
+            if not batch:
+                break
+            rows.extend(batch)
+            numbers = [
+                int(item.get("JournalNumber"))
+                for item in batch
+                if str(item.get("JournalNumber") or "").isdigit()
+            ]
+            if not numbers:
+                raise ValueError("Xero Journals response did not contain JournalNumber offsets.")
+            next_offset = max(numbers)
+            if next_offset <= offset:
+                raise ValueError("Xero Journals pagination did not advance; sync stopped safely.")
+            offset = next_offset
+        return rows
+
+    @staticmethod
+    def _branch_reference(tracking: list[dict[str, Any]] | None) -> str | None:
+        for item in tracking or []:
+            name = str(item.get("Name") or "").strip().lower()
+            if name in {"branch", "location", "business unit", "business_unit"}:
+                option = str(item.get("Option") or "").strip()
+                if option:
+                    return option
+        return None
+
+    @classmethod
+    def _journal_records(
+        cls,
+        journals: list[dict[str, Any]],
+        *,
+        functional_currency_code: str | None = None,
+    ) -> list[dict[str, Any]]:
+        """Normalize Xero Journals into balanced canonical FinCruiz GL lines.
+
+        Xero documents NetAmount as positive for debit and negative for credit.
+        Journal amounts are in the organisation's base currency.
+        """
+        lines: list[dict[str, Any]] = []
+        for journal in journals:
+            journal_id = journal.get("JournalID")
+            journal_number = journal.get("JournalNumber")
+            occurred_at = _xero_datetime(journal.get("JournalDate"))
+            source_id = journal.get("SourceID") or journal_id or journal_number
+            source_type = journal.get("SourceType") or "Journal"
+            if not source_id or not occurred_at:
+                continue
+
+            for idx, line in enumerate(journal.get("JournalLines") or []):
+                line_id = line.get("JournalLineID") or f"{source_id}:{idx + 1}"
+                amount = _decimal(line.get("NetAmount")) or Decimal("0")
+                debit = amount if amount > 0 else Decimal("0")
+                credit = abs(amount) if amount < 0 else Decimal("0")
+                account_id = line.get("AccountID")
+                account_code = line.get("AccountCode") or (f"XERO:{account_id}" if account_id else None)
+                if not account_code or (debit == 0 and credit == 0):
+                    continue
+                tracking = line.get("TrackingCategories") or []
+                lines.append(
+                    {
+                        "external_id": f"journal:{journal_id or journal_number}:{line_id}",
+                        "name": line.get("AccountName") or line.get("Description"),
+                        "amount": abs(amount),
+                        "occurred_at": occurred_at,
+                        "source_updated_at": _xero_datetime(journal.get("CreatedDateUTC")),
+                        "payload": {
+                            "source": "xero_journal",
+                            "journal_id": journal_id,
+                            "journal_number": journal_number,
+                            "source_id": source_id,
+                            "source_type": source_type,
+                            "raw_line": line,
+                            "fincruiz": {
+                                "record_kind": "canonical_gl_line",
+                                "transaction_date": occurred_at.date().isoformat(),
+                                "account_code": str(account_code),
+                                "account_name": line.get("AccountName"),
+                                "debit": str(debit),
+                                "credit": str(credit),
+                                "description": line.get("Description"),
+                                "reference": journal.get("Reference"),
+                                "journal_number": str(journal_number) if journal_number is not None else None,
+                                "document_number": journal.get("Reference"),
+                                "source_transaction_id": str(source_id),
+                                "source_line_id": str(line_id),
+                                "source_type": source_type,
+                                "branch_reference": cls._branch_reference(tracking),
+                                "tracking": tracking,
+                                "functional_currency_code": functional_currency_code,
+                                "exchange_rate": "1",
+                            },
+                        },
+                    }
+                )
+        return lines
 
     @staticmethod
     def _account_records(accounts: list[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -498,67 +628,145 @@ class XeroConnector:
         }
 
         counts: dict[str, int] = {}
+        journal_access = {
+            "enabled": bool(settings.xero_journals_enabled),
+            "status": "not_requested",
+            "message": (
+                "Journal-grade GL access is disabled in server configuration."
+                if not settings.xero_journals_enabled
+                else "Journal-grade GL access requested."
+            ),
+        }
+
         try:
             async with httpx.AsyncClient(timeout=60) as client:
-                # Full Chart of Accounts
+                organisation_response = await client.get(f"{API_URL}/Organisation", headers=headers)
+                organisation_response.raise_for_status()
+                organisations = organisation_response.json().get("Organisations", [])
+                organisation = organisations[0] if organisations else {}
+                functional_currency = organisation.get("BaseCurrency")
+
                 accounts_response = await client.get(f"{API_URL}/Accounts", headers=headers)
                 accounts_response.raise_for_status()
                 accounts = accounts_response.json().get("Accounts", [])
                 account_records = self._account_records(accounts)
-                await self.store.replace_records(company_id, "xero", "account", account_records)
-                counts["accounts"] = len(account_records)
 
-                # Contacts - paged
                 contacts = await self._get_all_pages(client, headers, "Contacts", "Contacts")
                 contact_records = self._contact_records(contacts)
-                await self.store.replace_records(company_id, "xero", "contact", contact_records)
-                counts["contacts"] = len(contact_records)
 
-                # Invoices + bills. Paging is important because it returns line detail.
                 invoices = await self._get_all_pages(client, headers, "Invoices", "Invoices")
                 invoice_records, invoice_lines = self._invoice_records(invoices)
-                await self.store.replace_records(company_id, "xero", "invoice", invoice_records)
-                counts["invoices"] = len(invoice_records)
 
-                # Bank transactions + their account-coded line items.
-                bank_txs = await self._get_all_pages(client, headers, "BankTransactions", "BankTransactions")
+                bank_txs = await self._get_all_pages(
+                    client, headers, "BankTransactions", "BankTransactions"
+                )
                 bank_records, bank_lines = self._bank_transaction_records(bank_txs)
-                await self.store.replace_records(company_id, "xero", "bank_transaction", bank_records)
-                counts["bank_transactions"] = len(bank_records)
 
-                # Manual journals give signed account-level entries and are valuable for ledger reconstruction.
-                manual_journals = await self._get_all_pages(client, headers, "ManualJournals", "ManualJournals")
-                manual_journal_records, manual_journal_lines = self._manual_journal_records(manual_journals)
-                await self.store.replace_records(company_id, "xero", "manual_journal", manual_journal_records)
-                counts["manual_journals"] = len(manual_journal_records)
+                manual_journals = await self._get_all_pages(
+                    client, headers, "ManualJournals", "ManualJournals"
+                )
+                manual_journal_records, manual_journal_lines = self._manual_journal_records(
+                    manual_journals
+                )
 
-                # Payments are separately useful for cash / AR / AP movement analysis.
-                payments_response = await client.get(f"{API_URL}/Payments", headers=headers)
-                payments_response.raise_for_status()
-                payments = payments_response.json().get("Payments", [])
+                payments = await self._get_all_pages(client, headers, "Payments", "Payments")
                 payment_records = self._payment_records(payments)
-                await self.store.replace_records(company_id, "xero", "payment", payment_records)
-                counts["payments"] = len(payment_records)
 
-                # One normalized source-line entity for BI and AI drill-down.
-                ledger_lines = invoice_lines + bank_lines + manual_journal_lines
-                await self.store.replace_records(company_id, "xero", "ledger_line", ledger_lines)
-                counts["ledger_lines"] = len(ledger_lines)
+                source_lines = invoice_lines + bank_lines + manual_journal_lines
 
-            summary = (
-                f"Synced Xero COA ({counts['accounts']}), "
-                f"invoices/bills ({counts['invoices']}), bank transactions ({counts['bank_transactions']}), "
-                f"manual journals ({counts['manual_journals']}), payments ({counts['payments']}), "
-                f"and {counts['ledger_lines']} account-coded source lines."
+                gl_lines: list[dict[str, Any]] = []
+                if settings.xero_journals_enabled:
+                    try:
+                        journals = await self._get_all_journals(client, headers)
+                        gl_lines = self._journal_records(
+                            journals, functional_currency_code=functional_currency
+                        )
+                        journal_access = {
+                            "enabled": True,
+                            "status": "available",
+                            "message": f"Retrieved {len(journals):,} Xero journals for canonical GL activation.",
+                        }
+                    except httpx.HTTPStatusError as exc:
+                        if exc.response.status_code in {401, 403}:
+                            journal_access = {
+                                "enabled": True,
+                                "status": "not_authorized",
+                                "message": (
+                                    "Xero source sync succeeded, but the Journals endpoint is not authorized "
+                                    "for this connection. FinCruiz did not change the active GL."
+                                ),
+                            }
+                            gl_lines = []
+                        else:
+                            raise
+
+                organisation_records = [
+                    {
+                        "external_id": str(organisation.get("OrganisationID") or connection["external_tenant_id"]),
+                        "name": organisation.get("Name") or connection.get("external_tenant_name"),
+                        "currency_code": functional_currency,
+                        "payload": organisation,
+                    }
+                ] if organisation else []
+
+                snapshots = {
+                    "organisation": organisation_records,
+                    "account": account_records,
+                    "contact": contact_records,
+                    "invoice": invoice_records,
+                    "bank_transaction": bank_records,
+                    "manual_journal": manual_journal_records,
+                    "payment": payment_records,
+                    "ledger_line": source_lines,
+                    "gl_line": gl_lines,
+                }
+                for entity_type, records in snapshots.items():
+                    await self.store.replace_records_snapshot(
+                        company_id, "xero", entity_type, records, commit=False
+                    )
+
+                counts = {
+                    "organisations": len(organisation_records),
+                    "accounts": len(account_records),
+                    "contacts": len(contact_records),
+                    "invoices": len(invoice_records),
+                    "bank_transactions": len(bank_records),
+                    "manual_journals": len(manual_journal_records),
+                    "payments": len(payment_records),
+                    "ledger_lines": len(source_lines),
+                    "gl_lines": len(gl_lines),
+                }
+
+            await self.store.merge_metadata(
+                company_id,
+                "xero",
+                {
+                    "journal_access": journal_access,
+                    "source_counts": counts,
+                    "source_functional_currency": functional_currency,
+                },
+                commit=False,
             )
-            await self.store.mark_sync(company_id, "xero", "success", summary)
+            summary = (
+                f"Synced Xero COA ({counts['accounts']}), invoices/bills ({counts['invoices']}), "
+                f"bank transactions ({counts['bank_transactions']}), manual journals "
+                f"({counts['manual_journals']}), payments ({counts['payments']}), "
+                f"{counts['ledger_lines']} source lines and {counts['gl_lines']} journal-grade GL lines."
+            )
+            await self.store.mark_sync(
+                company_id, "xero", "success", summary, commit=False
+            )
+            await self.store.session.commit()
             return counts
 
         except httpx.HTTPStatusError as exc:
+            await self.store.session.rollback()
             body = exc.response.text[:700]
             message = f"Xero API {exc.response.status_code}: {body}"
             await self.store.mark_sync(company_id, "xero", "failed", message)
             raise ValueError(message) from exc
         except Exception as exc:
+            await self.store.session.rollback()
             await self.store.mark_sync(company_id, "xero", "failed", str(exc))
             raise
+

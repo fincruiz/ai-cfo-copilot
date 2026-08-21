@@ -31,6 +31,7 @@ import {
 
 import { demoService, type DemoAnswer } from "@/services/demo-service";
 import { marketingService } from "@/services/marketing-service";
+import { approvedCustomerProof } from "@/lib/customer-proof";
 
 type PersonaKey = "owner" | "finance" | "advisor";
 
@@ -291,6 +292,7 @@ export default function HomePage() {
               Pricing
             </Link>
             <Link href="/login" className="rounded-xl px-3 py-2 text-sm font-semibold sm:px-4">Sign in</Link>
+            <Link href="/book-demo" onClick={() => marketingService.track("homepage_book_demo_clicked", { source: "nav" })} className="hidden rounded-xl border px-4 py-2.5 text-sm font-bold text-slate-700 xl:inline-flex">Book a demo</Link>
             <Link
               href="/signup"
               onClick={() => marketingService.track("homepage_hero_signup_clicked", { source: "nav" })}
@@ -338,6 +340,7 @@ export default function HomePage() {
               Use my business data
               <ArrowRight className="size-4" />
             </Link>
+            <Link href="/book-demo" onClick={() => marketingService.track("homepage_book_demo_clicked", { source: "hero_book_demo" })} className="inline-flex min-h-14 items-center justify-center gap-2 rounded-2xl border border-slate-300 bg-white px-7 font-bold text-slate-800 hover:-translate-y-0.5">Book a demo<ArrowRight className="size-4" /></Link>
           </div>
 
           <div className="mt-7 grid max-w-2xl gap-3 text-sm text-slate-600 sm:grid-cols-2">
@@ -635,6 +638,23 @@ export default function HomePage() {
               })}
             </div>
           </div>
+
+          <div className="mt-6 rounded-[32px] border bg-white p-7 shadow-sm sm:p-8 lg:col-span-2">
+            <p className="text-xs font-black uppercase tracking-[.18em] text-indigo-600">Implementation path</p>
+            <h2 className="mt-2 text-3xl font-black">Move from source data to management use in controlled steps.</h2>
+            <p className="mt-3 max-w-3xl leading-7 text-slate-600">Implementation is designed around finance truth first: connect or upload, validate and map, confirm reporting scope, then activate management reporting and decision workflows.</p>
+            <div className="mt-6 grid gap-3 md:grid-cols-4">
+              {[
+                ["1", "Connect or import", "Bring in the GL and supporting finance data from the available integration or file workflow."],
+                ["2", "Validate finance truth", "Balance, mapping, period and source checks are resolved before management relies on outputs."],
+                ["3", "Configure the business", "Confirm branches, reporting scope, planning assumptions, roles and governance."],
+                ["4", "Launch management use", "Start with dashboards and questions, then expand into forecasting, decisions and board reporting."],
+              ].map(([step,title,text]) => <div key={step} className="rounded-2xl border bg-slate-50 p-4"><span className="flex size-8 items-center justify-center rounded-full bg-indigo-600 text-xs font-black text-white">{step}</span><p className="mt-3 font-black">{title}</p><p className="mt-2 text-xs leading-5 text-slate-500">{text}</p></div>)}
+            </div>
+            <div className="mt-6 flex flex-wrap gap-3"><Link href="/book-demo" onClick={() => marketingService.track("homepage_book_demo_clicked", { source: "implementation" })} className="inline-flex items-center gap-2 rounded-xl bg-slate-950 px-5 py-3 text-sm font-black text-white">Plan an implementation demo<ArrowRight className="size-4" /></Link><Link href="/trust" className="inline-flex items-center gap-2 rounded-xl border px-5 py-3 text-sm font-bold">Review trust details<ArrowRight className="size-4" /></Link></div>
+          </div>
+
+          {approvedCustomerProof.length > 0 ? <div className="mt-6 rounded-[32px] border bg-white p-7 shadow-sm sm:p-8 lg:col-span-2"><p className="text-xs font-black uppercase tracking-[.18em] text-emerald-700">Approved customer proof</p><div className="mt-5 grid gap-4 md:grid-cols-2">{approvedCustomerProof.map((item) => <blockquote key={item.permission_reference} className="rounded-2xl border bg-slate-50 p-5"><p className="leading-7 text-slate-700">“{item.quote}”</p><footer className="mt-4 text-sm font-bold">{item.customer_name}{item.role ? ` · ${item.role}` : ""}</footer>{item.outcome ? <p className="mt-1 text-xs text-slate-500">{item.outcome}</p> : null}</blockquote>)}</div></div> : null}
         </div>
       </section>
 
@@ -666,6 +686,7 @@ export default function HomePage() {
             <div className="flex flex-col gap-3 sm:flex-row lg:flex-col">
               <Link href="/demo" onClick={() => marketingService.track("homepage_final_demo_clicked")} className="inline-flex min-h-14 items-center justify-center gap-2 rounded-2xl bg-white px-6 font-black text-slate-950"><PlayCircle className="size-5" />Open guided demo<ArrowRight className="size-4" /></Link>
               <Link href="/signup" onClick={() => marketingService.track("homepage_final_signup_clicked")} className="inline-flex min-h-14 items-center justify-center gap-2 rounded-2xl border border-white/15 bg-white/[.05] px-6 font-bold">Create workspace<ArrowRight className="size-4" /></Link>
+              <Link href="/book-demo" onClick={() => marketingService.track("homepage_book_demo_clicked", { source: "final" })} className="inline-flex min-h-14 items-center justify-center gap-2 rounded-2xl border border-indigo-300/30 bg-indigo-400/10 px-6 font-bold text-indigo-100">Book a demo<ArrowRight className="size-4" /></Link>
             </div>
           </div>
         </div>
@@ -677,6 +698,9 @@ export default function HomePage() {
           <div className="flex flex-wrap gap-5">
             <Link href="/demo">Demo</Link>
             <Link href="/pricing" onClick={() => marketingService.track("homepage_pricing_cta_clicked", { source: "footer" })}>Pricing</Link>
+            <Link href="/security">Security</Link>
+            <Link href="/privacy">Privacy</Link>
+            <Link href="/trust">Trust</Link>
             <Link href="/login">Sign in</Link>
           </div>
           <p>Management intelligence for better business decisions.</p>

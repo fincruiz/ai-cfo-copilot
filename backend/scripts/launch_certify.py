@@ -1,4 +1,4 @@
-"""FinCruiz Stage 9.4F final launch certification and release gate.
+"""FinCruiz Stage 10 paid-launch certification and release gate.
 
 Read-only. It does not enable billing, mutate company data, or replay provider events.
 
@@ -133,12 +133,21 @@ async def main(company_id: UUID, accept_test_region_latency: bool, frontend_root
     from app.services.finance.reliability_service import FinanceReliabilityService
     from app.repositories.finance.gl_transaction_repository import GLTransactionRepository
     from app.services.operations_service import OperationsService
+    from app.services.paid_launch_certification_service import paid_launch_configuration_checks
 
     if AsyncSessionLocal is None:
         print("NO-GO: DATABASE_URL is not configured.")
         return 2
 
     gates: list[Gate] = [auth_gate(), frontend_static_gate(frontend_root)]
+    for item in paid_launch_configuration_checks():
+        gates.append(Gate(
+            f"paid_{item.key}",
+            item.label,
+            "pass" if item.status == "ready" else "fail",
+            item.detail if not item.action else f"{item.detail} Action: {item.action}",
+            live_payment_blocker=item.key in {"live_payment_switch", "stripe_live_credentials", "razorpay_live_credentials"} and item.status != "ready",
+        ))
     async with AsyncSessionLocal() as session:
         company_exists = bool(await session.scalar(text("SELECT 1 FROM public.companies WHERE id=:id AND is_active=true"), {"id": company_id}))
         if not company_exists:
@@ -178,12 +187,14 @@ async def main(company_id: UUID, accept_test_region_latency: bool, frontend_root
         billing = await BillingService(session).readiness(company_id=company_id)
         if billing["status"] == "blocked":
             billing_status = "fail"
-        elif billing["status"] == "attention" or billing["mode"] != "test" or billing["recent_verified_events"] == 0:
+        elif billing["status"] == "attention":
             billing_status = "conditional"
+        elif settings.is_production and billing["mode"] != "live":
+            billing_status = "fail"
         else:
             billing_status = "pass"
-        gates.append(Gate("billing", "Billing certification", billing_status,
-                          f"Provider={billing['provider']} mode={billing['mode']}; verified events={billing['recent_verified_events']}.",
+        gates.append(Gate("billing", "Billing runtime configuration", billing_status,
+                          f"Provider={billing['provider']} mode={billing['mode']}; verified historical events={billing['recent_verified_events']}.",
                           live_payment_blocker=billing_status != "pass"))
 
     result = decision(gates)

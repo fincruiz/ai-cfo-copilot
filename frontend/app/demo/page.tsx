@@ -107,7 +107,7 @@ const scenes: Scene[] = [
   },
 ];
 
-const audienceCopy: Record<Audience, { label: string; headline: string; focus: string; questions: string[] }> = {
+const audienceCopy: Record<Audience, { label: string; headline: string; focus: string; questions: string[]; closeHeadline: string; closeBody: string }> = {
   owner: {
     label: "Owner / CEO",
     headline: "Show the answer first.",
@@ -118,6 +118,8 @@ const audienceCopy: Record<Audience, { label: string; headline: string; focus: s
       "Which branch needs attention?",
       "Can we afford to hire 3 people?",
     ],
+    closeHeadline: "Bring one real management decision to the next session.",
+    closeBody: "We can shape the demo around the priorities, cash pressure, branch performance or decision your management team is working through now.",
   },
   finance: {
     label: "CFO / Finance",
@@ -129,6 +131,8 @@ const audienceCopy: Record<Audience, { label: string; headline: string; focus: s
       "What happens if revenue grows 10%?",
       "What are the biggest financial risks?",
     ],
+    closeHeadline: "Bring your reporting stack and one finance control problem.",
+    closeBody: "We can walk through source-to-report traceability, reporting periods, integrations, forecasting and the controls needed before management relies on the numbers.",
   },
   advisor: {
     label: "Accountant / Advisor",
@@ -140,6 +144,8 @@ const audienceCopy: Record<Audience, { label: string; headline: string; focus: s
       "What should the board discuss next?",
       "Where are we losing margin?",
     ],
+    closeHeadline: "Bring one client workflow you want to make more advisory.",
+    closeBody: "We can show how governed finance data, repeatable evidence and management questions can support a stronger client conversation without fabricating certainty.",
   },
 };
 
@@ -525,10 +531,12 @@ export default function DemoPage() {
 
         <div className="mt-16 rounded-[34px] border border-indigo-300/15 bg-gradient-to-br from-indigo-500/15 to-sky-500/10 p-8 text-center sm:p-10">
           <CheckCircle2 className="mx-auto size-8 text-emerald-300" />
-          <h2 className="mt-4 text-3xl font-black">The prospect has seen the loop. Now switch to their business.</h2>
-          <p className="mx-auto mt-3 max-w-2xl text-slate-300">Create a workspace, load or connect finance data, and move from the fictional Nova Retail story to governed company context.</p>
+          <p className="mt-4 text-xs font-black uppercase tracking-[.18em] text-indigo-200">Next step for {activeAudience.label}</p>
+          <h2 className="mx-auto mt-3 max-w-3xl text-3xl font-black">{activeAudience.closeHeadline}</h2>
+          <p className="mx-auto mt-3 max-w-2xl text-slate-300">{activeAudience.closeBody}</p>
           <div className="mt-6 flex flex-col justify-center gap-3 sm:flex-row">
-            <Link href="/signup" onClick={() => marketingService.track("demo_signup_clicked", { source: "final" })} className="inline-flex items-center justify-center gap-2 rounded-xl bg-white px-5 py-3 text-sm font-black text-slate-950">Create workspace<ArrowRight className="size-4" /></Link>
+            <Link href={`/book-demo?persona=${audience}`} onClick={() => marketingService.track("demo_book_demo_clicked", { persona: audience, source: "final" })} className="inline-flex items-center justify-center gap-2 rounded-xl bg-white px-5 py-3 text-sm font-black text-slate-950">Book this demo<ArrowRight className="size-4" /></Link>
+            <Link href="/signup" onClick={() => marketingService.track("demo_signup_clicked", { source: "final" })} className="inline-flex items-center justify-center gap-2 rounded-xl border border-white/15 bg-white/[.04] px-5 py-3 text-sm font-bold">Create workspace<ArrowRight className="size-4" /></Link>
             <Link href="/pricing" onClick={() => marketingService.track("demo_pricing_clicked")} className="inline-flex items-center justify-center gap-2 rounded-xl border border-white/15 bg-white/[.04] px-5 py-3 text-sm font-bold">View pricing<ArrowRight className="size-4" /></Link>
           </div>
         </div>

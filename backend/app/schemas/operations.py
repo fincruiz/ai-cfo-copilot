@@ -21,3 +21,20 @@ class OperationalReadiness(BaseModel):
     active_gl_datasets: int
     latest_ingestion_update_at: datetime | None = None
     checked_at: datetime
+
+
+class PaidLaunchCheckOut(BaseModel):
+    key: str
+    label: str
+    status: str
+    detail: str
+    action: str | None = None
+    evidence_kind: str
+
+
+class PaidLaunchCertificationOut(BaseModel):
+    status: str
+    live_paid_launch_approved: bool
+    score: int
+    checks: list[PaidLaunchCheckOut]
+    checked_at: datetime

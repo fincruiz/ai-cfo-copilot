@@ -28,6 +28,7 @@ class AICFOEvidence(BaseModel):
     value: str
     source: str
     period: str | None = None
+    route: str | None = None
 
 
 class AICFODecisionHandoff(BaseModel):

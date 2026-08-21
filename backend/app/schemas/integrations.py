@@ -38,6 +38,11 @@ class TallyRecord(BaseModel):
 
 class TallyPushRequest(BaseModel):
     records: list[TallyRecord] = Field(min_length=1, max_length=5000)
+    # Large Tally ledgers may arrive in chunks. The bridge explicitly marks the
+    # first and final chunk so FinCruiz never activates a partial ledger snapshot.
+    snapshot_id: str | None = Field(default=None, max_length=120)
+    snapshot_start: bool = False
+    snapshot_complete: bool = False
 
 class MemoryCreate(BaseModel):
     title: str = Field(min_length=2, max_length=160)

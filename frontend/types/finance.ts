@@ -261,3 +261,25 @@ export interface FinanceReliability {
   certified_at: string;
   caveat: string;
 }
+
+
+export interface ReportContext {
+  period_start?: string | null;
+  period_end?: string | null;
+  data_as_of?: string | null;
+  transaction_count: number;
+  branch_id?: string | null;
+}
+
+export interface LedgerTransaction {
+  id: string;
+  transaction_date: string;
+  source_account_code: string;
+  source_account_name?: string | null;
+  description?: string | null;
+  document_number?: string | null;
+  debit: string | number;
+  credit: string | number;
+  branch_id?: string | null;
+  external_reference?: string | null;
+}

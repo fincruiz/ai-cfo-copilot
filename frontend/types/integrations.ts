@@ -94,3 +94,23 @@ export type BrainOverview = {
   };
   suggested_questions: string[];
 };
+
+export type FinanceTruthStatus = {
+  status: "activated" | "source_only" | "blocked" | "collecting" | string;
+  provider: Provider;
+  message: string;
+  active_ledger_changed: boolean;
+  active_upload_id?: string;
+  canonical_rows?: number;
+  data_start?: string;
+  data_through?: string;
+  total_debit?: string;
+  total_credit?: string;
+  balance_difference?: string;
+  source_transaction_balance_warning_count?: number;
+};
+
+export type IntegrationSyncResult = {
+  source_records: Record<string, number>;
+  finance_truth: FinanceTruthStatus;
+};

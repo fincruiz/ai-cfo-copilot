@@ -1,5 +1,5 @@
 import { api } from "@/lib/api";
-import type { IntegrationConnection } from "@/types/integrations";
+import type { IntegrationConnection, IntegrationSyncResult } from "@/types/integrations";
 
 type ApiResponse<T> = { success: boolean; message: string; data: T };
 
@@ -16,7 +16,7 @@ export const integrationService = {
 
   sync: async (provider: "xero" | "zoho") =>
     (
-      await api.post<ApiResponse<Record<string, number>>>(
+      await api.post<ApiResponse<IntegrationSyncResult>>(
         `/integrations/${provider}/sync`,
         undefined,
         { timeout: 300000 },

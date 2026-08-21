@@ -25,6 +25,19 @@ export type MarketingFunnel = {
   demo_signup?: number;
 };
 
+export type DemoLeadInput = {
+  name: string;
+  work_email: string;
+  company_name: string;
+  role?: string;
+  persona?: string;
+  country?: string;
+  team_size?: string;
+  message?: string;
+  source_path?: string;
+  website?: string;
+};
+
 export const marketingService = {
   track(event_name: string, properties: Record<string, string | number | boolean> = {}) {
     if (typeof window === "undefined") return;
@@ -41,6 +54,12 @@ export const marketingService = {
         { timeout: 4000 },
       )
       .catch(() => undefined);
+  },
+
+  async bookDemo(payload: DemoLeadInput): Promise<{ accepted: boolean; reference?: string | null }> {
+    return (
+      await api.post<{ data: { accepted: boolean; reference?: string | null } }>("/marketing/demo-leads", payload, { timeout: 8000 })
+    ).data.data;
   },
 
   async funnel(days = 30) {

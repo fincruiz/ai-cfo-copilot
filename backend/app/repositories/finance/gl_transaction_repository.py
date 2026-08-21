@@ -216,6 +216,67 @@ class GLTransactionRepository:
             if row.reporting_group == reporting_group
         ]
 
+    async def transaction_summary(
+        self,
+        *,
+        company_id: UUID,
+        branch_id: UUID | None = None,
+    ) -> dict:
+        query = (
+            select(
+                func.count(GLTransaction.id).label("transaction_count"),
+                func.min(GLTransaction.transaction_date).label("first_transaction_date"),
+                func.max(GLTransaction.transaction_date).label("last_transaction_date"),
+            )
+            .join(FileUpload, FileUpload.id == GLTransaction.file_upload_id)
+            .where(*self._active_base_conditions(company_id))
+        )
+        if branch_id is not None:
+            query = query.where(GLTransaction.branch_id == branch_id)
+        row = (await self.session.execute(query)).mappings().one()
+        return {
+            "transaction_count": int(row["transaction_count"] or 0),
+            "first_transaction_date": row["first_transaction_date"],
+            "last_transaction_date": row["last_transaction_date"],
+        }
+
+    async def ledger_transactions(
+        self,
+        *,
+        company_id: UUID,
+        start_date: date | None = None,
+        end_date: date | None = None,
+        account_code: str | None = None,
+        branch_id: UUID | None = None,
+        limit: int = 250,
+    ):
+        query = (
+            select(
+                GLTransaction.id,
+                GLTransaction.transaction_date,
+                GLTransaction.source_account_code,
+                GLTransaction.source_account_name,
+                GLTransaction.description,
+                GLTransaction.document_number,
+                GLTransaction.debit,
+                GLTransaction.credit,
+                GLTransaction.branch_id,
+                GLTransaction.external_reference,
+            )
+            .join(FileUpload, FileUpload.id == GLTransaction.file_upload_id)
+            .where(*self._active_base_conditions(company_id))
+        )
+        if start_date is not None:
+            query = query.where(GLTransaction.transaction_date >= start_date)
+        if end_date is not None:
+            query = query.where(GLTransaction.transaction_date <= end_date)
+        if account_code:
+            query = query.where(GLTransaction.source_account_code == account_code)
+        if branch_id is not None:
+            query = query.where(GLTransaction.branch_id == branch_id)
+        query = query.order_by(GLTransaction.transaction_date.desc(), GLTransaction.id.desc()).limit(limit)
+        return (await self.session.execute(query)).mappings().all()
+
     async def branch_ids_with_activity(
         self,
         company_id: UUID,

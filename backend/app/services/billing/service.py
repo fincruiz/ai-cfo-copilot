@@ -8,7 +8,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.config import settings
 from app.core.exceptions import ApplicationError
 from app.services.billing.razorpay_provider import RazorpayBillingProvider
-from app.services.billing.certification import assert_checkout_allowed, provider_checks
+from app.services.billing.certification import (
+    assert_checkout_allowed,
+    provider_checks,
+    razorpay_subscription_status,
+    stripe_subscription_status,
+)
 from app.services.billing.stripe_provider import StripeBillingProvider
 from app.services.market_service import resolve_market
 from app.services.subscription_service import SubscriptionService
@@ -200,7 +205,7 @@ class BillingService:
                 await self.session.execute(text("UPDATE public.company_subscriptions SET status='past_due',updated_at=now() WHERE company_id=:company_id"), {"company_id": company_id})
             elif event_type in {"customer.subscription.updated", "customer.subscription.created"}:
                 status = str(obj.get("status") or "")
-                mapped = "active" if status in {"active", "trialing"} else "past_due" if status in {"past_due", "unpaid", "incomplete"} else "cancelled" if status in {"canceled"} else None
+                mapped = stripe_subscription_status(event_type, status)
                 if mapped:
                     await self.session.execute(
                         text("UPDATE public.company_subscriptions SET status=:status,provider_customer_id=COALESCE(:customer,provider_customer_id),provider_subscription_id=COALESCE(:subscription,provider_subscription_id),updated_at=now() WHERE company_id=:company_id"),
@@ -222,14 +227,15 @@ class BillingService:
         company_id = await self._company_from_provider_refs(provider="razorpay", subscription_id=subscription_id, metadata=metadata)
         await self._record_event(provider="razorpay", event_id=event_id, event_type=event_type, company_id=company_id, payload=event)
         if company_id:
-            if event_type in {"subscription.activated", "subscription.charged"}:
+            mapped_status = razorpay_subscription_status(event_type)
+            if mapped_status == "active":
                 await self.session.execute(
                     text("""UPDATE public.company_subscriptions SET provider='razorpay',provider_subscription_id=COALESCE(:subscription,provider_subscription_id),status='active',plan=COALESCE(requested_plan,plan),billing_interval=COALESCE(requested_interval,billing_interval),requested_plan=NULL,requested_interval=NULL,updated_at=now() WHERE company_id=:company_id"""),
                     {"subscription": subscription_id, "company_id": company_id},
                 )
-            elif event_type in {"subscription.halted"}:
+            elif mapped_status == "past_due":
                 await self.session.execute(text("UPDATE public.company_subscriptions SET status='past_due',payment_failure_at=now(),updated_at=now() WHERE company_id=:company_id"), {"company_id": company_id})
-            elif event_type in {"subscription.cancelled", "subscription.completed"}:
+            elif mapped_status == "cancelled":
                 await self.session.execute(text("UPDATE public.company_subscriptions SET status='cancelled',updated_at=now() WHERE company_id=:company_id"), {"company_id": company_id})
         await self.session.commit()
         return False

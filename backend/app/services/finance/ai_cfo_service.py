@@ -348,8 +348,21 @@ MANAGEMENT_QUESTION:
         bs = context.get("balance_sheet") or {}
         monthly = context.get("monthly_actuals") or []
         evidence: list[dict] = []
+        source_routes = {
+            "Profit & Loss": "/dashboard/reports?tab=profit-and-loss",
+            "Balance Sheet": "/dashboard/reports?tab=balance-sheet",
+            "Monthly actuals": "/dashboard/reports?tab=monthly-actuals",
+            "AR ageing": "/dashboard/working-capital?type=AR",
+            "AP ageing": "/dashboard/working-capital?type=AP",
+        }
         def add(label, value, source, period=None):
-            evidence.append({"label": label, "value": str(value), "source": source, "period": period})
+            evidence.append({
+                "label": label,
+                "value": str(value),
+                "source": source,
+                "period": period,
+                "route": source_routes.get(source),
+            })
         if any(x in q for x in ("profit","margin","revenue","sales","performance","focus","management")):
             if pnl.get("revenue") is not None: add("Revenue", f"{currency} {float(pnl['revenue']):,.2f}", "Profit & Loss")
             if pnl.get("net_profit") is not None: add("Net profit", f"{currency} {float(pnl['net_profit']):,.2f}", "Profit & Loss")

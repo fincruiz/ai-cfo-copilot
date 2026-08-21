@@ -14,6 +14,8 @@ from app.schemas.finance.reports import (
     DataHealthResponse,
     BranchComparisonResponse,
     MonthlyActualResponse,
+    ReportContextResponse,
+    LedgerTransactionResponse,
     ProfitAndLossResponse,
     RatioResponse,
     ReportLineResponse,
@@ -46,6 +48,43 @@ def lines(items):
         )
         for item in items
     ]
+
+
+@router.get("/context", response_model=APIResponse[ReportContextResponse])
+async def report_context(
+    current_company: Annotated[Company, Depends(get_current_company)],
+    svc: Annotated[ReportingService, Depends(service)],
+    branch_id: UUID | None = None,
+):
+    result = await svc.report_context(current_company.id, branch_id=branch_id)
+    return APIResponse(
+        message="Active reporting context retrieved.",
+        data=ReportContextResponse(**result),
+    )
+
+
+@router.get("/transactions", response_model=APIResponse[list[LedgerTransactionResponse]])
+async def ledger_transactions(
+    current_company: Annotated[Company, Depends(get_current_company)],
+    svc: Annotated[ReportingService, Depends(service)],
+    start_date: date | None = None,
+    end_date: date | None = None,
+    account_code: str | None = None,
+    branch_id: UUID | None = None,
+    limit: Annotated[int, Query(ge=1, le=1000)] = 250,
+):
+    rows = await svc.ledger_transactions(
+        current_company.id,
+        start_date=start_date,
+        end_date=end_date,
+        account_code=account_code,
+        branch_id=branch_id,
+        limit=limit,
+    )
+    return APIResponse(
+        message="Ledger transactions retrieved.",
+        data=[LedgerTransactionResponse(**row) for row in rows],
+    )
 
 
 @router.get("/trial-balance", response_model=APIResponse[TrialBalanceResponse])

@@ -226,6 +226,46 @@ class ReportingService:
         return result
 
 
+    async def report_context(
+        self,
+        company_id: UUID,
+        branch_id: UUID | None = None,
+    ) -> dict:
+        summary = await self.repository.transaction_summary(
+            company_id=company_id, branch_id=branch_id
+        )
+        latest = summary.get("last_transaction_date")
+        period_start, period_end = await self._resolve_income_period(
+            company_id, None, latest, branch_id
+        )
+        return {
+            "period_start": period_start,
+            "period_end": period_end,
+            "data_as_of": latest,
+            "transaction_count": int(summary.get("transaction_count") or 0),
+            "branch_id": branch_id,
+        }
+
+    async def ledger_transactions(
+        self,
+        company_id: UUID,
+        *,
+        start_date: date | None = None,
+        end_date: date | None = None,
+        account_code: str | None = None,
+        branch_id: UUID | None = None,
+        limit: int = 250,
+    ) -> list[dict]:
+        rows = await self.repository.ledger_transactions(
+            company_id=company_id,
+            start_date=start_date,
+            end_date=end_date,
+            account_code=account_code,
+            branch_id=branch_id,
+            limit=limit,
+        )
+        return [dict(row) for row in rows]
+
     async def data_health(self, company_id: UUID) -> dict:
         session = self.repository.session
         summary = (

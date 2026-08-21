@@ -16,6 +16,8 @@ import type {
   ProfitAndLoss,
   Ratio,
   TrialBalance,
+  ReportContext,
+  LedgerTransaction,
 } from "@/types/finance";
 
 function queryString(params?: Record<string, string | undefined>) {
@@ -93,6 +95,30 @@ export const financeService = {
     payload: Partial<Pick<Branch, "branch_code" | "branch_name" | "region" | "review_status" | "is_active">>,
   ): Promise<Branch> {
     return (await api.put<ApiResponse<Branch>>(`/branches/${branchId}`, payload)).data.data;
+  },
+
+  async getReportContext(params?: { branchId?: string }): Promise<ReportContext> {
+    return (await api.get<ApiResponse<ReportContext>>(
+      `/reports/context${queryString({ branch_id: params?.branchId })}`,
+    )).data.data;
+  },
+
+  async getLedgerTransactions(params?: {
+    startDate?: string;
+    endDate?: string;
+    accountCode?: string;
+    branchId?: string;
+    limit?: number;
+  }): Promise<LedgerTransaction[]> {
+    return (await api.get<ApiResponse<LedgerTransaction[]>>(
+      `/reports/transactions${queryString({
+        start_date: params?.startDate,
+        end_date: params?.endDate,
+        account_code: params?.accountCode,
+        branch_id: params?.branchId,
+        limit: params?.limit ? String(params.limit) : undefined,
+      })}`,
+    )).data.data;
   },
 
   async getTrialBalance(params?: {
