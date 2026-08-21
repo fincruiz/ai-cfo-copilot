@@ -36,19 +36,19 @@ export function FeatureExplorer({ capabilities, onClose }: { capabilities: Capab
     <ViewportModal
       open
       onClose={onClose}
-      title="Explore everything FinCruiz can do"
-      description="Search by feature name or by the business outcome you want. Advanced tools stay discoverable without crowding everyday navigation."
+      title="Search FinCruiz"
+      description="Jump to a workflow by feature or business outcome. Advanced tools stay available without crowding the everyday workspace."
       maxWidthClass="max-w-5xl"
     >
-      <div className="rounded-3xl bg-gradient-to-br from-primary/[.07] via-background to-sky-500/[.05] p-1">
-        <div className="flex items-center gap-3 px-3 pb-4">
-          <div className="flex size-11 items-center justify-center rounded-2xl bg-primary text-primary-foreground shadow-lg"><WandSparkles className="size-5" /></div>
+      <div className="rounded-2xl border border-border/80 bg-muted/20 p-3">
+        <div className="flex items-center gap-3 px-2 pb-3">
+          <div className="flex size-10 items-center justify-center rounded-xl bg-primary text-primary-foreground"><WandSparkles className="size-4" /></div>
           <div>
-            <p className="text-xs font-semibold uppercase tracking-[.18em] text-primary">Capability explorer</p>
-            <p className="mt-1 text-sm text-muted-foreground">Tell FinCruiz what you want to achieve.</p>
+            <p className="fincruiz-eyebrow">Command centre</p>
+            <p className="mt-1 text-sm font-medium">Tell FinCruiz what you want to achieve.</p>
           </div>
         </div>
-        <label className="flex items-center gap-3 rounded-2xl border bg-background px-5 py-4 shadow-sm focus-within:ring-2 focus-within:ring-primary/20">
+        <label className="flex items-center gap-3 rounded-xl border bg-background px-4 py-3 shadow-sm focus-within:ring-2 focus-within:ring-primary/15">
           <Search className="size-5 text-primary" />
           <input autoFocus value={query} onChange={(e) => updateQuery(e.target.value)} className="w-full bg-transparent text-base outline-none" placeholder="Try: improve cash, model hiring, board pack, Xero, profit margin..." />
         </label>
@@ -62,7 +62,7 @@ export function FeatureExplorer({ capabilities, onClose }: { capabilities: Capab
             <div className="mb-3 flex items-center gap-2"><Sparkles className="size-3.5 text-primary"/><p className="text-[11px] font-semibold uppercase tracking-[.18em] text-muted-foreground">{group}</p></div>
             <div className="grid gap-3 md:grid-cols-2">
               {results.filter((item) => item.group === group).map((item) => (
-                <Link key={`${item.group}-${item.label}`} href={item.href} onClick={() => { usageService.track("feature_opened_from_explorer", { feature: item.label, group: item.group }); onClose(); }} className="group rounded-2xl border p-4 transition duration-200 hover:-translate-y-0.5 hover:border-primary/30 hover:bg-primary/[.035] hover:shadow-lg">
+                <Link key={`${item.group}-${item.label}`} href={item.href} onClick={() => { usageService.track("feature_opened_from_explorer", { feature: item.label, group: item.group }); onClose(); }} className="group rounded-xl border border-border/80 bg-card p-4 transition duration-200 hover:border-primary/25 hover:bg-primary/[.025] hover:shadow-md">
                   <div className="flex items-start justify-between gap-4"><div><p className="font-semibold">{item.label}</p><p className="mt-1 text-sm leading-6 text-muted-foreground">{item.description}</p></div><ArrowRight className="mt-1 size-4 shrink-0 text-muted-foreground transition group-hover:translate-x-1 group-hover:text-primary" /></div>
                 </Link>
               ))}

@@ -45,10 +45,10 @@ export function ReportingPeriodIndicator() {
 
   return (
     <div
-      className="hidden max-w-[280px] items-center gap-2 rounded-xl border bg-background px-3 py-2 text-xs shadow-sm lg:flex"
+      className="hidden max-w-[255px] items-center gap-2 rounded-xl border border-border/80 bg-card/90 px-3 py-2 text-xs lg:flex"
       title={`Reporting period: ${label}. Scope: ${scopeLabel}. Data as of: ${formatDate(context?.data_as_of)}. ${context?.transaction_count ?? 0} active ledger transactions.`}
     >
-      <CalendarRange className="size-3.5 shrink-0 text-indigo-500" />
+      <CalendarRange className="size-3.5 shrink-0 text-primary" />
       <div className="min-w-0">
         <p className="truncate font-semibold text-foreground">{label}</p>
         <p className="truncate text-[10px] text-muted-foreground">Data as of {formatDate(context?.data_as_of)} · {scopeLabel}</p>

@@ -3,7 +3,6 @@
 import Link from "next/link";
 import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import {
-  ArrowLeft,
   ArrowRight,
   BadgeCheck,
   BarChart3,
@@ -306,12 +305,12 @@ export default function DemoPage() {
   }, [answer?.confidence]);
 
   return (
-    <main className="min-h-screen overflow-hidden bg-[#07101f] text-white">
+    <main className="min-h-screen overflow-hidden bg-[#080d19] text-white">
       <div className="pointer-events-none fixed inset-0 demo-aurora" />
 
-      <header className="sticky top-0 z-40 border-b border-white/10 bg-[#07101f]/88 backdrop-blur-xl">
+      <header className="sticky top-0 z-40 border-b border-white/10 bg-[#080d19]/90 backdrop-blur-xl">
         <div className="mx-auto flex max-w-7xl items-center justify-between gap-3 px-5 py-4 lg:px-8">
-          <Link href="/" className="flex items-center gap-2 text-sm font-semibold text-slate-300 hover:text-white"><ArrowLeft className="size-4" />FinCruiz</Link>
+          <Link href="/" className="flex items-center gap-3 text-sm font-semibold text-slate-300 hover:text-white"><span className="flex size-8 items-center justify-center rounded-lg bg-indigo-500 text-white"><BarChart3 className="size-4" /></span><span>FinCruiz</span></Link>
           <div className="flex items-center gap-2">
             <button type="button" onClick={togglePresenter} className={`hidden rounded-xl border px-3 py-2 text-xs font-bold sm:inline-flex ${presenterMode ? "border-indigo-300/30 bg-indigo-300/10 text-indigo-100" : "border-white/10 bg-white/[.04] text-slate-300"}`}>
               <Presentation className="mr-1.5 size-3.5" />Presenter mode {presenterMode ? "on" : "off"}
@@ -323,14 +322,15 @@ export default function DemoPage() {
       </header>
 
       <section className="relative z-10 mx-auto max-w-7xl px-5 pb-24 pt-7 lg:px-8">
-        <div className="rounded-2xl border border-indigo-300/15 bg-indigo-300/[.07] px-4 py-3 text-sm text-indigo-100 lg:flex lg:items-center lg:justify-between">
-          <span className="flex items-center gap-2"><PlayCircle className="size-4" /><b>Prospect demo.</b> Nova Retail is fictional and isolated from every customer workspace.</span>
-          <span className="mt-2 block text-xs text-indigo-200 lg:mt-0">Choose the prospect role, follow the story, then ask their real management question.</span>
+        <div className="mx-auto max-w-3xl text-center">
+          <div className="inline-flex items-center gap-2 rounded-full border border-indigo-300/15 bg-indigo-300/[.07] px-3.5 py-2 text-xs font-bold text-indigo-100"><PlayCircle className="size-3.5" />Interactive product tour · synthetic data</div>
+          <h1 className="mt-5 text-4xl font-black tracking-[-.055em] sm:text-6xl">See FinCruiz through <span className="text-indigo-300">your role.</span></h1>
+          <p className="mx-auto mt-4 max-w-2xl text-base leading-7 text-slate-400">Choose how you work, follow a five-minute management story, then ask Nova Retail a real business question. No customer workspace is used.</p>
         </div>
 
-        <div className="mt-8 grid gap-3 sm:grid-cols-3">
+        <div className="mx-auto mt-8 grid max-w-4xl gap-3 sm:grid-cols-3">
           {(Object.keys(audienceCopy) as Audience[]).map((key) => (
-            <button key={key} type="button" onClick={() => chooseAudience(key)} className={`rounded-2xl border p-4 text-left ${audience === key ? "border-indigo-300/30 bg-indigo-300/10" : "border-white/10 bg-white/[.035] hover:bg-white/[.055]"}`}>
+            <button key={key} type="button" onClick={() => chooseAudience(key)} className={`rounded-2xl border p-4 text-left transition ${audience === key ? "border-indigo-300/35 bg-indigo-300/10 shadow-[0_14px_40px_rgba(79,70,229,.12)]" : "border-white/10 bg-white/[.025] hover:border-white/20 hover:bg-white/[.045]"}`}>
               <p className="text-xs font-black uppercase tracking-[.13em] text-indigo-200">{audienceCopy[key].label}</p>
               <p className="mt-2 text-sm font-bold">{audienceCopy[key].headline}</p>
             </button>
@@ -340,8 +340,8 @@ export default function DemoPage() {
         <div className="mt-10 grid gap-8 lg:grid-cols-[.72fr_1.28fr] lg:items-start">
           <div className="lg:sticky lg:top-28">
             <div className="inline-flex items-center gap-2 rounded-full border border-sky-300/15 bg-sky-300/10 px-3 py-1.5 text-xs font-bold text-sky-100"><Sparkles className="size-3.5" />Guided management story · about 5 minutes</div>
-            <h1 className="mt-5 text-4xl font-black tracking-[-.05em] sm:text-6xl">Do not tour menus. <span className="bg-gradient-to-r from-sky-300 via-indigo-300 to-violet-300 bg-clip-text text-transparent">Show the decision loop.</span></h1>
-            <p className="mt-5 max-w-xl text-base leading-8 text-slate-300">{activeAudience.focus} The salesperson can control the story, or let it play automatically.</p>
+            <h2 className="mt-5 text-4xl font-black tracking-[-.05em] sm:text-5xl">Follow the <span className="text-indigo-300">decision loop.</span></h2>
+            <p className="mt-5 max-w-xl text-base leading-8 text-slate-300">{activeAudience.focus} Choose a guided story or control each step manually. Presenter mode keeps the commercial talk track available without cluttering the prospect view.</p>
 
             <div className="mt-7 flex flex-wrap gap-3">
               <button type="button" onClick={() => setPlaying((value) => !value)} className="inline-flex items-center gap-2 rounded-xl bg-indigo-500 px-5 py-3 text-sm font-black hover:bg-indigo-400">{playing ? <Pause className="size-4" /> : <Play className="size-4" />}{playing ? "Pause story" : "Play guided story"}</button>
@@ -360,8 +360,8 @@ export default function DemoPage() {
           </div>
 
           <div>
-            <div className="overflow-hidden rounded-[34px] border border-white/10 bg-white/[.04] p-1 shadow-[0_40px_120px_rgba(20,30,80,.5)]">
-              <div className="min-h-[500px] rounded-[31px] bg-slate-950/80 p-6 backdrop-blur sm:p-8">
+            <div className="fincruiz-demo-shell overflow-hidden p-1">
+              <div className="min-h-[500px] rounded-[24px] bg-slate-950/72 p-6 sm:p-8">
                 <div className="flex flex-wrap items-center justify-between gap-3">
                   <span className="text-xs font-black uppercase tracking-[.18em] text-indigo-200">{activeScene.kicker}</span>
                   <span className="flex items-center gap-2 text-xs text-slate-400"><span className={`size-2 rounded-full ${playing ? "animate-pulse bg-emerald-400" : "bg-slate-600"}`} />{playing ? "Auto story playing" : "Presenter controlled"}</span>
@@ -443,7 +443,7 @@ export default function DemoPage() {
         </div>
 
         <div className="mt-8 grid gap-5 lg:grid-cols-[.68fr_1.32fr]">
-          <div className="rounded-[30px] border border-white/10 bg-white/[.05] p-6">
+          <div className="rounded-[22px] border border-white/10 bg-white/[.05] p-6">
             <div className="flex items-start justify-between gap-3">
               <div><p className="font-black">Nova Retail</p><p className="mt-1 text-xs text-slate-400">Synthetic executive view · 3 branches · 12 months</p></div>
               <span className="rounded-full bg-emerald-300/10 px-2.5 py-1 text-[10px] font-bold text-emerald-200">DEMO</span>
@@ -465,7 +465,7 @@ export default function DemoPage() {
             </div>
           </div>
 
-          <div className="rounded-[30px] border border-indigo-300/15 bg-indigo-300/[.06] p-6">
+          <div className="rounded-[22px] border border-indigo-300/15 bg-indigo-300/[.06] p-6">
             <div className="flex flex-wrap items-center justify-between gap-3">
               <p className="flex items-center gap-2 text-sm font-black"><BrainCircuit className="size-5 text-indigo-300" />Ask FinCruiz</p>
               <span className="text-xs text-slate-400">Evidence-first public demo</span>
@@ -521,15 +521,15 @@ export default function DemoPage() {
         </div>
 
         <div className="mt-20 grid gap-5 lg:grid-cols-3">
-          <div id="reporting" className="scroll-mt-28 rounded-[28px] border border-white/10 bg-white/[.04] p-6"><FileBarChart className="size-6 text-indigo-300" /><h3 className="mt-4 text-xl font-black">Management reporting</h3><p className="mt-2 text-sm leading-6 text-slate-400">Prepared P&L, balance-sheet and KPI context becomes the source for management explanation rather than a separate narrative process.</p></div>
-          <div id="branches" className="scroll-mt-28 rounded-[28px] border border-white/10 bg-white/[.04] p-6"><GitBranch className="size-6 text-sky-300" /><h3 className="mt-4 text-xl font-black">Branch intelligence</h3><p className="mt-2 text-sm leading-6 text-slate-400">Compare Central, North and West while keeping the group view intact.</p></div>
-          <div id="working-capital" className="scroll-mt-28 rounded-[28px] border border-white/10 bg-white/[.04] p-6"><WalletCards className="size-6 text-emerald-300" /><h3 className="mt-4 text-xl font-black">Working capital</h3><p className="mt-2 text-sm leading-6 text-slate-400">Connect AR ageing, debtor days and cash conversion to management action.</p></div>
-          <div id="forecasting" className="scroll-mt-28 rounded-[28px] border border-white/10 bg-white/[.04] p-6"><TrendingUp className="size-6 text-violet-300" /><h3 className="mt-4 text-xl font-black">Forecasting</h3><p className="mt-2 text-sm leading-6 text-slate-400">Translate management assumptions into forward-looking profit and cash outcomes.</p></div>
-          <div id="decision" className="scroll-mt-28 rounded-[28px] border border-white/10 bg-white/[.04] p-6"><CircleDollarSign className="size-6 text-amber-300" /><h3 className="mt-4 text-xl font-black">Decision simulation</h3><p className="mt-2 text-sm leading-6 text-slate-400">Test hiring, growth, pricing and collection scenarios before committing.</p></div>
-          <div id="board" className="scroll-mt-28 rounded-[28px] border border-white/10 bg-white/[.04] p-6"><Building2 className="size-6 text-rose-300" /><h3 className="mt-4 text-xl font-black">Board story</h3><p className="mt-2 text-sm leading-6 text-slate-400">Carry performance, risks, scenarios and actions into a concise management narrative.</p></div>
+          <div id="reporting" className="scroll-mt-28 rounded-[22px] border border-white/10 bg-white/[.04] p-6"><FileBarChart className="size-6 text-indigo-300" /><h3 className="mt-4 text-xl font-black">Management reporting</h3><p className="mt-2 text-sm leading-6 text-slate-400">Prepared P&L, balance-sheet and KPI context becomes the source for management explanation rather than a separate narrative process.</p></div>
+          <div id="branches" className="scroll-mt-28 rounded-[22px] border border-white/10 bg-white/[.04] p-6"><GitBranch className="size-6 text-sky-300" /><h3 className="mt-4 text-xl font-black">Branch intelligence</h3><p className="mt-2 text-sm leading-6 text-slate-400">Compare Central, North and West while keeping the group view intact.</p></div>
+          <div id="working-capital" className="scroll-mt-28 rounded-[22px] border border-white/10 bg-white/[.04] p-6"><WalletCards className="size-6 text-emerald-300" /><h3 className="mt-4 text-xl font-black">Working capital</h3><p className="mt-2 text-sm leading-6 text-slate-400">Connect AR ageing, debtor days and cash conversion to management action.</p></div>
+          <div id="forecasting" className="scroll-mt-28 rounded-[22px] border border-white/10 bg-white/[.04] p-6"><TrendingUp className="size-6 text-violet-300" /><h3 className="mt-4 text-xl font-black">Forecasting</h3><p className="mt-2 text-sm leading-6 text-slate-400">Translate management assumptions into forward-looking profit and cash outcomes.</p></div>
+          <div id="decision" className="scroll-mt-28 rounded-[22px] border border-white/10 bg-white/[.04] p-6"><CircleDollarSign className="size-6 text-amber-300" /><h3 className="mt-4 text-xl font-black">Decision simulation</h3><p className="mt-2 text-sm leading-6 text-slate-400">Test hiring, growth, pricing and collection scenarios before committing.</p></div>
+          <div id="board" className="scroll-mt-28 rounded-[22px] border border-white/10 bg-white/[.04] p-6"><Building2 className="size-6 text-rose-300" /><h3 className="mt-4 text-xl font-black">Board story</h3><p className="mt-2 text-sm leading-6 text-slate-400">Carry performance, risks, scenarios and actions into a concise management narrative.</p></div>
         </div>
 
-        <div className="mt-16 rounded-[34px] border border-indigo-300/15 bg-gradient-to-br from-indigo-500/15 to-sky-500/10 p-8 text-center sm:p-10">
+        <div className="mt-16 rounded-[24px] border border-indigo-300/15 bg-gradient-to-br from-indigo-500/15 to-sky-500/10 p-8 text-center sm:p-10">
           <CheckCircle2 className="mx-auto size-8 text-emerald-300" />
           <p className="mt-4 text-xs font-black uppercase tracking-[.18em] text-indigo-200">Next step for {activeAudience.label}</p>
           <h2 className="mx-auto mt-3 max-w-3xl text-3xl font-black">{activeAudience.closeHeadline}</h2>

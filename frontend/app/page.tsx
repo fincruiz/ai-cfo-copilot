@@ -257,165 +257,110 @@ export default function HomePage() {
   const evidence = answer?.evidence ?? [];
 
   return (
-    <main className="min-h-screen overflow-hidden bg-[#f7f8fc] text-slate-950">
+    <main className="min-h-screen overflow-hidden bg-[#f8f8f6] text-slate-950">
       <script
         type="application/ld+json"
         dangerouslySetInnerHTML={{ __html: JSON.stringify(homepageStructuredData) }}
       />
       <div className="pointer-events-none fixed inset-0 landing-aurora" />
 
-      <header className="sticky top-0 z-50 border-b border-white/80 bg-white/85 backdrop-blur-xl">
-        <div className="mx-auto flex max-w-7xl items-center justify-between px-5 py-4 lg:px-8">
+      <header className="sticky top-0 z-50 border-b border-slate-200/70 bg-[#f8f8f6]/90 backdrop-blur-xl">
+        <div className="mx-auto flex max-w-[1400px] items-center justify-between px-5 py-4 lg:px-8">
           <Link href="/" className="flex items-center gap-3">
-            <span className="flex size-11 items-center justify-center rounded-2xl bg-slate-950 text-white shadow-sm">
-              <BarChart3 className="size-5" />
-            </span>
+            <span className="fincruiz-brand-mark"><BarChart3 className="size-[18px]" /></span>
             <span>
-              <span className="block text-lg font-black tracking-tight">FinCruiz</span>
-              <span className="block text-[11px] font-medium text-slate-500">AI CFO & management intelligence</span>
+              <span className="block text-[17px] font-black tracking-[-.03em]">FinCruiz</span>
+              <span className="block text-[10px] font-semibold uppercase tracking-[.13em] text-slate-500">AI finance operating system</span>
             </span>
           </Link>
 
           <nav className="hidden items-center gap-1 lg:flex">
-            <a href="#product" className="rounded-xl px-4 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-100">Product</a>
-            <a href="#teams" className="rounded-xl px-4 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-100">For teams</a>
-            <a href="#trust" className="rounded-xl px-4 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-100">Trust</a>
-            <a href="#faq" className="rounded-xl px-4 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-100">FAQ</a>
+            <a href="#product" className="rounded-xl px-4 py-2 text-sm font-semibold text-slate-600 hover:bg-white">Product</a>
+            <Link href="/demo" className="rounded-xl px-4 py-2 text-sm font-semibold text-slate-600 hover:bg-white">Demo</Link>
+            <a href="#teams" className="rounded-xl px-4 py-2 text-sm font-semibold text-slate-600 hover:bg-white">For teams</a>
+            <a href="#trust" className="rounded-xl px-4 py-2 text-sm font-semibold text-slate-600 hover:bg-white">Trust</a>
           </nav>
 
           <div className="flex items-center gap-2">
-            <Link
-              href="/pricing"
-              onClick={() => marketingService.track("homepage_pricing_cta_clicked", { source: "nav" })}
-              className="hidden rounded-xl px-4 py-2 text-sm font-semibold text-slate-600 sm:block"
-            >
-              Pricing
-            </Link>
+            <Link href="/pricing" onClick={() => marketingService.track("homepage_pricing_cta_clicked", { source: "nav" })} className="hidden rounded-xl px-4 py-2 text-sm font-semibold text-slate-600 sm:block">Pricing</Link>
             <Link href="/login" className="rounded-xl px-3 py-2 text-sm font-semibold sm:px-4">Sign in</Link>
-            <Link href="/book-demo" onClick={() => marketingService.track("homepage_book_demo_clicked", { source: "nav" })} className="hidden rounded-xl border px-4 py-2.5 text-sm font-bold text-slate-700 xl:inline-flex">Book a demo</Link>
-            <Link
-              href="/signup"
-              onClick={() => marketingService.track("homepage_hero_signup_clicked", { source: "nav" })}
-              className="hidden rounded-xl bg-slate-950 px-5 py-2.5 text-sm font-bold text-white md:inline-flex"
-            >
-              Create workspace
-            </Link>
+            <Link href="/book-demo" onClick={() => marketingService.track("homepage_book_demo_clicked", { source: "nav" })} className="hidden rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm font-bold text-slate-700 xl:inline-flex">Book a demo</Link>
+            <Link href="/signup" onClick={() => marketingService.track("homepage_hero_signup_clicked", { source: "nav" })} className="hidden rounded-xl bg-slate-950 px-5 py-2.5 text-sm font-bold text-white md:inline-flex">Create workspace</Link>
           </div>
         </div>
       </header>
 
-      <section className="relative z-10 mx-auto grid max-w-7xl gap-12 px-5 pb-20 pt-14 lg:grid-cols-[0.92fr_1.08fr] lg:items-center lg:px-8 lg:pt-24">
+      <section className="relative z-10 mx-auto grid max-w-[1400px] gap-14 px-5 pb-24 pt-16 lg:grid-cols-[0.9fr_1.1fr] lg:items-center lg:px-8 lg:pt-28">
         <div>
-          <div className="inline-flex items-center gap-2 rounded-full border border-indigo-100 bg-white/90 px-4 py-2 text-sm font-bold shadow-sm">
-            <Sparkles className="size-4 text-indigo-600" />
-            Finance tells you what happened. FinCruiz helps you decide what happens next.
+          <div className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white/85 px-3.5 py-2 text-xs font-bold text-slate-700 shadow-sm">
+            <span className="size-1.5 rounded-full bg-emerald-500" />
+            Financial truth → management action
           </div>
 
-          <h1 className="mt-7 max-w-3xl text-5xl font-black leading-[1.01] tracking-[-.055em] sm:text-6xl lg:text-[68px]">
+          <h1 className="mt-7 max-w-3xl text-5xl font-black leading-[1.01] tracking-[-.06em] sm:text-6xl lg:text-[72px]">
             Turn financial data into
-            <span className="block bg-gradient-to-r from-indigo-600 via-violet-600 to-sky-500 bg-clip-text text-transparent">
-              management decisions.
-            </span>
+            <span className="block text-indigo-600">management decisions.</span>
           </h1>
 
-          <p className="mt-6 max-w-2xl text-lg leading-8 text-slate-600">
-            FinCruiz brings reporting, branches, budgets and scenarios into one evidence-backed workspace. Ask a business question in plain English, see the numbers behind the answer, and model the next move.
+          <p className="mt-6 max-w-xl text-lg leading-8 text-slate-600">
+            One governed workspace for reporting, planning and CFO-level answers. Understand what changed, trace the evidence and model what happens next.
           </p>
 
           <div className="mt-8 flex flex-col gap-3 sm:flex-row">
-            <Link
-              href="/demo"
-              onClick={() => marketingService.track("homepage_hero_demo_clicked", { source: "hero" })}
-              className="inline-flex min-h-14 items-center justify-center gap-2 rounded-2xl bg-indigo-600 px-7 font-black text-white shadow-[0_18px_45px_rgba(79,70,229,.24)] hover:-translate-y-0.5"
-            >
-              <PlayCircle className="size-5" />
-              See the guided demo
-              <ArrowRight className="size-4" />
+            <Link href="/demo" onClick={() => marketingService.track("homepage_hero_demo_clicked", { source: "hero" })} className="inline-flex min-h-13 items-center justify-center gap-2 rounded-xl bg-indigo-600 px-6 font-black text-white shadow-[0_14px_35px_rgba(79,70,229,.2)] hover:-translate-y-0.5 hover:bg-indigo-700">
+              <PlayCircle className="size-5" />Explore the live demo<ArrowRight className="size-4" />
             </Link>
-            <Link
-              href="/signup"
-              onClick={() => marketingService.track("homepage_hero_signup_clicked", { source: "hero" })}
-              className="inline-flex min-h-14 items-center justify-center gap-2 rounded-2xl bg-slate-950 px-7 font-bold text-white hover:-translate-y-0.5"
-            >
-              Use my business data
-              <ArrowRight className="size-4" />
-            </Link>
-            <Link href="/book-demo" onClick={() => marketingService.track("homepage_book_demo_clicked", { source: "hero_book_demo" })} className="inline-flex min-h-14 items-center justify-center gap-2 rounded-2xl border border-slate-300 bg-white px-7 font-bold text-slate-800 hover:-translate-y-0.5">Book a demo<ArrowRight className="size-4" /></Link>
+            <Link href="/book-demo" onClick={() => marketingService.track("homepage_book_demo_clicked", { source: "hero_book_demo" })} className="inline-flex min-h-13 items-center justify-center gap-2 rounded-xl border border-slate-300 bg-white px-6 font-bold text-slate-800 hover:-translate-y-0.5">Book a demo<ArrowRight className="size-4" /></Link>
           </div>
 
-          <div className="mt-7 grid max-w-2xl gap-3 text-sm text-slate-600 sm:grid-cols-2">
-            {[
-              "Synthetic demo — no customer data needed",
-              "Evidence before AI narrative",
-              "Invitation-based company access",
-              "Branch-aware reporting and planning",
-            ].map((item) => (
-              <span key={item} className="flex items-center gap-2">
-                <CheckCircle2 className="size-4 shrink-0 text-emerald-600" />
-                {item}
-              </span>
+          <div className="mt-7 grid max-w-xl gap-2.5 text-sm text-slate-600 sm:grid-cols-2">
+            {["Evidence before AI narrative", "Source-to-transaction traceability", "Branch-aware reporting and planning", "Synthetic demo — no customer data needed"].map((item) => (
+              <span key={item} className="flex items-center gap-2"><CheckCircle2 className="size-4 shrink-0 text-emerald-600" />{item}</span>
             ))}
           </div>
+          <Link href="/signup" onClick={() => marketingService.track("homepage_hero_signup_clicked", { source: "hero" })} className="mt-5 inline-flex items-center gap-2 text-sm font-bold text-slate-600 hover:text-slate-950">Prefer to start yourself? Create a workspace <ArrowRight className="size-3.5" /></Link>
         </div>
 
-        <div className="rounded-[34px] border border-white/90 bg-white/92 p-4 shadow-[0_40px_120px_rgba(30,41,59,.15)] backdrop-blur-xl sm:p-6">
-          <div className="rounded-[26px] bg-slate-950 p-5 text-white sm:p-6">
-            <div className="flex flex-wrap items-center justify-between gap-3">
-              <div>
-                <p className="text-[11px] font-black uppercase tracking-[.18em] text-indigo-300">Executive dashboard</p>
-                <h2 className="mt-2 text-2xl font-black">Morning, Nova Retail.</h2>
-              </div>
-              <span className="rounded-full border border-emerald-300/15 bg-emerald-300/10 px-3 py-1.5 text-xs font-bold text-emerald-200">Financial confidence · High</span>
+        <div className="fincruiz-landing-shell p-3 sm:p-4">
+          <div className="overflow-hidden rounded-[22px] border border-slate-200 bg-[#fbfbfa]">
+            <div className="flex items-center justify-between border-b border-slate-200 bg-white px-4 py-3">
+              <div className="flex items-center gap-3"><span className="fincruiz-brand-mark !size-8 !rounded-lg"><BarChart3 className="size-4" /></span><div><p className="text-xs font-black tracking-[-.02em]">Nova Retail</p><p className="text-[10px] text-slate-500">FY26 YTD · Data as of 31 Jul</p></div></div>
+              <span className="rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-[10px] font-bold text-emerald-700">Confidence · High</span>
             </div>
 
-            <div className="mt-5 grid gap-3 sm:grid-cols-3">
-              {[
-                ["Revenue", "₹24.80M", "+9.4% YoY"],
-                ["Net profit", "₹4.12M", "16.6% margin"],
-                ["Cash", "₹6.21M", "AR needs attention"],
-              ].map(([label, value, note]) => (
-                <div key={label} className="rounded-2xl border border-white/10 bg-white/[.055] p-4">
-                  <p className="text-xs text-slate-400">{label}</p>
-                  <p className="mt-2 text-xl font-black">{value}</p>
-                  <p className="mt-1 text-xs text-indigo-200">{note}</p>
-                </div>
-              ))}
-            </div>
-
-            <div className="mt-4 rounded-2xl border border-indigo-300/15 bg-indigo-300/[.08] p-4">
-              <div className="flex items-start gap-3">
-                <span className="flex size-9 shrink-0 items-center justify-center rounded-xl bg-indigo-500 text-white"><BrainCircuit className="size-4" /></span>
-                <div>
-                  <p className="text-xs font-black uppercase tracking-[.14em] text-indigo-200">Ask FinCruiz — Your AI CFO</p>
-                  <p className="mt-2 font-bold">What should I focus on today?</p>
-                  <p className="mt-2 text-sm leading-6 text-slate-300">Working-capital conversion and West branch margin are the two issues most likely to affect the next management decision.</p>
-                </div>
+            <div className="p-4 sm:p-5">
+              <div className="flex items-end justify-between gap-4">
+                <div><p className="text-[10px] font-black uppercase tracking-[.16em] text-slate-400">Executive command centre</p><h2 className="mt-1.5 text-xl font-black tracking-[-.035em]">Good morning. Here&apos;s what changed.</h2></div>
+                <span className="hidden text-[10px] font-semibold text-slate-400 sm:block">Consolidated</span>
               </div>
-              <div className="mt-4 grid gap-2 sm:grid-cols-2">
-                <div className="rounded-xl border border-white/10 bg-slate-950/45 p-3 text-xs text-slate-300"><BadgeCheck className="mr-1.5 inline size-3.5 text-emerald-300" />Evidence: AR ageing · branch P&L · cash forecast</div>
-                <div className="rounded-xl border border-white/10 bg-slate-950/45 p-3 text-xs text-slate-300"><WandSparkles className="mr-1.5 inline size-3.5 text-violet-300" />Next: model collections or branch margin</div>
-              </div>
-            </div>
-          </div>
 
-          <div className="mt-4 grid gap-3 sm:grid-cols-2">
-            <div className="rounded-2xl border bg-slate-50 p-4">
-              <p className="text-xs font-black uppercase tracking-[.14em] text-slate-500">Management priorities</p>
-              <div className="mt-3 space-y-2">
-                {["1 · Reduce overdue receivables", "2 · Investigate West margin", "3 · Protect downside cash buffer"].map((item) => (
-                  <div key={item} className="rounded-xl bg-white px-3 py-2.5 text-sm font-semibold shadow-sm">{item}</div>
+              <div className="mt-5 grid gap-2 sm:grid-cols-4">
+                {[["Revenue", "₹24.80M", "+9.4% YoY"], ["Gross margin", "42.4%", "-1.7 pts"], ["Net profit", "₹4.12M", "16.6% margin"], ["Cash", "₹6.21M", "AR pressure"]].map(([label, value, note]) => (
+                  <div key={label} className="rounded-xl border border-slate-200 bg-white p-3"><p className="text-[10px] font-semibold text-slate-500">{label}</p><p className="mt-2 text-lg font-black tracking-[-.04em]">{value}</p><p className={`mt-1 text-[10px] font-semibold ${note.startsWith("+") ? "text-emerald-600" : "text-slate-500"}`}>{note}</p></div>
                 ))}
               </div>
-            </div>
-            <div className="rounded-2xl border bg-slate-50 p-4">
-              <p className="text-xs font-black uppercase tracking-[.14em] text-slate-500">Decision simulator</p>
-              <p className="mt-3 text-sm font-semibold">Hire 3 people?</p>
-              <div className="mt-3 flex items-end gap-2">
-                {[72, 61, 48, 66].map((height, index) => (
-                  <span key={index} className="flex-1 rounded-t-lg bg-indigo-100" style={{ height: `${height}px` }} />
-                ))}
+
+              <div className="mt-3 grid gap-3 lg:grid-cols-[1.15fr_.85fr]">
+                <div className="rounded-2xl border border-indigo-100 bg-indigo-50/60 p-4">
+                  <div className="flex items-center justify-between gap-3"><p className="flex items-center gap-2 text-[10px] font-black uppercase tracking-[.14em] text-indigo-700"><BrainCircuit className="size-3.5" />FinCruiz brief</p><span className="text-[10px] text-indigo-500">3 signals</span></div>
+                  <p className="mt-3 text-sm font-bold">Working capital and West branch margin need attention.</p>
+                  <div className="mt-3 space-y-2 text-xs text-slate-600">
+                    <div className="flex gap-2 rounded-lg bg-white/80 p-2.5"><span className="font-black text-slate-300">01</span><span>Receivable days increased from 41 to 54.</span></div>
+                    <div className="flex gap-2 rounded-lg bg-white/80 p-2.5"><span className="font-black text-slate-300">02</span><span>West gross margin trails group by 5.7 pts.</span></div>
+                    <div className="flex gap-2 rounded-lg bg-white/80 p-2.5"><span className="font-black text-slate-300">03</span><span>Downside hiring case breaches the cash buffer.</span></div>
+                  </div>
+                  <div className="mt-3 flex items-center gap-2 border-t border-indigo-100 pt-3 text-[10px] font-semibold text-indigo-700"><BadgeCheck className="size-3.5" />AR ageing · branch P&L · scenario model</div>
+                </div>
+
+                <div className="rounded-2xl border border-slate-200 bg-white p-4">
+                  <p className="text-[10px] font-black uppercase tracking-[.14em] text-slate-400">Profit trend</p>
+                  <div className="mt-6 flex h-24 items-end gap-2">
+                    {[38,48,42,61,56,72,65,82].map((height,index) => <span key={index} className={`flex-1 rounded-t-md ${index === 7 ? "bg-indigo-600" : "bg-indigo-100"}`} style={{height:`${height}%`}} />)}
+                  </div>
+                  <div className="mt-3 flex justify-between text-[9px] font-semibold text-slate-400"><span>Jan</span><span>Jul</span></div>
+                  <div className="mt-4 rounded-xl bg-slate-50 p-3"><p className="text-[10px] text-slate-500">Ask FinCruiz</p><p className="mt-1 text-xs font-bold">Why did margin decline?</p></div>
+                </div>
               </div>
-              <p className="mt-3 text-xs leading-5 text-slate-500">Base case remains above the management cash buffer. Downside collections do not.</p>
             </div>
           </div>
         </div>

@@ -81,8 +81,8 @@ export function WorkspaceScopeSelector() {
   if (!branches.length) return null;
 
   return (
-    <label className="relative hidden items-center gap-2 rounded-xl border bg-background px-2.5 py-2 text-xs font-semibold text-muted-foreground shadow-sm xl:flex" title="Choose whether FinCruiz should work at consolidated company or branch scope">
-      {scope.mode === "branch" ? <Building2 className="size-3.5 text-indigo-500"/> : <Layers3 className="size-3.5 text-indigo-500"/>}
+    <label className="relative hidden items-center gap-2 rounded-xl border border-border/80 bg-card/90 px-2.5 py-2 text-xs font-semibold text-muted-foreground xl:flex" title="Choose whether FinCruiz should work at consolidated company or branch scope">
+      {scope.mode === "branch" ? <Building2 className="size-3.5 text-primary"/> : <Layers3 className="size-3.5 text-primary"/>}
       <span className="max-w-28 truncate">{scope.mode === "branch" ? scope.branchName : "Consolidated"}</span>
       <ChevronDown className="size-3 opacity-60"/>
       <select value={scope.mode === "branch" ? scope.branchId : "consolidated"} onChange={(event) => choose(event.target.value)} className="absolute inset-0 cursor-pointer opacity-0" aria-label="Workspace analysis scope">

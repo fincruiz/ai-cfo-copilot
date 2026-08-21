@@ -6,7 +6,6 @@ import {
   ArrowRight,
   Bot,
   ChevronDown,
-  ChevronUp,
   ExternalLink,
   FileCheck2,
   Gauge,
@@ -146,12 +145,12 @@ export function AskFinCruizDashboard() {
         <button
           type="button"
           onClick={() => setCollapsedPreference(false)}
-          className="pointer-events-auto inline-flex h-11 items-center gap-2.5 rounded-full border border-indigo-200/80 bg-background/95 px-4 text-sm font-semibold text-foreground shadow-[0_10px_30px_rgba(15,23,42,.14)] backdrop-blur transition duration-200 hover:-translate-y-0.5 hover:border-indigo-300 hover:shadow-[0_14px_36px_rgba(15,23,42,.18)] dark:border-indigo-500/25"
+          className="pointer-events-auto inline-flex h-11 items-center gap-2.5 rounded-full border border-border/80 bg-card/95 px-4 text-sm font-semibold text-foreground shadow-[0_10px_30px_rgba(15,23,42,.14)] backdrop-blur transition duration-200 hover:-translate-y-0.5 hover:border-primary/30 hover:shadow-[0_14px_36px_rgba(15,23,42,.18)] dark:border-indigo-500/25"
           aria-expanded="false"
           aria-label="Open Ask FinCruiz"
           title="Ask FinCruiz"
         >
-          <span className="flex size-7 items-center justify-center rounded-full bg-gradient-to-br from-indigo-600 to-sky-500 text-white">
+          <span className="flex size-7 items-center justify-center rounded-full bg-primary text-white">
             <Sparkles className="size-3.5" />
           </span>
           <span>Ask FinCruiz</span>
@@ -162,10 +161,10 @@ export function AskFinCruizDashboard() {
 
   return (
     <div className="pointer-events-none fixed inset-x-0 bottom-0 z-[80] flex justify-end px-3 pb-3 sm:inset-x-auto sm:bottom-20 sm:right-6 sm:block sm:px-0 sm:pb-0">
-      <section className="pointer-events-auto flex max-h-[82vh] w-full flex-col overflow-hidden rounded-t-[28px] border border-indigo-200/80 bg-background shadow-[0_24px_80px_rgba(15,23,42,.28)] dark:border-indigo-500/20 sm:max-h-[76vh] sm:w-[420px] sm:rounded-[28px]">
-        <div className="flex shrink-0 items-center justify-between gap-3 border-b bg-gradient-to-r from-indigo-50 via-background to-sky-50 px-4 py-3 dark:from-indigo-950/30 dark:via-background dark:to-sky-950/20">
+      <section className="pointer-events-auto flex max-h-[82vh] w-full flex-col overflow-hidden rounded-t-[28px] border border-border/80 bg-background shadow-[0_24px_80px_rgba(15,23,42,.28)] dark:border-border sm:max-h-[76vh] sm:w-[420px] sm:rounded-[28px]">
+        <div className="flex shrink-0 items-center justify-between gap-3 border-b bg-muted/25 px-4 py-3 ">
           <div className="flex min-w-0 items-center gap-3">
-            <div className="flex size-9 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-indigo-600 to-sky-500 text-white shadow-sm">
+            <div className="flex size-9 shrink-0 items-center justify-center rounded-xl bg-primary text-white shadow-sm">
               <Bot className="size-4" />
             </div>
             <div className="min-w-0">
@@ -195,7 +194,7 @@ export function AskFinCruizDashboard() {
                 Ask anything about your business
               </label>
 
-              <div className="mt-2 flex gap-2 rounded-2xl border bg-background p-2 shadow-sm focus-within:ring-2 focus-within:ring-indigo-500/20">
+              <div className="mt-2 flex gap-2 rounded-2xl border bg-background p-2 shadow-sm focus-within:ring-2 focus-within:ring-primary/15">
                 <input
                   value={question}
                   onChange={(event) => setQuestion(event.target.value)}
@@ -206,7 +205,7 @@ export function AskFinCruizDashboard() {
                 <button
                   type="submit"
                   disabled={loading || !question.trim()}
-                  className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-indigo-600 to-sky-500 text-white shadow-sm transition hover:scale-[1.03] disabled:opacity-40"
+                  className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-primary text-white shadow-sm transition hover:scale-[1.03] disabled:opacity-40"
                   aria-label="Ask FinCruiz"
                 >
                   {loading ? (
@@ -237,7 +236,7 @@ export function AskFinCruizDashboard() {
                 <div className="mt-2 space-y-3">
                   {promptGroups.map((group) => (
                     <div key={group.label}>
-                      <p className="mb-1.5 text-[10px] font-semibold text-indigo-700 dark:text-indigo-300">
+                      <p className="mb-1.5 text-[10px] font-semibold text-primary">
                         {group.label}
                       </p>
                       <div className="flex flex-wrap gap-1.5">
@@ -246,7 +245,7 @@ export function AskFinCruizDashboard() {
                             key={prompt}
                             type="button"
                             onClick={() => void ask(prompt)}
-                            className="rounded-full border bg-background px-2.5 py-1.5 text-[11px] leading-4 transition hover:border-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-950/20"
+                            className="rounded-full border bg-background px-2.5 py-1.5 text-[11px] leading-4 transition hover:border-primary/30 hover:bg-primary/[.04]"
                           >
                             {prompt}
                           </button>
@@ -267,7 +266,7 @@ export function AskFinCruizDashboard() {
               ) : result ? (
                 <div className="animate-step-in">
                   <div className="flex flex-wrap items-center justify-between gap-2">
-                    <div className="flex items-center gap-2 text-[10px] font-semibold uppercase tracking-[.14em] text-indigo-700 dark:text-indigo-300">
+                    <div className="flex items-center gap-2 text-[10px] font-semibold uppercase tracking-[.14em] text-primary">
                       <Sparkles className="size-3.5" />
                       FinCruiz response
                     </div>
@@ -287,8 +286,8 @@ export function AskFinCruizDashboard() {
                     </p>
                   ) : null}
 
-                  <div className="mt-3 rounded-2xl border border-indigo-200/70 bg-gradient-to-br from-white to-indigo-50/60 p-3 dark:border-indigo-500/20 dark:from-white/[.04] dark:to-indigo-950/20">
-                    <p className="flex items-center gap-2 text-[10px] font-semibold uppercase tracking-[.14em] text-indigo-700 dark:text-indigo-300">
+                  <div className="mt-3 rounded-2xl border border-indigo-200/70 bg-gradient-to-br from-white to-indigo-50/60 p-3 dark:border-border dark:from-white/[.04] dark:to-indigo-950/20">
+                    <p className="flex items-center gap-2 text-[10px] font-semibold uppercase tracking-[.14em] text-primary">
                       <Lightbulb className="size-3.5" />
                       Management answer
                     </p>
@@ -443,7 +442,7 @@ export function AskFinCruizDashboard() {
                             href={source.url}
                             target="_blank"
                             rel="noreferrer"
-                            className="flex items-start gap-2 rounded-xl border bg-background p-2.5 text-[10px] hover:border-indigo-300"
+                            className="flex items-start gap-2 rounded-xl border bg-background p-2.5 text-[10px] hover:border-primary/30"
                           >
                             <ExternalLink className="mt-0.5 size-3.5 shrink-0 text-indigo-500" />
                             <span className="line-clamp-2">{source.title}</span>
