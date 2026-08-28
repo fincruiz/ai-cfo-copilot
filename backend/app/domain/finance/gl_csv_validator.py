@@ -3,6 +3,8 @@ import io
 import re
 from dataclasses import dataclass, field
 from decimal import Decimal, InvalidOperation
+
+from app.domain.finance.gl_amounts import canonicalise_debit_credit
 from difflib import SequenceMatcher
 
 
@@ -776,32 +778,13 @@ def validate_gl_csv(
             debit is not None
             and credit is not None
         ):
-            if debit < 0:
+            try:
+                canonicalise_debit_credit(debit, credit)
+            except ValueError as exc:
                 row_issues.append(
                     ValidationIssue(
                         row_number=source_row_number,
-                        column="debit",
-                        message="Debit cannot be negative.",
-                    )
-                )
-
-            if credit < 0:
-                row_issues.append(
-                    ValidationIssue(
-                        row_number=source_row_number,
-                        column="credit",
-                        message="Credit cannot be negative.",
-                    )
-                )
-
-            if debit > 0 and credit > 0:
-                row_issues.append(
-                    ValidationIssue(
-                        row_number=source_row_number,
-                        message=(
-                            "A row cannot contain both "
-                            "a debit and a credit amount."
-                        ),
+                        message=str(exc),
                     )
                 )
 

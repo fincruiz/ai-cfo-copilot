@@ -11,12 +11,14 @@ from uuid import UUID, uuid4
 
 from fastapi import UploadFile
 from sqlalchemy import text
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
 from app.core.exceptions import ApplicationError
 from app.database.models.core.company import Company
 from app.database.session import AsyncSessionLocal
+from app.domain.finance.gl_amounts import canonicalise_debit_credit
 from app.domain.finance.gl_csv_validator import REQUIRED_GL_COLUMNS, build_column_mapping, detect_delimiter
 from app.domain.finance.gl_tabular_reader import ensure_supported_gl_filename, extension_for, xlsx_path_to_csv_path
 from app.domain.finance.ingestion.gl_parser import _date, _decimal
@@ -131,7 +133,12 @@ def _normalise_row(raw_row: dict[str, Any], mapping: dict[str, str], *, row_numb
     if not source_account_code:
         raise ValueError("Account code is missing.")
     transaction_date = _date(row.get("transaction_date"), required=True)
-    debit = _decimal(row.get("debit")); credit = _decimal(row.get("credit"))
+    raw_debit = _decimal(row.get("debit"))
+    raw_credit = _decimal(row.get("credit"))
+    try:
+        debit, credit, signed_reversal_normalised = canonicalise_debit_credit(raw_debit, raw_credit)
+    except ValueError as exc:
+        raise ValueError(f"Row {row_number}: {exc}") from exc
     return {
         "company_id": company.id, "_branch_reference": str(row.get("branch") or "").strip() or None,
         "reporting_period_id": reporting_period_id, "file_upload_id": upload_id,
@@ -144,7 +151,11 @@ def _normalise_row(raw_row: dict[str, Any], mapping: dict[str, str], *, row_numb
         "cost_centre_code": row.get("cost_centre") or row.get("cost_centre_code") or None, "department_code": row.get("department") or row.get("department_code") or None,
         "debit": debit, "credit": credit, "currency_code": str(row.get("currency_code") or company.currency_code).strip().upper(),
         "exchange_rate": _decimal(row.get("exchange_rate") or "1"), "external_reference": row.get("external_reference") or None,
-        "source_row_number": row_number, "validation_status": "valid", "validation_messages": [], "source_metadata": {"raw_columns": list(raw_row.keys())},
+        "source_row_number": row_number, "validation_status": "valid", "validation_messages": [],
+        "source_metadata": {
+            "raw_columns": list(raw_row.keys()),
+            "signed_reversal_normalised": signed_reversal_normalised,
+        },
     }
 
 
@@ -253,7 +264,18 @@ async def process_job(job_id: UUID) -> None:
             except Exception:
                 pass
             await session.rollback()
-            safe_message = str(exc)[:500] or "Import failed."
+            if isinstance(exc, IntegrityError):
+                safe_message = (
+                    "The import could not be completed because one or more rows violate FinCruiz canonical ledger rules. "
+                    "No new General Ledger dataset was activated. Review debit/credit values and retry."
+                )
+            elif isinstance(exc, (ValueError, ApplicationError)):
+                safe_message = str(exc)[:500] or "Import validation failed."
+            else:
+                safe_message = (
+                    "The import could not be completed. No new General Ledger dataset was activated. "
+                    "Please retry or contact support with the import job reference."
+                )
             await session.execute(text("UPDATE public.ingestion_jobs SET status='failed',phase='failed',error_message=:e,completed_at=now(),updated_at=now() WHERE id=:id"), {"e":safe_message,"id":job_id})
             await session.commit()
 
