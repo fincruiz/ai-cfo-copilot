@@ -1,12 +1,14 @@
 from typing import Annotated
 
 from fastapi import APIRouter, Depends
+from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
 from app.dependencies.auth import get_current_user
 from app.schemas.auth import (
     CurrentUser,
     LoginRequest,
     RefreshTokenRequest,
+    LogoutRequest,
     SignupRequest,
     SignupResponse,
     TokenResponse,
@@ -14,12 +16,15 @@ from app.schemas.auth import (
 )
 from app.schemas.responses import APIResponse
 from app.services.auth_service import AuthService
+from app.core.exceptions import ApplicationError
 
 
 router = APIRouter(
     prefix="/auth",
     tags=["Authentication"],
 )
+
+logout_bearer = HTTPBearer(auto_error=False)
 
 
 
@@ -98,6 +103,31 @@ async def refresh_session(
     return APIResponse[TokenResponse](
         message="Session refreshed successfully.",
         data=token,
+    )
+
+
+@router.post("/logout", response_model=APIResponse[dict])
+async def logout(
+    request: LogoutRequest,
+    credentials: Annotated[
+        HTTPAuthorizationCredentials | None,
+        Depends(logout_bearer),
+    ],
+) -> APIResponse[dict]:
+    if credentials is None:
+        raise ApplicationError(
+            message="Authentication is required.",
+            error_code="AUTHENTICATION_REQUIRED",
+            status_code=401,
+        )
+
+    await AuthService().logout(
+        access_token=credentials.credentials,
+        scope=request.scope,
+    )
+    return APIResponse(
+        message="Signed out successfully.",
+        data={"signed_out": True, "scope": request.scope},
     )
 
 

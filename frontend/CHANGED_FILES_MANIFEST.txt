@@ -1,0 +1,9 @@
+.env.example
+services/auth-service.ts
+lib/api.ts
+lib/session-security.ts
+components/session-security-guard.tsx
+app/login/page.tsx
+app/dashboard/layout.tsx
+app/onboarding/page.tsx
+app/auth/callback/page.tsx

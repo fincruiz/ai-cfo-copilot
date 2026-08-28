@@ -43,7 +43,7 @@ class AuthService:
         payload = {
             "email": email,
             "password": password,
-            "email_redirect_to": _auth_redirect_url("/auth/callback?next=/onboarding"),
+            "email_redirect_to": _auth_redirect_url("/auth/callback?confirmation=1&next=/onboarding"),
             "data": {
                 "full_name": full_name,
                 "company_details": company_details,
@@ -149,6 +149,47 @@ class AuthService:
 
         return response.json()
 
+
+    async def logout(
+        self,
+        *,
+        access_token: str,
+        scope: str = "global",
+    ) -> None:
+        if scope not in {"global", "local"}:
+            raise ApplicationError(
+                message="Invalid logout scope.",
+                error_code="INVALID_LOGOUT_SCOPE",
+                status_code=422,
+            )
+
+        url = f"{self.base_url}/auth/v1/logout"
+        headers = {
+            "apikey": self.api_key,
+            "Authorization": f"Bearer {access_token}",
+        }
+
+        try:
+            async with httpx.AsyncClient(timeout=10.0) as client:
+                response = await client.post(
+                    url,
+                    params={"scope": scope},
+                    headers=headers,
+                )
+        except httpx.RequestError as exc:
+            raise ApplicationError(
+                message="Authentication service is unavailable.",
+                error_code="AUTH_SERVICE_UNAVAILABLE",
+                status_code=503,
+            ) from exc
+
+        if response.status_code not in {200, 204}:
+            raise ApplicationError(
+                message="Unable to complete server sign out.",
+                error_code="AUTH_LOGOUT_FAILED",
+                status_code=502,
+            )
+
     async def get_user(
         self,
         *,
@@ -185,7 +226,7 @@ class AuthService:
 
     async def resend_confirmation(self, *, email: str) -> None:
         url=f"{self.base_url}/auth/v1/resend"; headers={"apikey":self.api_key,"Content-Type":"application/json"}
-        payload={"type":"signup","email":email,"options":{"email_redirect_to":_auth_redirect_url("/auth/callback?next=/onboarding")}}
+        payload={"type":"signup","email":email,"options":{"email_redirect_to":_auth_redirect_url("/auth/callback?confirmation=1&next=/onboarding")}}
         async with httpx.AsyncClient(timeout=15.0) as client: response=await client.post(url,headers=headers,json=payload)
         if response.status_code not in {200,201}: raise ApplicationError(message="Unable to resend the confirmation email right now.",error_code="AUTH_RESEND_FAILED",status_code=422)
 

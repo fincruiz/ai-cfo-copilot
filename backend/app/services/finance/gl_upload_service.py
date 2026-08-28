@@ -9,6 +9,7 @@ from app.core.exceptions import ApplicationError
 from app.database.models.core.company import Company
 from app.database.models.finance.file_upload import FileUpload
 from app.domain.finance.gl_csv_validator import GLCSVValidationResult, validate_gl_csv
+from app.domain.finance.gl_tabular_reader import ensure_supported_gl_filename, normalise_gl_bytes
 from app.domain.finance.ingestion.gl_parser import parse_validated_gl_csv
 from app.repositories.finance.file_upload_repository import FileUploadRepository
 from app.repositories.core.branch_repository import BranchRepository
@@ -26,17 +27,20 @@ class GLUploadService:
 
     async def validate_and_record_upload(self, *, company: Company, uploaded_by: UUID, file: UploadFile, source_system: str | None = None, reporting_period_id: UUID | None = None) -> tuple[FileUpload, GLCSVValidationResult, int]:
         original_file_name = Path(file.filename or "general-ledger.csv").name
-        if Path(original_file_name).suffix.lower() != ".csv":
-            raise ApplicationError(message="Only CSV files are supported at this stage.", error_code="UNSUPPORTED_FILE_TYPE", status_code=415, details={"allowed_extensions": [".csv"]})
-        if file.content_type and file.content_type not in ALLOWED_CSV_CONTENT_TYPES:
-            raise ApplicationError(message="The uploaded file is not a supported CSV file.", error_code="UNSUPPORTED_CONTENT_TYPE", status_code=415, details={"content_type": file.content_type})
+        try:
+            ensure_supported_gl_filename(original_file_name)
+        except ValueError as exc:
+            raise ApplicationError(message=str(exc), error_code="UNSUPPORTED_FILE_TYPE", status_code=415, details={"allowed_extensions": [".csv", ".xlsx"]}) from exc
+        # Browser MIME values for CSV/Excel are inconsistent across operating systems, so
+        # extension + file-signature validation is authoritative below.
         file_bytes = await file.read()
         if not file_bytes:
             raise ApplicationError(message="The uploaded file is empty.", error_code="EMPTY_UPLOAD", status_code=422)
         if len(file_bytes) > MAX_UPLOAD_SIZE_BYTES:
             raise ApplicationError(message="The uploaded file exceeds the 10 MB limit.", error_code="FILE_TOO_LARGE", status_code=413, details={"maximum_size_bytes": MAX_UPLOAD_SIZE_BYTES, "received_size_bytes": len(file_bytes)})
         try:
-            validation = validate_gl_csv(file_bytes)
+            normalised_bytes = normalise_gl_bytes(original_file_name, file_bytes)
+            validation = validate_gl_csv(normalised_bytes)
         except ValueError as exc:
             raise ApplicationError(message=str(exc), error_code="INVALID_CSV_FILE", status_code=422) from exc
 
@@ -61,7 +65,7 @@ class GLUploadService:
         if validation.is_valid:
             try:
                 rows = parse_validated_gl_csv(
-                    file_bytes,
+                    normalised_bytes,
                     default_currency=company.currency_code,
                     company_id=company.id,
                     file_upload_id=upload.id,

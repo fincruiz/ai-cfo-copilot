@@ -3,6 +3,12 @@ import {
   api,
   REFRESH_TOKEN_KEY,
 } from "@/lib/api";
+import {
+  beginSession,
+  broadcastSessionLogout,
+  clearSessionMetadata,
+  type SessionLogoutReason,
+} from "@/lib/session-security";
 
 import type {
   ApiResponse,
@@ -34,6 +40,39 @@ function persistTokens(tokens: AuthTokens): void {
       REFRESH_TOKEN_KEY,
       tokens.refresh_token,
     );
+  }
+
+  beginSession();
+}
+
+function clearLocalSession(reason: SessionLogoutReason): string | null {
+  if (typeof window === "undefined") return null;
+  const accessToken = window.localStorage.getItem(ACCESS_TOKEN_KEY);
+  window.localStorage.removeItem(ACCESS_TOKEN_KEY);
+  window.localStorage.removeItem(REFRESH_TOKEN_KEY);
+  clearSessionMetadata();
+  broadcastSessionLogout(reason);
+  return accessToken;
+}
+
+async function revokeServerSession(
+  scope: "global" | "local",
+  reason: SessionLogoutReason,
+): Promise<void> {
+  const accessToken = clearLocalSession(reason);
+  if (!accessToken) return;
+
+  try {
+    await api.post(
+      "/auth/logout",
+      { scope },
+      {
+        headers: { Authorization: `Bearer ${accessToken}` },
+        timeout: 5000,
+      },
+    );
+  } catch {
+    // Local logout must succeed even when the network/auth service is unavailable.
   }
 }
 
@@ -98,15 +137,16 @@ export const authService = {
   async forgotPassword(email:string):Promise<void>{await api.post("/auth/forgot-password",{email});},
   async resetPassword(accessToken:string,password:string):Promise<void>{await api.post("/auth/reset-password",{access_token:accessToken,password});},
 
-  logout(): void {
-    if (typeof window === "undefined") return;
+  logout(reason: SessionLogoutReason = "signed-out"): void {
+    clearLocalSession(reason);
+  },
 
-    window.localStorage.removeItem(
-      ACCESS_TOKEN_KEY,
-    );
-    window.localStorage.removeItem(
-      REFRESH_TOKEN_KEY,
-    );
+  async logoutEverywhere(reason: SessionLogoutReason = "signed-out"): Promise<void> {
+    await revokeServerSession("global", reason);
+  },
+
+  async logoutCurrentSession(reason: SessionLogoutReason = "signed-out"): Promise<void> {
+    await revokeServerSession("local", reason);
   },
 
   hasAccessToken(): boolean {

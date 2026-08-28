@@ -1,0 +1,19 @@
+FinCruiz GL Import Hardening — changed files only
+
+BACKEND
+NEW      backend/app/domain/finance/gl_tabular_reader.py
+MODIFIED backend/app/services/finance/gl_upload_service.py
+MODIFIED backend/app/services/finance/ingestion_job_service.py
+NEW      backend/tests/test_gl_excel_upload_support.py
+NEW      backend/tests/test_stage9_11_gl_upload_ux_contract.py
+
+FRONTEND
+MODIFIED frontend/app/dashboard/uploads/page.tsx
+
+Purpose:
+- Native CSV + Excel .xlsx General Ledger manual upload support
+- Prevent XLSX binary/PK data from being rendered as text
+- Detect likely GL worksheet/header, including title/cover rows
+- Reject legacy .xls with a clear conversion instruction
+- Reject renamed XLSX pretending to be CSV
+- Preserve the existing canonical GL validation/import pipeline

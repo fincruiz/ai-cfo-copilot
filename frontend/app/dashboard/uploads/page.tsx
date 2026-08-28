@@ -28,6 +28,19 @@ function detectHeader(headers: string[]) {
   return Object.fromEntries(Object.entries(fieldAliases).map(([key, aliases]) => [key, aliases.some((alias) => normalized.includes(alias))]));
 }
 
+function fileExtension(name: string) {
+  const index = name.lastIndexOf(".");
+  return index >= 0 ? name.slice(index).toLowerCase() : "";
+}
+
+function detectPreviewDelimiter(text: string) {
+  const firstLine = text.split(/\r?\n/).find((line) => line.trim()) ?? "";
+  const candidates = [",", "\t", ";", "|"];
+  return candidates
+    .map((delimiter) => ({ delimiter, count: firstLine.split(delimiter).length }))
+    .sort((a, b) => b.count - a.count)[0]?.delimiter ?? ",";
+}
+
 export default function UploadsPage() {
   const [file, setFile] = useState<File | null>(null);
   const [sourceSystem, setSourceSystem] = useState("Manual upload");
@@ -54,16 +67,55 @@ export default function UploadsPage() {
 
   async function selectFile(event: ChangeEvent<HTMLInputElement>) {
     const selected = event.target.files?.[0] ?? null;
-    setFile(selected);
-    if (selected) { const text = await selected.slice(0, 64 * 1024).text(); setPreview(text.split(/\r?\n/).filter(Boolean).slice(0,4).map(line => line.split(",").slice(0,8))); } else setPreview([]);
     setJob(null);
     setError("");
+    setPreview([]);
+
+    if (!selected) {
+      setFile(null);
+      return;
+    }
+
+    const extension = fileExtension(selected.name);
+    if (![".csv", ".xlsx"].includes(extension)) {
+      setFile(null);
+      event.target.value = "";
+      setError("FinCruiz supports CSV and Excel .xlsx General Ledger files. Save legacy .xls files as .xlsx or CSV first.");
+      return;
+    }
+
+    // XLSX is a ZIP-based binary format. Never call file.text() on it; doing so
+    // creates the misleading PK/garbled preview reported during customer QA.
+    if (extension === ".xlsx") {
+      setFile(selected);
+      return;
+    }
+
+    const signature = new Uint8Array(await selected.slice(0, 4).arrayBuffer());
+    const looksLikeXlsx = signature[0] === 0x50 && signature[1] === 0x4b && signature[2] === 0x03 && signature[3] === 0x04;
+    if (looksLikeXlsx) {
+      setFile(null);
+      event.target.value = "";
+      setError("This file contains an Excel workbook but is named as CSV. Upload the original .xlsx file or export it as a real CSV file.");
+      return;
+    }
+
+    setFile(selected);
+    const text = await selected.slice(0, 64 * 1024).text();
+    const delimiter = detectPreviewDelimiter(text);
+    setPreview(
+      text
+        .split(/\r?\n/)
+        .filter((line) => line.trim())
+        .slice(0, 4)
+        .map((line) => line.split(delimiter).slice(0, 8)),
+    );
   }
 
   async function submit(event: FormEvent) {
     event.preventDefault();
     if (!file) {
-      setError("Choose a CSV file first.");
+      setError("Choose a CSV or Excel .xlsx file first.");
       return;
     }
 
@@ -87,7 +139,7 @@ export default function UploadsPage() {
         <div>
         <p className="text-sm font-medium text-muted-foreground">Finance data</p>
         <h1 className="mt-1 text-3xl font-semibold tracking-tight">Upload general ledger</h1>
-        <p className="mt-2 text-muted-foreground">Upload a UTF-8 CSV. FinCruiz validates every row and creates ledger transactions.</p>
+        <p className="mt-2 text-muted-foreground">Upload a CSV or Excel .xlsx file. FinCruiz detects common finance columns, validates every row and creates ledger transactions.</p>
         </div>
         <ModuleResetButton scope="general_ledger" label="Reset GL data" description="This removes only the loaded General Ledger and its upload records. Your company profile, AR/AP data and settings remain." />
       </div>
@@ -96,7 +148,7 @@ export default function UploadsPage() {
         <Card>
           <CardHeader>
             <CardTitle>Step 1 · Choose your General Ledger</CardTitle>
-            <CardDescription>Large CSVs are streamed to staging storage first, then validated and imported in the background. Required fields include transaction date, account code, debit and credit.</CardDescription>
+            <CardDescription>CSV and Excel .xlsx files are staged securely, then validated and imported in the background. Required fields include transaction date, account code, debit and credit.</CardDescription>
           </CardHeader>
           <CardContent>
             <form onSubmit={submit} className="space-y-5">
@@ -104,12 +156,13 @@ export default function UploadsPage() {
 
               <Label htmlFor="gl-file" className="flex min-h-48 cursor-pointer flex-col items-center justify-center rounded-xl border border-dashed bg-muted/20 p-8 text-center hover:bg-muted/35">
                 <UploadCloud className="mb-4 size-10 text-muted-foreground" />
-                <span className="font-medium">{file ? file.name : "Choose a CSV file"}</span>
-                <span className="mt-1 text-sm text-muted-foreground">Click to browse</span>
-                <Input id="gl-file" type="file" accept=".csv,text/csv" className="sr-only" onChange={selectFile} />
+                <span className="font-medium">{file ? file.name : "Choose a CSV or Excel file"}</span>
+                <span className="mt-1 text-sm text-muted-foreground">CSV or .xlsx · click to browse</span>
+                <Input id="gl-file" type="file" accept=".csv,.xlsx,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" className="sr-only" onChange={selectFile} />
               </Label>
 
               {preview.length ? <div className="space-y-2 rounded-xl border bg-muted/20 p-4"><div className="flex items-center justify-between"><p className="font-medium">Smart file preview</p><span className="text-xs text-muted-foreground">Step 2 of 3 · confirm detected columns</span></div><div className="overflow-x-auto"><table className="w-full text-xs"><tbody>{preview.map((row,i)=><tr key={i} className={i===0?"font-semibold":"text-muted-foreground"}>{row.map((cell,j)=><td key={j} className="border-b px-2 py-2 whitespace-nowrap">{cell || "—"}</td>)}</tr>)}</tbody></table></div><p className="text-xs text-muted-foreground">FinCruiz will run full validation on upload and show any rows that need attention before you continue to mapping.</p></div>:null}
+              {file && fileExtension(file.name) === ".xlsx" ? <div className="rounded-xl border bg-muted/20 p-4"><div className="flex items-center justify-between gap-3"><div><p className="font-medium">Excel workbook ready</p><p className="mt-1 text-xs text-muted-foreground">Step 2 of 3 · FinCruiz will inspect the workbook securely during processing, choose the worksheet/header that best matches a General Ledger, and then run the same authoritative finance validation used for CSV.</p></div><span className="rounded-full bg-blue-100 px-3 py-1 text-xs font-semibold text-blue-800">.xlsx</span></div></div> : null}
               {preview.length ? <div className="rounded-xl border p-4"><div className="flex items-center justify-between gap-3"><div><p className="font-medium">Detected finance fields</p><p className="text-xs text-muted-foreground">A quick client-side check before the full backend validation.</p></div><span className={`rounded-full px-3 py-1 text-xs font-semibold ${detectedCount >= 4 ? "bg-emerald-100 text-emerald-800" : "bg-amber-100 text-amber-800"}`}>{detectedCount}/5 detected</span></div><div className="mt-4 grid gap-2 sm:grid-cols-5">{[["Date",detected.date],["Account",detected.account],["Account name",detected.accountName],["Debit",detected.debit],["Credit",detected.credit]].map(([label,ok])=><div key={String(label)} className={`rounded-lg border px-3 py-2 text-xs ${ok ? "bg-emerald-50 text-emerald-800" : "bg-amber-50 text-amber-800"}`}>{ok ? "✓" : "!"} {label}</div>)}</div>{detectedCount < 4 ? <p className="mt-3 text-xs text-amber-700">Some core fields were not recognised. You can still upload; the backend will perform the authoritative validation and explain what needs fixing.</p> : <p className="mt-3 text-xs text-emerald-700">The file looks structurally ready for full validation.</p>}</div> : null}
 
               <div className="space-y-2">

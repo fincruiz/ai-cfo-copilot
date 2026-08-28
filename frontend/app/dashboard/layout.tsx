@@ -48,6 +48,7 @@ import { WorkspaceScopeSelector } from "@/components/workspace-scope-selector";
 import { ReportingPeriodIndicator } from "@/components/reporting-period-indicator";
 import { ContextualAIBar } from "@/components/contextual-ai-bar";
 import { BetaFeedbackButton } from "@/components/beta-feedback-button";
+import { SessionSecurityGuard } from "@/components/session-security-guard";
 
 type NavItem = {
   label: string;
@@ -244,8 +245,8 @@ export default function DashboardLayout({ children }: Readonly<{ children: React
   }
 
   function handleLogout() {
-    authService.logout();
-    router.replace("/login");
+    void authService.logoutEverywhere("signed-out");
+    router.replace("/login?reason=signed-out");
   }
 
   if (isAuthorizing) {
@@ -350,6 +351,7 @@ export default function DashboardLayout({ children }: Readonly<{ children: React
       <main className="fincruiz-scroll-stable min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 py-5 sm:px-6 lg:px-8 lg:py-7"><div className="min-h-full">{children}<ContextualAIBar/></div></main>
     </div>
 
+    <SessionSecurityGuard/>
     <BetaFeedbackButton/>
     <AICFOFloating/>
     {explorerOpen ? <FeatureExplorer capabilities={capabilities} onClose={() => setExplorerOpen(false)}/> : null}

@@ -18,6 +18,7 @@ from app.core.exceptions import ApplicationError
 from app.database.models.core.company import Company
 from app.database.session import AsyncSessionLocal
 from app.domain.finance.gl_csv_validator import REQUIRED_GL_COLUMNS, build_column_mapping, detect_delimiter
+from app.domain.finance.gl_tabular_reader import ensure_supported_gl_filename, extension_for, xlsx_path_to_csv_path
 from app.domain.finance.ingestion.gl_parser import _date, _decimal
 from app.repositories.core.branch_repository import BranchRepository
 from app.repositories.finance.file_upload_repository import FileUploadRepository
@@ -28,10 +29,15 @@ MAX_ISSUES = 50
 
 
 def safe_filename(filename: str | None) -> str:
-    value = Path(filename or "general-ledger.csv").name
-    if Path(value).suffix.lower() != ".csv":
-        raise ApplicationError(message="Only CSV files are supported.", error_code="UNSUPPORTED_FILE_TYPE", status_code=415)
-    return value
+    try:
+        return ensure_supported_gl_filename(filename)
+    except ValueError as exc:
+        raise ApplicationError(
+            message=str(exc),
+            error_code="UNSUPPORTED_FILE_TYPE",
+            status_code=415,
+            details={"allowed_extensions": [".csv", ".xlsx"]},
+        ) from exc
 
 
 async def stream_to_staging(file: UploadFile, *, company_id: UUID, job_id: UUID) -> tuple[Path, int]:
@@ -190,7 +196,12 @@ async def process_job(job_id: UUID) -> None:
             if company is None: raise ValueError("Company no longer exists.")
             path = Path(job["staged_path"])
             if not path.exists(): raise ValueError("The staged upload is no longer available. Re-upload the file.")
-            delimiter, headers, mapping, missing = _mapping_for_file(path)
+            working_path = path
+            normalised_path: Path | None = None
+            if extension_for(job["original_file_name"]) == ".xlsx":
+                normalised_path = xlsx_path_to_csv_path(path)
+                working_path = normalised_path
+            delimiter, headers, mapping, missing = _mapping_for_file(working_path)
             upload_repo = FileUploadRepository(session); tx_repo = GLTransactionRepository(session)
             upload_id = uuid4()
             upload = await upload_repo.create({
@@ -203,7 +214,7 @@ async def process_job(job_id: UUID) -> None:
             await session.commit()
             if missing:
                 raise ValueError("Missing/invalid required columns: " + ", ".join(missing))
-            total, valid, issues = validate_stream(path, delimiter=delimiter, mapping=mapping, company=company, upload_id=upload_id, reporting_period_id=job["reporting_period_id"])
+            total, valid, issues = validate_stream(working_path, delimiter=delimiter, mapping=mapping, company=company, upload_id=upload_id, reporting_period_id=job["reporting_period_id"])
             invalid = total - valid
             await session.execute(text("UPDATE public.ingestion_jobs SET total_rows=:t,valid_rows=:v,invalid_rows=:i,progress_percent=35,phase='validated',file_upload_id=:u,updated_at=now() WHERE id=:id"), {"t":total,"v":valid,"i":invalid,"u":upload_id,"id":job_id})
             await upload_repo.update(upload, {"row_count": total, "valid_row_count": valid, "invalid_row_count": invalid, "validation_summary": {"total_rows":total,"valid_rows":valid,"invalid_rows":invalid,"issues":issues}, "column_mapping":mapping})
@@ -211,10 +222,12 @@ async def process_job(job_id: UUID) -> None:
             if invalid:
                 await upload_repo.update(upload, {"processing_status":"validation_failed", "processed_at":datetime.now(UTC)})
                 await session.execute(text("UPDATE public.ingestion_jobs SET status='validation_failed',phase='validation_failed',progress_percent=100,error_message=:e,completed_at=now(),updated_at=now() WHERE id=:id"), {"id":job_id,"e":f"{invalid} row(s) failed validation. Review the upload record for sample issues."})
-                await session.commit(); return
+                await session.commit()
+                if normalised_path is not None: normalised_path.unlink(missing_ok=True)
+                return
             branch_repo=BranchRepository(session); branch_map=await branch_repo.mapping_by_code_and_name(company.id)
             inserted=0; chunk: list[dict[str,Any]]=[]
-            with path.open("r",encoding="utf-8-sig",newline="") as handle:
+            with working_path.open("r",encoding="utf-8-sig",newline="") as handle:
                 reader=csv.DictReader(handle,delimiter=delimiter)
                 for row_number, raw in enumerate(reader,start=2):
                     if not any(str(v or "").strip() for v in raw.values()): continue
@@ -230,8 +243,15 @@ async def process_job(job_id: UUID) -> None:
             await upload_repo.deactivate_active_datasets(company_id=company.id,document_type="general_ledger",reporting_period_id=job["reporting_period_id"],exclude_upload_id=upload_id)
             await upload_repo.update(upload,{"processing_status":"validated","is_active":True,"processed_at":datetime.now(UTC),"processing_metadata":{**upload.processing_metadata,"gl_transactions_inserted":True,"inserted_transaction_count":inserted,"dataset_status":"active"}})
             await session.execute(text("UPDATE public.ingestion_jobs SET status='completed',phase='completed',progress_percent=100,inserted_rows=:n,completed_at=now(),updated_at=now() WHERE id=:id"),{"n":inserted,"id":job_id})
-            await session.commit(); path.unlink(missing_ok=True)
+            await session.commit()
+            if normalised_path is not None: normalised_path.unlink(missing_ok=True)
+            path.unlink(missing_ok=True)
         except Exception as exc:
+            try:
+                if 'normalised_path' in locals() and normalised_path is not None:
+                    normalised_path.unlink(missing_ok=True)
+            except Exception:
+                pass
             await session.rollback()
             safe_message = str(exc)[:500] or "Import failed."
             await session.execute(text("UPDATE public.ingestion_jobs SET status='failed',phase='failed',error_message=:e,completed_at=now(),updated_at=now() WHERE id=:id"), {"e":safe_message,"id":job_id})

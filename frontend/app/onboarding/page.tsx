@@ -10,6 +10,7 @@ import {
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
+import { SessionSecurityGuard } from "@/components/session-security-guard";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { getApiErrorMessage } from "@/lib/api";
@@ -97,10 +98,11 @@ export default function OnboardingPage(){
 
   const market=marketForCountry(draft.countryCode);
   return <main className="min-h-screen bg-[radial-gradient(circle_at_top_left,hsl(var(--primary)/.10),transparent_35%),linear-gradient(to_bottom,hsl(var(--background)),hsl(var(--muted)/.25))] px-5 py-8 sm:py-12">
+    <SessionSecurityGuard/>
     <div className="mx-auto max-w-6xl">
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2 font-semibold"><div className="flex size-10 items-center justify-center rounded-xl bg-primary text-primary-foreground"><Sparkles className="size-4"/></div><div>FinCruiz<p className="text-xs font-normal text-muted-foreground">Build your finance intelligence workspace</p></div></div>
-        <Button variant="ghost" onClick={()=>{authService.logout();router.replace("/login")}}><LogOut className="size-4"/>Sign out</Button>
+        <Button variant="ghost" onClick={()=>{void authService.logoutEverywhere("signed-out");router.replace("/login?reason=signed-out")}}><LogOut className="size-4"/>Sign out</Button>
       </div>
 
       <div className="mt-8 rounded-2xl border bg-card/80 p-4 shadow-sm backdrop-blur">

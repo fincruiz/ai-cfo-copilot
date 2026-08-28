@@ -1,4 +1,4 @@
-from typing import Any
+from typing import Any, Literal
 from uuid import UUID
 from pydantic import BaseModel, EmailStr, Field
 
@@ -35,6 +35,10 @@ class TokenResponse(BaseModel):
     token_type: str = "bearer"
     expires_in: int | None = None
     refresh_token: str | None = None
+
+
+class LogoutRequest(BaseModel):
+    scope: Literal["global", "local"] = "global"
 
 
 class CurrentUser(BaseModel):

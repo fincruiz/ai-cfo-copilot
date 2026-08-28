@@ -3,6 +3,8 @@ import axios, {
   InternalAxiosRequestConfig,
 } from "axios";
 
+import { broadcastSessionLogout, clearSessionMetadata } from "@/lib/session-security";
+
 const API_URL =
   process.env.NEXT_PUBLIC_API_URL ??
   "http://127.0.0.1:8000/api/v1";
@@ -34,10 +36,12 @@ export const api = axios.create({
   timeout: 30000,
 });
 
-function clearStoredSession(): void {
+function clearStoredSession(reason: "session-expired" | "signed-out" = "session-expired"): void {
   if (typeof window === "undefined") return;
   window.localStorage.removeItem(ACCESS_TOKEN_KEY);
   window.localStorage.removeItem(REFRESH_TOKEN_KEY);
+  clearSessionMetadata();
+  broadcastSessionLogout(reason);
 }
 
 function storeTokens(tokens: TokenPayload): void {
@@ -194,6 +198,10 @@ export function getApiErrorMessage(
         detail?: string;
       }
     | undefined;
+
+  if (error.code === "ECONNABORTED") {
+    return "FinCruiz is taking longer than expected to respond. Please wait a moment and try again. If this continues, contact support.";
+  }
 
   return (
     responseData?.message ??

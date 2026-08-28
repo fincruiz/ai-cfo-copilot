@@ -238,6 +238,30 @@ function LoginContent() {
                   </Alert>
                 ) : null}
 
+                {reason === "inactivity" ? (
+                  <Alert>
+                    <AlertDescription>
+                      You were signed out after a period of inactivity to protect your financial data.
+                    </AlertDescription>
+                  </Alert>
+                ) : null}
+
+                {reason === "session-limit" ? (
+                  <Alert>
+                    <AlertDescription>
+                      Your secure session reached its maximum duration. Sign in again to continue.
+                    </AlertDescription>
+                  </Alert>
+                ) : null}
+
+                {reason === "signed-out" ? (
+                  <Alert>
+                    <AlertDescription>
+                      You have been signed out securely across this browser session.
+                    </AlertDescription>
+                  </Alert>
+                ) : null}
+
                 {reason === "password-reset" ? (
                   <Alert>
                     <AlertDescription>
